@@ -163,17 +163,34 @@ export function promoteYouth(
     counts.set(player.position, (counts.get(player.position) ?? 0) + 1);
   }
 
+  /*
+   * Positions with nobody left come first, and are filled even if the squad is
+   * already at its target size. Retirement has no positional guard -- a club's
+   * last right winger can simply retire -- and the size-based top-up below would
+   * never notice, so a full squad could carry a hole in it for good.
+   */
+  const uncovered = (Object.keys(SQUAD_SHAPE) as Position[]).filter(
+    (position) => (counts.get(position) ?? 0) === 0,
+  );
+
   let guard = 0;
-  while (club.squad.length + promoted.length < minSquadSize && guard++ < 40) {
-    // Fill the position the club is furthest below its target shape in.
-    let neediest: Position = 'CM';
-    let worstGap = -Infinity;
-    for (const position of Object.keys(SQUAD_SHAPE) as Position[]) {
-      const gap = SQUAD_SHAPE[position] - (counts.get(position) ?? 0);
-      if (gap > worstGap) {
-        worstGap = gap;
-        neediest = position;
+  while (
+    (uncovered.length > 0 || club.squad.length + promoted.length < minSquadSize) &&
+    guard++ < 40
+  ) {
+    // An uncovered position outranks any shortfall against the target shape.
+    let neediest: Position = uncovered[0] ?? 'CM';
+    if (uncovered.length === 0) {
+      let worstGap = -Infinity;
+      for (const position of Object.keys(SQUAD_SHAPE) as Position[]) {
+        const gap = SQUAD_SHAPE[position] - (counts.get(position) ?? 0);
+        if (gap > worstGap) {
+          worstGap = gap;
+          neediest = position;
+        }
       }
+    } else {
+      uncovered.shift();
     }
 
     const youth = generatePlayer(rng, {

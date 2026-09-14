@@ -23,6 +23,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "build:android": "npx eas-cli build --platform android --profile production --local",
     "eas-build-post-install": "pnpm --filter @game1/engine build"
   },
   "private": true

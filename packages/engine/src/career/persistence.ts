@@ -1,6 +1,7 @@
 import { Rng } from '../rng/index.js';
 import type { Club, Fixture, MatchEvent, MatchResult, Player } from '../types.js';
 import { createSeasonState } from '../league/season.js';
+import { ensurePlayerIdsAbove } from '../world/players.js';
 import type { Career } from './controller.js';
 import type { SeasonSummary } from './career.js';
 
@@ -94,10 +95,62 @@ function trimResults(results: readonly MatchResult[], managedClubId: string): Ma
   });
 }
 
-export function fromSavedCareer(saved: SavedCareer): Career {
-  if (saved.version !== SAVE_VERSION) {
-    throw new Error(`Unsupported save version ${saved.version}; expected ${SAVE_VERSION}`);
+/** A save in any historical shape. Migrations narrow it one version at a time. */
+export type AnySave = { version: number } & Record<string, unknown>;
+
+type Migration = (saved: AnySave) => AnySave;
+
+/**
+ * One entry per version, keyed by the version it upgrades *from*. Migrations are
+ * pure data shaping with no randomness, so a migrated career resumes on exactly
+ * the RNG sequence it would have.
+ *
+ * There is nothing here yet -- the save format has only ever had one shape. The
+ * chain exists so that the first shape change does not delete everyone's career,
+ * which is what the previous throw-and-wipe did.
+ */
+const MIGRATIONS: Record<number, Migration> = {};
+
+/** Raised when a save cannot be brought up to the current format. */
+export class UnsupportedSaveError extends Error {
+  constructor(
+    message: string,
+    readonly saveVersion: number,
+    readonly reason: 'too_new' | 'no_migration_path',
+  ) {
+    super(message);
+    this.name = 'UnsupportedSaveError';
   }
+}
+
+export function migrateSave(saved: AnySave): SavedCareer {
+  let current = saved;
+
+  while (current.version < SAVE_VERSION) {
+    const step = MIGRATIONS[current.version];
+    if (!step) {
+      throw new UnsupportedSaveError(
+        `This save was made by an older build and cannot be upgraded (version ${current.version}).`,
+        current.version,
+        'no_migration_path',
+      );
+    }
+    current = step(current);
+  }
+
+  if (current.version > SAVE_VERSION) {
+    throw new UnsupportedSaveError(
+      `This save was made by a newer build (version ${current.version}); update the app.`,
+      current.version,
+      'too_new',
+    );
+  }
+
+  return current as unknown as SavedCareer;
+}
+
+export function fromSavedCareer(input: SavedCareer | AnySave): Career {
+  const saved = migrateSave(input as AnySave);
 
   // Players must be the *same objects* the squads hold, or a transfer would move
   // one copy and leave the lookup table pointing at another.
@@ -106,6 +159,10 @@ export function fromSavedCareer(saved: SavedCareer): Career {
     for (const player of club.squad) players.set(player.id, player);
   }
   for (const player of saved.freeAgents) players.set(player.id, player);
+
+  // Without this, the next academy intake in a freshly launched app mints ids
+  // that are already taken and silently overwrites existing players.
+  ensurePlayerIdsAbove(players.values());
 
   const world = {
     seed: saved.seed,

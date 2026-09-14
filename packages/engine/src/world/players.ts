@@ -120,6 +120,24 @@ export function resetPlayerIds(): void {
   playerCounter = 0;
 }
 
+/**
+ * Raises the id counter above every id already in use.
+ *
+ * Player ids come from a module-level counter that only `createWorld` resets, so
+ * a career loaded into a *fresh process* -- which is every app launch -- would
+ * otherwise mint ids that already exist. The next academy intake then overwrites
+ * real players in `world.players`, and goals start being credited to the wrong
+ * man. Scanning the loaded players rather than storing the counter in the save
+ * also repairs careers saved before this existed.
+ */
+export function ensurePlayerIdsAbove(players: Iterable<Player>): void {
+  for (const player of players) {
+    if (!player.id.startsWith('p')) continue;
+    const n = Number.parseInt(player.id.slice(1), 10);
+    if (Number.isFinite(n) && n > playerCounter) playerCounter = n;
+  }
+}
+
 export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player {
   const pool =
     options.nationality ??

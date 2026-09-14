@@ -320,11 +320,3 @@ export function fitWagesToBudget(club: Club): void {
     player.contract.wage = Math.max(100, Math.round((player.contract.wage * scale) / 100) * 100);
   }
 }
-
-/** Assigns a contract at the wage the player expects, with a random length. */
-export function issueContract(rng: Rng, player: Player, wageMultiplier = 1): void {
-  player.contract = {
-    wage: Math.round(expectedWage(player) * wageMultiplier),
-    yearsRemaining: rng.int(1, 4),
-  };
-}

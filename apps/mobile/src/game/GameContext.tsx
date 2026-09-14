@@ -7,12 +7,20 @@ import {
   isSeasonComplete,
   serializeCareer,
   startCareer,
+  UnsupportedSaveError,
   type Career,
   type MatchResult,
   type SeasonSummary,
 } from '@game1/engine';
 
 const SAVE_KEY = 'game1:career:v1';
+/** A save we could not read is moved here rather than deleted. */
+const QUARANTINE_KEY = 'game1:career:unreadable';
+
+export interface SaveProblem {
+  kind: 'too_new' | 'no_migration_path' | 'damaged';
+  message: string;
+}
 
 export interface RoundOutcome {
   /** The managed club's match, if they played this round. */
@@ -22,6 +30,9 @@ export interface RoundOutcome {
 
 interface GameContextValue {
   career: Career | undefined;
+  /** Set when a save existed but could not be loaded. */
+  saveProblem: SaveProblem | undefined;
+  dismissSaveProblem: () => void;
   /** Bumped on every mutation, since the engine mutates the world in place. */
   version: number;
   loading: boolean;
@@ -39,6 +50,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [saveProblem, setSaveProblem] = useState<SaveProblem | undefined>();
 
   // Restore a save on launch.
   useEffect(() => {
@@ -48,9 +60,24 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const json = await AsyncStorage.getItem(SAVE_KEY);
         if (!cancelled && json) setCareer(deserializeCareer(json));
       } catch (error) {
-        // A save from an older build is not worth crashing over: start fresh.
-        console.warn('Could not load save', error);
-        await AsyncStorage.removeItem(SAVE_KEY).catch(() => {});
+        /*
+         * A career is hours of someone's time. Move the unreadable save aside
+         * and say what went wrong instead of deleting it, so a bad build or a
+         * half-written file is recoverable rather than terminal.
+         */
+        const problem: SaveProblem =
+          error instanceof UnsupportedSaveError
+            ? { kind: error.reason, message: error.message }
+            : { kind: 'damaged', message: 'This save could not be read and may be damaged.' };
+
+        try {
+          const json = await AsyncStorage.getItem(SAVE_KEY);
+          if (json) await AsyncStorage.setItem(QUARANTINE_KEY, json);
+          await AsyncStorage.removeItem(SAVE_KEY);
+        } catch {
+          // Quarantining is best-effort; never let it mask the original problem.
+        }
+        if (!cancelled) setSaveProblem(problem);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -114,9 +141,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.removeItem(SAVE_KEY).catch(() => {});
   }, []);
 
+  const dismissSaveProblem = useCallback(() => setSaveProblem(undefined), []);
+
   const value = useMemo<GameContextValue>(
-    () => ({ career, version, loading, busy, newCareer, playRound, finishSeason, abandonCareer }),
-    [career, version, loading, busy, newCareer, playRound, finishSeason, abandonCareer],
+    () => ({
+      career, version, loading, busy, saveProblem,
+      newCareer, playRound, finishSeason, abandonCareer, dismissSaveProblem,
+    }),
+    [
+      career, version, loading, busy, saveProblem,
+      newCareer, playRound, finishSeason, abandonCareer, dismissSaveProblem,
+    ],
   );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

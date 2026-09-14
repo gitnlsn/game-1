@@ -350,6 +350,15 @@ export function processContracts(rng: Rng, world: World): { renewed: number; rel
   for (const club of world.league.clubs) {
     const keeping: Player[] = [];
 
+    // A club must never release its last specialist in a position. Renewal is
+    // decided on ability and affordability alone, so without this a club whose
+    // only two keepers expire in the same summer ends up with none, and fields
+    // an outfielder in goal for a season.
+    const remaining = new Map<Position, number>();
+    for (const player of club.squad) {
+      remaining.set(player.position, (remaining.get(player.position) ?? 0) + 1);
+    }
+
     for (const player of club.squad) {
       player.contract.yearsRemaining -= 1;
       if (player.contract.yearsRemaining > 0) {
@@ -364,13 +373,15 @@ export function processContracts(rng: Rng, world: World): { renewed: number; rel
       const newWage = Math.round(expectedWage(player) * rng.float(1, 1.2));
       const affordable = wageBill(keeping) + newWage <= club.finances.wageBudget;
       const mustKeep = keeping.length + 1 <= T.minSquadSize;
+      const lastInPosition = (remaining.get(player.position) ?? 0) <= 1;
 
-      if ((worthKeeping && affordable) || mustKeep) {
+      if ((worthKeeping && affordable) || mustKeep || lastInPosition) {
         player.contract = { wage: newWage, yearsRemaining: rng.int(2, 4) };
         keeping.push(player);
         renewed++;
       } else {
         released.push(player);
+        remaining.set(player.position, (remaining.get(player.position) ?? 1) - 1);
       }
     }
 

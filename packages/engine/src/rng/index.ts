@@ -86,13 +86,6 @@ export class Rng {
     return out;
   }
 
-  /**
-   * Derives an independent child generator. Used to isolate streams so that,
-   * for example, simulating an extra friendly does not shift the league results.
-   */
-  fork(label: string): Rng {
-    return new Rng(hashString(label + ':' + this.int(0, 0xffffff)));
-  }
 }
 
 export function hashString(input: string): number {

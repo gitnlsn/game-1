@@ -118,6 +118,14 @@ export function closeSeason(world: World, rng: Rng, season: SeasonResult): Seaso
   // Close season: age, retire, renew, promote, then trade.
   const seasonMatches = (clubs.length - 1) * 2;
   const development = createDevelopmentStats();
+  /*
+   * Last summer's unsigned free agents drop out of the game now, at the *start*
+   * of the close season rather than the end. Expiring them last meant a player
+   * released in July was deleted in the same breath, so the pool was always
+   * empty and nobody could ever be signed from it.
+   */
+  expireFreeAgents(world);
+
   const retirements = ageAndRetire(world, rng, seasonMatches, development);
   updateReputations(clubs, season.table);
   for (const club of clubs) applyCloseSeasonSpending(club, clubs.length);
@@ -139,7 +147,6 @@ export function closeSeason(world: World, rng: Rng, season: SeasonResult): Seaso
 
   setTransferBudgets(clubs, clubs.length);
   const transfers = runTransferWindow(rng, world);
-  expireFreeAgents(world);
 
   world.season += 1;
 

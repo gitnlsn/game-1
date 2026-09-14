@@ -3,6 +3,7 @@ import { Rng } from '../rng/index.js';
 import { createWorld } from '../world/index.js';
 import { currentAbility } from '../world/players.js';
 import { simulateCareer, simulateCareerSeason } from '../career/career.js';
+import { recordExpense, recordIncome } from '../economy/finances.js';
 import { developPlayer, shouldRetire } from '../career/aging.js';
 import { generatePlayer } from '../world/players.js';
 import { TRANSFER_TUNING } from '../transfers/market.js';
@@ -39,9 +40,10 @@ function assertWorldIsCoherent(world: World): void {
     }
   }
 
-  // Free agents must not also be on a squad.
+  // Free agents must not also be on a squad, nor share a name with one.
   for (const player of world.freeAgents) {
     expect(seen.has(player.id), `free agent ${player.displayName} also at a club`).toBe(false);
+    expect(player.contract.wage).toBeGreaterThan(0);
   }
 }
 
@@ -92,11 +94,18 @@ describe('simulateCareerSeason', () => {
   it('keeps the world coherent over many seasons', () => {
     const world = createWorld({ seed: 'career-coherent' });
     const rng = new Rng('career-coherent');
+    let sawFreeAgents = false;
 
     for (let season = 0; season < 15; season++) {
       simulateCareerSeason(world, rng);
       assertWorldIsCoherent(world);
+      if (world.freeAgents.length > 0) sawFreeAgents = true;
     }
+
+    // The free-agent checks above were vacuous for a long time because the pool
+    // was emptied before anything could look at it. Prove there is something to
+    // check.
+    expect(sawFreeAgents, 'free-agent pool was empty in every season').toBe(true);
   });
 
   it('conserves money across every transfer', () => {
@@ -128,6 +137,29 @@ describe('simulateCareerSeason', () => {
         expect(transfer.wage).toBeGreaterThan(0);
       }
       expect(before.size).toBe(world.league.clubs.length);
+    }
+  });
+
+  it('books every movement of money', () => {
+    /*
+     * Double entry for the whole economy: a club's balance may only change by
+     * exactly what its ledger says. Gate receipts, wages, running costs, prize
+     * money, transfers, ground investment and owner drawings are all unilateral
+     * mutations with no counterparty, so without this an unbooked leak would
+     * only ever show up as a benchmark drifting years later.
+     */
+    const world = createWorld({ seed: 'conservation' });
+    const rng = new Rng('conservation');
+
+    for (let season = 0; season < 4; season++) {
+      const before = new Map(world.league.clubs.map((c) => [c.id, c.finances.balance]));
+      simulateCareerSeason(world, rng);
+
+      for (const club of world.league.clubs) {
+        const delta = club.finances.balance - before.get(club.id)!;
+        const booked = recordIncome(club.finances.season) - recordExpense(club.finances.season);
+        expect(delta, `${club.name} season ${season + 1}`).toBe(booked);
+      }
     }
   });
 

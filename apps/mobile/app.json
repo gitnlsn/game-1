@@ -18,11 +18,17 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "br.com.hubxp.game1"
+      "package": "br.com.hubxp.game1",
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "backgroundColor": "#0E1116"
+    "backgroundColor": "#0E1116",
+    "extra": {
+      "eas": {
+        "projectId": "0de18376-a823-412e-b5e7-f38680808b04"
+      }
+    }
   }
 }

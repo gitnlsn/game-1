@@ -1,7 +1,7 @@
 import { Rng } from '../rng/index.js';
 import type { Club, World } from '../types.js';
 import { simulateCareer, type SeasonSummary } from '../career/career.js';
-import { marketValue, wageBill } from '../economy/valuation.js';
+import { marketValue } from '../economy/valuation.js';
 import { expectedAnnualRevenue } from '../economy/finances.js';
 import { ECONOMY_TUNING } from '../economy/finances.js';
 import { currentAbility } from '../world/players.js';
@@ -48,13 +48,22 @@ export const ECONOMY_BENCHMARKS: readonly Benchmark[] = [
   { key: 'titleDominancePct', label: 'Titles won by top club %', target: 40, tolerance: 22, decimals: 1 },
   { key: 'squadValueRatio', label: 'Top / median squad value', target: 4, tolerance: 2.5, decimals: 2 },
   { key: 'topTalentShare', label: 'Best-50 players at one club %', target: 14, tolerance: 10, decimals: 1 },
-  {
-    key: 'cashToRevenuePct',
-    label: 'League cash as % of revenue',
-    target: 25,
-    tolerance: 25,
-    decimals: 1,
-  },
+  /*
+   * Measured over 60 seasons on three seeds, league cash oscillates between
+   * roughly -7% and +56% of revenue with no trend -- it is mean-reverting, not
+   * leaking. The old 25 +/- 25 window put its lower edge at exactly zero and so
+   * failed on ordinary variation. This band is deliberately wide because the
+   * *level* is not the thing worth policing; cashDriftPct below does that job,
+   * and this one only has to catch gross degeneracy like the 139% seen in
+   * milestone 2 before operating costs existed.
+   */
+  { key: 'cashToRevenuePct', label: 'League cash as % of revenue', target: 25, tolerance: 45, decimals: 1 },
+  /*
+   * The real health check: cash in the last third of a career against the first
+   * third. A league that is quietly printing or burning money shows up here as a
+   * trend, where the level alone just looks like noise.
+   */
+  { key: 'cashDriftPct', label: 'Cash drift, late vs early', target: 0, tolerance: 30, decimals: 1 },
   { key: 'talentDriftPct', label: 'Squad quality vs season 1 %', target: 100, tolerance: 8, decimals: 1 },
   /*
    * Development. The gap is the one that matters: it is the whole reason
@@ -92,8 +101,15 @@ export function validateEconomy(options: ValidateEconomyOptions = {}): EconomyRe
   const world = createWorld({ seed, clubCount });
   const rng = new Rng(`${seed}:career`);
   const startingTalent = averageFirstTeamAbility(world.league.clubs);
+  // Cash as a share of revenue, sampled at the end of every season.
+  const cashHistory: number[] = [];
 
-  const summaries = simulateCareer(world, rng, { seasons });
+  const summaries = simulateCareer(world, rng, {
+    seasons,
+    onSeason: () => {
+      cashHistory.push((totalBalance(world.league.clubs) / leagueRevenue(world.league.clubs)) * 100);
+    },
+  });
 
   // Averaged across every club-season, not just the final state.
   let wageTotal = 0;
@@ -148,6 +164,7 @@ export function validateEconomy(options: ValidateEconomyOptions = {}): EconomyRe
     // from the opening balance instead would say more about that arbitrary
     // starting figure than about whether the economy is stable.
     cashToRevenuePct: (totalBalance(clubs) / leagueRevenue(clubs)) * 100,
+    cashDriftPct: cashDrift(cashHistory),
     talentDriftPct: (averageFirstTeamAbility(clubs) / startingTalent) * 100,
     regularYouthGain: developmentSeasons > 0 ? regularYouthGain / developmentSeasons : 0,
     youthDevelopmentGap:
@@ -176,6 +193,15 @@ export function validateEconomy(options: ValidateEconomyOptions = {}): EconomyRe
       .sort((a, b) => b.balance - a.balance),
     summaries,
   };
+}
+
+/** Mean cash in the last third of a career minus the mean in the first third. */
+function cashDrift(history: readonly number[]): number {
+  if (history.length < 6) return 0;
+  const third = Math.floor(history.length / 3);
+  const mean = (values: readonly number[]) =>
+    values.reduce((sum, v) => sum + v, 0) / Math.max(1, values.length);
+  return mean(history.slice(-third)) - mean(history.slice(0, third));
 }
 
 function totalBalance(clubs: readonly Club[]): number {
@@ -235,11 +261,4 @@ function topTalentConcentration(world: World, topN: number): number {
 
   const most = Math.max(0, ...byClub.values());
   return (most / topN) * 100;
-}
-
-/** Current wage-bill-to-revenue ratio for one club, for UI and debugging. */
-export function wageRatio(club: Club): number {
-  const annualWages = wageBill(club.squad) * ECONOMY_TUNING.wageWeeksPerSeason;
-  const revenue = Math.max(1, club.finances.season.gateReceipts + club.finances.sponsorshipPerSeason);
-  return annualWages / revenue;
 }

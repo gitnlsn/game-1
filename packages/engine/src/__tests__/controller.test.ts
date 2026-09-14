@@ -10,7 +10,12 @@ import {
   nextFixture,
   startCareer,
 } from '../career/controller.js';
-import { deserializeCareer, serializeCareer } from '../career/persistence.js';
+import {
+  deserializeCareer,
+  serializeCareer,
+  UnsupportedSaveError,
+} from '../career/persistence.js';
+import { resetPlayerIds } from '../world/players.js';
 
 function playWholeSeason(career: ReturnType<typeof startCareer>): void {
   let guard = 0;
@@ -132,10 +137,63 @@ describe('save and load', () => {
     expect(() => endSeason(loaded)).not.toThrow();
   });
 
-  it('refuses a save from an incompatible version', () => {
+  it('does not mint colliding ids when loaded into a fresh process', () => {
+    /*
+     * Player ids come from a module-level counter. On an app launch the counter
+     * starts at zero, so a loaded career used to mint ids that already existed
+     * and the next academy intake overwrote real players in the lookup table.
+     * `resetPlayerIds()` puts that counter in exactly the state a fresh process
+     * has, which is what makes this reproducible in-process at all -- every
+     * other persistence test runs where the counter is already high and is
+     * structurally blind to this.
+     */
+    const career = startCareer({ seed: 'fresh-process' });
+    playWholeSeason(career);
+    const json = serializeCareer(career);
+
+    resetPlayerIds();
+    const loaded = deserializeCareer(json);
+    endSeason(loaded); // promotes academy players, minting new ids
+
+    const seen = new Set<string>();
+    for (const club of loaded.world.league.clubs) {
+      for (const player of club.squad) {
+        expect(seen.has(player.id), `duplicate id ${player.id} (${player.displayName})`).toBe(false);
+        seen.add(player.id);
+        // The lookup table must point at the same object the squad holds.
+        expect(loaded.world.players.get(player.id)).toBe(player);
+      }
+    }
+  });
+
+  it('distinguishes a save from a newer build, so the app can explain it', () => {
     const career = startCareer({ seed: 'version' });
     const saved = JSON.parse(serializeCareer(career));
     saved.version = 999;
-    expect(() => deserializeCareer(JSON.stringify(saved))).toThrow(/Unsupported save version/);
+
+    // The app needs to tell the player "this came from a newer build" rather than
+    // silently deleting their career, which is what the old throw led to.
+    try {
+      deserializeCareer(JSON.stringify(saved));
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(UnsupportedSaveError);
+      expect((error as UnsupportedSaveError).reason).toBe('too_new');
+      expect((error as UnsupportedSaveError).saveVersion).toBe(999);
+    }
+  });
+
+  it('reports an un-upgradable old save as such', () => {
+    const career = startCareer({ seed: 'version-old' });
+    const saved = JSON.parse(serializeCareer(career));
+    saved.version = 0;
+
+    try {
+      deserializeCareer(JSON.stringify(saved));
+      expect.unreachable('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(UnsupportedSaveError);
+      expect((error as UnsupportedSaveError).reason).toBe('no_migration_path');
+    }
   });
 });

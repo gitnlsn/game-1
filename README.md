@@ -22,7 +22,7 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 80 tests
+pnpm test                               # 98 tests
 pnpm typecheck
 ```
 
@@ -50,7 +50,7 @@ working on both at once, run `pnpm --filter @game1/engine build:watch` alongside
 A few notes on how it is put together:
 
 - **Saves are the whole world, not a replay.** A career serialises to about
-  470 KB — squads dominate it. Match logs are trimmed on save: goals are kept
+  500 KB once a season has been played (316 KB fresh) — squads dominate it. Match logs are trimmed on save: goals are kept
   everywhere so the scoring charts survive, but substitutions and bookings are
   kept only for your own recent matches, which cuts a season's save by half.
   Saving a round takes well under a millisecond; a whole round — ten matches
@@ -186,34 +186,35 @@ stay reproducible.
 
 `pnpm sim validate` simulates many seasons and checks the output against
 benchmarks from recent top-five-European-league seasons. Current state, 40
-seasons / 15,200 matches, all 13 benchmarks within tolerance:
+seasons / 15,200 matches, all 19 benchmarks within tolerance:
 
 | Metric | Engine | Real |
 | --- | --- | --- |
 | Goals per match | 2.72 | 2.75 |
-| Home / away goals | 1.52 / 1.20 | 1.52 / 1.23 |
-| Home wins / draws / away wins | 44.5% / 24.2% / 31.3% | 44% / 25% / 31% |
-| Shots (on target) per match | 24.7 (9.1) | 25 (8.7) |
-| Goalless matches | 6.5% | 7.5% |
-| Won by 4+ goals | 5.4% | 3.5% |
-| Champion points | 84.7 | 86 |
-| Top scorer goals | 24.7 | 24 |
+| Home / away goals | 1.49 / 1.22 | 1.52 / 1.23 |
+| Home wins / draws / away wins | 44.0% / 23.7% / 32.3% | 44% / 25% / 31% |
+| Shots (on target) per match | 24.9 (9.1) | 25 (8.7) |
+| Goalless matches | 6.8% | 7.5% |
+| Won by 4+ goals | 5.1% | 3.5% |
+| Champion points | 85.1 | 86 |
+| Top scorer goals | 24.9 | 24 |
 | Yellow / red cards per match | 3.84 / 0.104 | 3.9 / 0.10 |
 | Substitutions per match | 8.52 | 8.5 |
-| Injuries per club per season | 11.5 | ~12 |
+| Injuries per club per season | 11.4 | ~12 |
 | Players used per club | 21.1 | ~24 |
 
 It also reports the **strength/position correlation** — how reliably the better
-squad finishes higher. Real leagues sit around 0.75–0.85; the engine is at 0.832.
+squad finishes higher. Real leagues sit around 0.75–0.85; the engine is at 0.850 — at the top of that range, and worth watching.
 Pushing this to 1.0 would be easy and would ruin the game: nothing unexpected
 would ever happen.
 
-Two caveats on the table above: champion points at 78 sits at the low end of the
+Two caveats on the table above. Champion points sit toward the low end of the
 benchmark, which is right for a Brazilian-style league (Série A champions
 typically take 70–80) but low for the Premier League — worth splitting per
-competition once there are several. And blowouts at 5.4% are still above the
-real 3.5%; getting closer needs squad rotation and injuries, which do not exist
-yet.
+competition once there are several. And blowouts at 5.1% are still above the
+real 3.5%. Squad rotation and injuries were expected to close that gap and did
+not; the remaining cause is that individual defending is not modelled, so a
+weaker side has no way to dig in. That is milestone 4's attribute work.
 
 Performance: world generation 8ms; a full 380-match season 94ms with fitness,
 injuries, cards and finances all tracked (30ms for the match engine alone).
@@ -229,16 +230,17 @@ decays. Across 8 seeds x 25 seasons:
 
 | Metric | Engine (mean) | Range | Target |
 | --- | --- | --- | --- |
-| Wages as % of revenue | 60.8 | 59–62 | 57 ± 13 |
-| Clubs in debt % | 17.1 | 11–22 | 18 ± 12 |
-| Transfers per window | 20.5 | 18–23 | 30 ± 15 |
-| Titles won by top club % | 33.5 | 28–44 | 22 ± 15 |
-| Top / median squad value | 2.9 | 2.2–3.9 | 4 ± 2.5 |
-| Best-50 players at one club % | 19.5 | 16–24 | 14 ± 10 |
-| League cash as % of revenue | 15.6 | 4–26 | 25 ± 25 |
-| Squad quality vs season 1 % | 100.5 | 99–102 | 100 ± 8 |
-| U21 regular, ability/season | 4.73 | 4.6–4.9 | 4 ± 3 |
-| Gain: U21 regular vs benched | 2.63 | 2.5–2.8 | 2.5 ± 2 |
+| Wages as % of revenue | 59.2 | 56–62 | 57 ± 13 |
+| Clubs in debt % | 12.4 | 6–21 | 18 ± 12 |
+| Transfers per window | 23.3 | 22–27 | 30 ± 15 |
+| Titles won by top club % | 32.0 | 24–48 | 40 ± 22 |
+| Top / median squad value | 2.45 | 1.5–3.8 | 4 ± 2.5 |
+| Best-50 players at one club % | 15.8 | 12–20 | 14 ± 10 |
+| League cash as % of revenue | 17.0 | 1.5–33 | 25 ± 45 |
+| Cash drift, late vs early | −2.5 | −21–6 | 0 ± 30 |
+| Squad quality vs season 1 % | 100.6 | 98–103 | 100 ± 8 |
+| U21 regular, ability/season | 4.83 | 4.6–5.1 | 4 ± 3 |
+| Gain: U21 regular vs benched | 2.73 | 2.5–3.0 | 2.5 ± 2 |
 | Over-31 ability/season | −2.00 | −2.0 | −2.5 ± 2 |
 
 The last row is the one that matters most and it is the bug this whole harness
@@ -269,7 +271,13 @@ Honest caveats on the economy:
   so they rotate less than real clubs do — which is why the minutes-share target
   is 72% rather than the ~62% a real fixture list would produce.
 
-Four benchmarks were corrected after first being set badly, which is worth
+**On cash**: the level oscillates between roughly −7% and +56% of revenue with no
+trend, so policing the level alone fails on ordinary variation — the old window
+put its lower edge at exactly zero and did fail. `Cash drift` measures the last
+third of a career against the first third, which is what actually distinguishes a
+stable economy from one quietly printing or burning money.
+
+Five benchmarks were corrected after first being set badly, which is worth
 recording. "Distinct champions as a share of seasons" falls as a career
 lengthens even when nothing changes, and "richest / median cash balance" divides
 by a median sitting near zero whenever clubs carry debt — both replaced with

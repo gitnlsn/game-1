@@ -29,6 +29,10 @@ function flag(name: string, fallback: string): string {
   return index >= 0 && args[index + 1] !== undefined ? args[index + 1]! : fallback;
 }
 
+function has(name: string): boolean {
+  return args.includes(`--${name}`);
+}
+
 function num(name: string, fallback: number): number {
   const value = Number(flag(name, String(fallback)));
   return Number.isFinite(value) ? value : fallback;
@@ -83,8 +87,15 @@ function commandSeason(): void {
 
 function commandValidate(): void {
   const seasons = num('seasons', 50);
-  console.log(`Simulating ${seasons} seasons...\n`);
   const report = validateEngine({ seasons, clubCount: num('clubs', 20) });
+
+  // A machine-readable digest, so a change can be shown to have moved nothing.
+  if (has('json')) {
+    console.log(JSON.stringify(report.metrics, null, 2));
+    return;
+  }
+
+  console.log(`Simulating ${seasons} seasons...\n`);
 
   console.log(pad('Metric', 28) + padLeft('Value', 9) + padLeft('Target', 16) + '   Status');
   console.log('-'.repeat(68));
@@ -185,8 +196,14 @@ function commandSquad(): void {
 
 function commandEconomy(): void {
   const seasons = num('seasons', 20);
-  console.log(`Simulating a ${seasons}-season career...\n`);
   const report = validateEconomy({ seasons, seed: flag('seed', 'economy'), clubCount: num('clubs', 20) });
+
+  if (has('json')) {
+    console.log(JSON.stringify(report.metrics, null, 2));
+    return;
+  }
+
+  console.log(`Simulating a ${seasons}-season career...\n`);
 
   console.log(pad('Metric', 30) + padLeft('Value', 9) + padLeft('Target', 16) + '   Status');
   console.log('-'.repeat(70));
