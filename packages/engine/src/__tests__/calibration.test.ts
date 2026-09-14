@@ -31,6 +31,23 @@ describe('engine calibration', () => {
     expect(report.metrics.blowoutPct).toBeLessThan(8);
   });
 
+  it('books and sends off players at roughly the real rate', () => {
+    expect(report.metrics.yellowsPerMatch).toBeGreaterThan(2.5);
+    expect(report.metrics.yellowsPerMatch).toBeLessThan(5.5);
+    // Second yellows dominate this number: pick offenders uniformly and it lands
+    // several times too high.
+    expect(report.metrics.redsPerMatch).toBeLessThan(0.25);
+  });
+
+  it('injures and rotates players at a plausible rate', () => {
+    expect(report.metrics.injuriesPerClubSeason).toBeGreaterThan(5);
+    expect(report.metrics.injuriesPerClubSeason).toBeLessThan(22);
+    expect(report.metrics.playersUsedPerClub).toBeGreaterThan(15);
+    expect(report.metrics.subsPerMatch).toBeLessThan(10.1);
+    // Squad depth has to matter: the same eleven cannot play every minute.
+    expect(report.metrics.topElevenMinuteShare).toBeLessThan(88);
+  });
+
   it('rewards stronger squads without making the league deterministic', () => {
     expect(report.strengthPositionCorrelation).toBeGreaterThan(0.7);
     expect(report.strengthPositionCorrelation).toBeLessThan(0.93);
@@ -68,6 +85,14 @@ describe('economy calibration', () => {
     // generated below the standard of the players they replaced.
     expect(report.metrics.talentDriftPct).toBeGreaterThan(92);
     expect(report.metrics.talentDriftPct).toBeLessThan(108);
+  });
+
+  it('makes playing time the thing that develops a prospect', () => {
+    // If this gap closes, giving a young player games has stopped being a
+    // decision worth making.
+    expect(report.metrics.youthDevelopmentGap).toBeGreaterThan(1);
+    expect(report.metrics.regularYouthGain).toBeGreaterThan(2);
+    expect(report.metrics.veteranDecline).toBeLessThan(0);
   });
 
   it('keeps squads full and sensibly aged', () => {

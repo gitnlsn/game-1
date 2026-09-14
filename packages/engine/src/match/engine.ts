@@ -1,11 +1,21 @@
 import { Rng, clamp } from '../rng/index.js';
-import type { Club, MatchEvent, MatchResult, Player } from '../types.js';
-import { computeTeamRating, selectLineup, type Lineup, type TeamRating } from './ratings.js';
+import type { Club, MatchEvent, MatchResult, Player, Position } from '../types.js';
+import { STATUS_TUNING } from '../world/status.js';
+import {
+  computeTeamRating,
+  effectiveness,
+  selectLineup,
+  toSlot,
+  type Lineup,
+  type LineupSlot,
+  type TeamRating,
+} from './ratings.js';
 
 /**
  * Every magic number in the match engine lives here. These are calibrated
  * against real top-division benchmarks (see analysis/validate.ts):
- *   ~2.75 goals per match, ~44% home wins, ~25% draws, ~26 shots per match.
+ *   ~2.75 goals per match, ~44% home wins, ~25% draws, ~26 shots per match,
+ *   ~3.9 yellows and ~0.1 reds per match.
  * Change one number, re-run `pnpm sim validate`, and check the whole profile.
  */
 export const MATCH_TUNING = {
@@ -31,7 +41,7 @@ export const MATCH_TUNING = {
   /** Baseline chance a shot is on target. */
   onTargetBase: 0.35,
   /** Baseline chance an on-target shot beats the keeper. */
-  conversionBase: 0.315,
+  conversionBase: 0.296,
   /** Exponent on shooter-vs-keeper quality when converting. */
   conversionExponent: 1.0,
   /** Share of goals that are credited an assist. */
@@ -44,17 +54,49 @@ export const MATCH_TUNING = {
    * have good and bad days; without this the stronger squad wins too reliably
    * and the title race becomes a formality.
    */
-  performanceVariance: 0.09,
+  performanceVariance: 0.05,
   /**
    * Score-state effect: from the hour mark a trailing side commits more players
    * forward and a leading side sits deeper. Produces late comebacks and pushes
    * the draw rate toward the real-world figure.
    */
-  chasingBoost: 0.12,
+  chasingBoost: 0.145,
   chasingFrom: 50,
   /** Fatigue drag applied to a tiring side in the closing stages. */
   fatigueFrom: 70,
   fatigueMax: 0.06,
+
+  // --- Discipline, injuries and substitutions ---
+  /** Yellow and red cards per team-minute, tuned to ~3.9 and ~0.1 per match. */
+  yellowRate: 0.0205,
+  directRedRate: 0.00015,
+  /** Injuries per team-minute. */
+  injuryRate: 0.0032,
+  /**
+   * How much less likely an already-booked player is to be booked again. They
+   * play carefully and the manager often takes them off. Without this, second
+   * yellows alone produce several times the real rate of sendings-off.
+   */
+  bookedOffenceWeight: 0.22,
+  /**
+   * A substitution is worth making even if the replacement is slightly weaker:
+   * managers rest starters and give squad players minutes, they do not only
+   * substitute for an immediate upgrade.
+   */
+  substitutionGainThreshold: -5,
+  /** Substitutions a side may make. Five has been the norm since 2022. */
+  maxSubstitutions: 5,
+  /** Window in which tactical substitutions are considered. */
+  firstSubMinute: 46,
+  lastSubMinute: 82,
+  /** How much a full match drains a player with average stamina. */
+  conditionCostPer90: 22,
+  /** In-match drop-off used when deciding whether to take a player off. */
+  inMatchFatigue: 0.14,
+  /** Rating penalties per man short, applied to each phase. */
+  shorthandedAttack: 0.85,
+  shorthandedMidfield: 0.88,
+  shorthandedDefence: 0.91,
 } as const;
 
 export interface SimulateMatchOptions {
@@ -62,17 +104,36 @@ export interface SimulateMatchOptions {
   neutral?: boolean;
   homeFormation?: string;
   awayFormation?: string;
+  /**
+   * Treat this as a real fixture: record minutes and goals, drain condition, and
+   * apply cards and injuries to the players involved. Off by default so a one-off
+   * simulation can be run without mutating the world.
+   */
+  updatePlayerState?: boolean;
 }
 
 interface TeamState {
   club: Club;
   lineup: Lineup;
+  /** Multiplier covering home advantage and today's form. */
+  boost: number;
   rating: TeamRating;
+  /** Keeper quality before home advantage and form, for the shooter-vs-keeper duel. */
+  goalkeepingBase: number;
   goals: number;
   shots: number;
   shotsOnTarget: number;
-  /** Average stamina of the XI, used for the late-game fatigue drag. */
   stamina: number;
+  /** The eleven currently on the pitch; fewer after a sending off. */
+  onPitch: LineupSlot[];
+  bench: Player[];
+  enteredAt: Map<string, number>;
+  minutes: Map<string, number>;
+  /** Yellows picked up in this match, for detecting a second booking. */
+  bookings: Set<string>;
+  /** Players who pulled up hurt; length of lay-off is rolled after the match. */
+  injured: Set<string>;
+  substitutionsUsed: number;
 }
 
 export function simulateMatch(
@@ -82,13 +143,13 @@ export function simulateMatch(
   options: SimulateMatchOptions = {},
 ): MatchResult {
   const T = MATCH_TUNING;
-  const boost = options.neutral ? 1 : T.homeAdvantage;
+  const venueBoost = options.neutral ? 1 : T.homeAdvantage;
 
   // Form on the day, rolled once per team per match.
   const homeForm = clamp(rng.gaussian(1, T.performanceVariance), T.formFloor, T.formCeiling);
   const awayForm = clamp(rng.gaussian(1, T.performanceVariance), T.formFloor, T.formCeiling);
 
-  const home = createTeamState(homeClub, options.homeFormation, boost * homeForm);
+  const home = createTeamState(homeClub, options.homeFormation, venueBoost * homeForm);
   const away = createTeamState(awayClub, options.awayFormation, awayForm);
 
   // Possession follows midfield control, sharpened by an exponent so that a
@@ -106,13 +167,23 @@ export function simulateMatch(
   const finalMinute = 90 + stoppage;
 
   for (let minute = 1; minute <= finalMinute; minute++) {
+    resolveDiscipline(rng, home, away, minute, events);
+    resolveInjuries(rng, home, away, minute, events);
+    considerSubstitutions(rng, home, minute, events);
+    considerSubstitutions(rng, away, minute, events);
+
     if (!rng.chance(T.attackRate)) continue;
 
     const homeAttacking = rng.chance(homePossession);
     const attacker = homeAttacking ? home : away;
     const defender = homeAttacking ? away : home;
-
     resolveAttack(rng, attacker, defender, minute, events);
+  }
+
+  if (options.updatePlayerState) {
+    applyPlayerState(rng, home, finalMinute, away.goals);
+    applyPlayerState(rng, away, finalMinute, home.goals);
+    applyEventOutcomes(rng, events, [home, away]);
   }
 
   return {
@@ -138,23 +209,44 @@ export function simulateMatch(
 
 function createTeamState(club: Club, formation: string | undefined, boost: number): TeamState {
   const lineup = selectLineup(club, formation);
-  const base = computeTeamRating(lineup);
   const stamina =
     lineup.slots.reduce((sum, slot) => sum + slot.player.attributes.stamina, 0) / lineup.slots.length;
 
-  return {
+  const state: TeamState = {
     club,
     lineup,
-    rating: {
-      attack: base.attack * boost,
-      midfield: base.midfield * boost,
-      defence: base.defence * boost,
-      goalkeeping: base.goalkeeping * boost,
-    },
+    boost,
+    rating: { attack: 1, midfield: 1, defence: 1, goalkeeping: 1 },
+    goalkeepingBase: 1,
     goals: 0,
     shots: 0,
     shotsOnTarget: 0,
     stamina,
+    onPitch: [...lineup.slots],
+    bench: [...lineup.bench],
+    enteredAt: new Map(lineup.slots.map((slot) => [slot.player.id, 0])),
+    minutes: new Map(),
+    bookings: new Set(),
+    injured: new Set(),
+    substitutionsUsed: 0,
+  };
+
+  refreshRating(state);
+  return state;
+}
+
+/** Recomputes team ratings from whoever is currently on the pitch. */
+function refreshRating(team: TeamState): void {
+  const T = MATCH_TUNING;
+  const base = computeTeamRating({ ...team.lineup, slots: team.onPitch });
+  const short = Math.max(0, 11 - team.onPitch.length);
+
+  team.goalkeepingBase = base.goalkeeping;
+  team.rating = {
+    attack: base.attack * team.boost * Math.pow(T.shorthandedAttack, short),
+    midfield: base.midfield * team.boost * Math.pow(T.shorthandedMidfield, short),
+    defence: base.defence * team.boost * Math.pow(T.shorthandedDefence, short),
+    goalkeeping: base.goalkeeping * team.boost,
   };
 }
 
@@ -198,8 +290,17 @@ function resolveAttack(
   attacker.shots++;
   events.push({ minute, type: 'shot', clubId: attacker.club.id, playerId: shooter.id });
 
+  /*
+   * Finishing a chance is a duel between two players, so both sides of it carry
+   * the same adjustments: each player's own condition, form and morale, and
+   * nothing else. Home advantage and team form belong to chance creation, where
+   * they are already applied to the ratings -- folding them in here as well
+   * counts them twice and inflates home scoring.
+   */
+  const shooterEffect = effectiveness(shooter);
+
   const accuracy = clamp(
-    T.onTargetBase * Math.pow(shooter.attributes.composure / 55, 0.5),
+    T.onTargetBase * Math.pow((shooter.attributes.composure * shooterEffect) / 55, 0.5),
     0.15,
     0.65,
   );
@@ -212,8 +313,9 @@ function resolveAttack(
   events.push({ minute, type: 'shot_on_target', clubId: attacker.club.id, playerId: shooter.id });
 
   // Finishing quality against the keeper decides whether it goes in.
-  const finishing = (shooter.attributes.finishing * 0.7 + shooter.attributes.composure * 0.3);
-  const keeper = defender.rating.goalkeeping;
+  const finishing =
+    (shooter.attributes.finishing * 0.7 + shooter.attributes.composure * 0.3) * shooterEffect;
+  const keeper = defender.goalkeepingBase;
   const conversion = clamp(
     T.conversionBase * Math.pow(finishing / keeper, T.conversionExponent),
     0.08,
@@ -238,7 +340,7 @@ const SHOOTING_SHARE: Record<string, number> = {
 };
 
 function pickShooter(rng: Rng, team: TeamState): Player {
-  return rng.pickWeighted(team.lineup.slots, (slot) => {
+  return rng.pickWeighted(team.onPitch, (slot) => {
     const share = SHOOTING_SHARE[slot.position] ?? 1;
     const quality = (slot.player.attributes.finishing + slot.player.attributes.positioning) / 2;
     // Dampened so the best finisher shoots more, but does not monopolise the attack.
@@ -252,11 +354,298 @@ const ASSIST_SHARE: Record<string, number> = {
 };
 
 function pickAssister(rng: Rng, team: TeamState, scorer: Player): Player {
-  const candidates = team.lineup.slots.filter((slot) => slot.player.id !== scorer.id);
+  const candidates = team.onPitch.filter((slot) => slot.player.id !== scorer.id);
+  if (candidates.length === 0) return scorer;
   return rng.pickWeighted(candidates, (slot) => {
     const share = ASSIST_SHARE[slot.position] ?? 1;
     const attrs = slot.player.attributes;
     const quality = (attrs.vision + attrs.passing + attrs.crossing) / 3;
     return share * Math.max(quality, 5);
   }).player;
+}
+
+/** Defenders and holding midfielders collect most of the cards. */
+const CARD_SHARE: Record<string, number> = {
+  CB: 5, DM: 5, LB: 4, RB: 4, CM: 4, ST: 3, AM: 2.5, LW: 2, RW: 2, GK: 0.5,
+};
+
+function resolveDiscipline(
+  rng: Rng,
+  home: TeamState,
+  away: TeamState,
+  minute: number,
+  events: MatchEvent[],
+): void {
+  const T = MATCH_TUNING;
+
+  for (const team of [home, away]) {
+    if (team.onPitch.length === 0) continue;
+
+    if (rng.chance(T.yellowRate)) {
+      const slot = pickOffender(rng, team);
+      if (team.bookings.has(slot.player.id)) {
+        // Second yellow: off, and no replacement.
+        events.push({ minute, type: 'yellow_card', clubId: team.club.id, playerId: slot.player.id });
+        sendOff(team, slot, minute, events, 'red_card');
+      } else {
+        team.bookings.add(slot.player.id);
+        events.push({ minute, type: 'yellow_card', clubId: team.club.id, playerId: slot.player.id });
+      }
+    }
+
+    if (rng.chance(T.directRedRate) && team.onPitch.length > 7) {
+      const slot = pickOffender(rng, team);
+      sendOff(team, slot, minute, events, 'red_card');
+    }
+  }
+}
+
+function pickOffender(rng: Rng, team: TeamState): LineupSlot {
+  const T = MATCH_TUNING;
+  return rng.pickWeighted(team.onPitch, (slot) => {
+    const share = CARD_SHARE[slot.position] ?? 3;
+    // Aggressive, less composed players give away more fouls.
+    const discipline = 1 + (60 - slot.player.attributes.composure) / 120;
+    // Someone already on a yellow treads carefully.
+    const booked = team.bookings.has(slot.player.id) ? T.bookedOffenceWeight : 1;
+    return share * discipline * booked;
+  });
+}
+
+function sendOff(
+  team: TeamState,
+  slot: LineupSlot,
+  minute: number,
+  events: MatchEvent[],
+  type: 'red_card',
+): void {
+  events.push({ minute, type, clubId: team.club.id, playerId: slot.player.id });
+  team.onPitch = team.onPitch.filter((s) => s.player.id !== slot.player.id);
+  creditMinutes(team, slot.player.id, minute);
+  refreshRating(team);
+}
+
+function resolveInjuries(
+  rng: Rng,
+  home: TeamState,
+  away: TeamState,
+  minute: number,
+  events: MatchEvent[],
+): void {
+  const T = MATCH_TUNING;
+
+  for (const team of [home, away]) {
+    if (team.onPitch.length === 0) continue;
+    if (!rng.chance(T.injuryRate)) continue;
+
+    // A tired player is likelier to pull up.
+    const slot = rng.pickWeighted(team.onPitch, (s) => 1 + (100 - s.player.status.condition) / 60);
+    events.push({ minute, type: 'injury', clubId: team.club.id, playerId: slot.player.id });
+
+    team.onPitch = team.onPitch.filter((s) => s.player.id !== slot.player.id);
+    creditMinutes(team, slot.player.id, minute);
+
+    // Forced change: a replacement comes on if one is available.
+    const replacement = bestReplacement(team, slot.position);
+    if (replacement && team.substitutionsUsed < T.maxSubstitutions) {
+      bringOn(team, replacement, slot.position, minute, events, slot.player.id);
+    }
+    refreshRating(team);
+    team.injured.add(slot.player.id);
+  }
+}
+
+/**
+ * Tactical substitutions. A side takes off whoever has faded most relative to
+ * what the bench offers, which is what spreads minutes across a squad and makes
+ * depth worth paying for.
+ */
+function considerSubstitutions(rng: Rng, team: TeamState, minute: number, events: MatchEvent[]): void {
+  const T = MATCH_TUNING;
+  if (minute < T.firstSubMinute || minute > T.lastSubMinute) return;
+  if (team.substitutionsUsed >= T.maxSubstitutions) return;
+  if (team.bench.length === 0) return;
+
+  // Roughly one substitution decision per side across the window.
+  const window = T.lastSubMinute - T.firstSubMinute + 1;
+  if (!rng.chance(T.maxSubstitutions / window)) return;
+
+  let bestGain: number = T.substitutionGainThreshold;
+  let outSlot: LineupSlot | undefined;
+  let inPlayer: Player | undefined;
+
+  for (const slot of team.onPitch) {
+    if (slot.position === 'GK') continue;
+    const played = minute - (team.enteredAt.get(slot.player.id) ?? 0);
+    const tiredness = 1 - T.inMatchFatigue * (played / 90);
+    const current = slot.effectiveAbility * tiredness;
+
+    for (const candidate of team.bench) {
+      const fresh = toSlot(candidate, slot.position).effectiveAbility;
+      const gain = fresh - current;
+      if (gain > bestGain) {
+        bestGain = gain;
+        outSlot = slot;
+        inPlayer = candidate;
+      }
+    }
+  }
+
+  if (!outSlot || !inPlayer) return;
+
+  team.onPitch = team.onPitch.filter((s) => s.player.id !== outSlot!.player.id);
+  creditMinutes(team, outSlot.player.id, minute);
+  bringOn(team, inPlayer, outSlot.position, minute, events, outSlot.player.id);
+  refreshRating(team);
+}
+
+function bestReplacement(team: TeamState, position: Position): Player | undefined {
+  if (team.bench.length === 0) return undefined;
+  return [...team.bench].sort(
+    (a, b) => toSlot(b, position).effectiveAbility - toSlot(a, position).effectiveAbility,
+  )[0];
+}
+
+function bringOn(
+  team: TeamState,
+  player: Player,
+  position: Position,
+  minute: number,
+  events: MatchEvent[],
+  replacedPlayerId: string,
+): void {
+  team.bench = team.bench.filter((p) => p.id !== player.id);
+  team.onPitch.push(toSlot(player, position));
+  team.enteredAt.set(player.id, minute);
+  team.substitutionsUsed++;
+  events.push({
+    minute,
+    type: 'substitution',
+    clubId: team.club.id,
+    playerId: replacedPlayerId,
+    replacementPlayerId: player.id,
+  });
+}
+
+function creditMinutes(team: TeamState, playerId: string, minute: number): void {
+  const entered = team.enteredAt.get(playerId) ?? 0;
+  team.minutes.set(playerId, (team.minutes.get(playerId) ?? 0) + Math.max(0, minute - entered));
+}
+
+/**
+ * Writes the match back onto the players: minutes, goals, bookings, fitness and
+ * morale. Only called for real fixtures.
+ */
+function applyPlayerState(
+  rng: Rng,
+  team: TeamState,
+  finalMinute: number,
+  goalsAgainst: number,
+): void {
+  const T = MATCH_TUNING;
+
+  // Anyone still on the pitch played to the whistle.
+  for (const slot of team.onPitch) creditMinutes(team, slot.player.id, finalMinute);
+
+  const won = team.goals > goalsAgainst;
+  const drew = team.goals === goalsAgainst;
+  const squad = new Map(team.club.squad.map((player) => [player.id, player]));
+
+  for (const [playerId, minutes] of team.minutes) {
+    const player = squad.get(playerId);
+    if (!player || minutes <= 0) continue;
+    const status = player.status;
+
+    status.appearances += 1;
+    status.minutes += minutes;
+
+    // Condition drains with minutes, less so for a fit player.
+    const staminaFactor = 1.3 - player.attributes.stamina / 150;
+    status.condition = clamp(
+      status.condition - T.conditionCostPer90 * (minutes / 90) * staminaFactor,
+      5,
+      100,
+    );
+
+    // Form and morale follow the result, and playing at all helps morale.
+    const resultSwing = won ? 1 : drew ? 0 : -1;
+    status.form = clamp(status.form * 0.85 + resultSwing * 0.8, -10, 10);
+    status.morale = clamp(status.morale + resultSwing * 3 + 1, 0, 100);
+  }
+
+  // Players who did not get on lose a little morale.
+  for (const player of team.club.squad) {
+    if (team.minutes.has(player.id)) continue;
+    player.status.morale = clamp(player.status.morale - 0.5, 0, 100);
+  }
+
+  applyBookings(team);
+  applyInjuries(rng, team);
+}
+
+function applyBookings(team: TeamState): void {
+  const squad = new Map(team.club.squad.map((player) => [player.id, player]));
+
+  for (const playerId of team.bookings) {
+    const player = squad.get(playerId);
+    if (!player) continue;
+    player.status.yellowCards += 1;
+    if (player.status.yellowCards % STATUS_TUNING.yellowsPerBan === 0) {
+      player.status.suspensionMatches += 1;
+    }
+  }
+}
+
+/**
+ * Lay-off lengths. Most knocks are minor; a small tail are season-wrecking, which
+ * is what makes squad depth worth paying for.
+ */
+function rollInjuryLength(rng: Rng): number {
+  const roll = rng.next();
+  if (roll < 0.58) return rng.int(1, 3);
+  if (roll < 0.88) return rng.int(4, 10);
+  return rng.int(11, 30);
+}
+
+function applyInjuries(rng: Rng, team: TeamState): void {
+  const squad = new Map(team.club.squad.map((player) => [player.id, player]));
+  for (const playerId of team.injured) {
+    const player = squad.get(playerId);
+    if (!player) continue;
+    player.status.injuryMatches += rollInjuryLength(rng);
+    player.status.morale = clamp(player.status.morale - 4, 0, 100);
+  }
+}
+
+/** Goals, assists and sendings-off, read back off the event log. */
+function applyEventOutcomes(rng: Rng, events: readonly MatchEvent[], teams: TeamState[]): void {
+  const players = new Map<string, Player>();
+  for (const team of teams) {
+    for (const player of team.club.squad) players.set(player.id, player);
+  }
+
+  for (const event of events) {
+    if (event.type === 'goal') {
+      const scorer = players.get(event.playerId);
+      if (scorer) {
+        scorer.status.goals += 1;
+        scorer.status.form = clamp(scorer.status.form + 1.6, -10, 10);
+        scorer.status.morale = clamp(scorer.status.morale + 2, 0, 100);
+      }
+      if (event.assistPlayerId) {
+        const assister = players.get(event.assistPlayerId);
+        if (assister) {
+          assister.status.assists += 1;
+          assister.status.form = clamp(assister.status.form + 0.8, -10, 10);
+        }
+      }
+    } else if (event.type === 'red_card') {
+      const player = players.get(event.playerId);
+      if (player) {
+        player.status.redCards += 1;
+        player.status.suspensionMatches += rng.int(1, 3);
+        player.status.morale = clamp(player.status.morale - 6, 0, 100);
+      }
+    }
+  }
 }

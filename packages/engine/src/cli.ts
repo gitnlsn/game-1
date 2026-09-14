@@ -168,7 +168,17 @@ function commandSquad(): void {
       pad(player.displayName, 20) + pad(player.position, 5) + pad(player.nationality, 5) +
       padLeft(player.age, 4) + padLeft(currentAbility(player).toFixed(0), 5) + padLeft(player.potential, 5) +
       padLeft(formatMoney(marketValue(player)), 9) + padLeft(formatMoney(player.contract.wage), 8) +
-      padLeft(`${player.contract.yearsRemaining}y`, 5),
+      padLeft(`${player.contract.yearsRemaining}y`, 5) +
+      padLeft(player.status.condition.toFixed(0), 6) +
+      padLeft(player.status.morale.toFixed(0), 5) + '  ' +
+      pad(
+        player.status.injuryMatches > 0
+          ? `injured ${player.status.injuryMatches}`
+          : player.status.suspensionMatches > 0
+            ? `banned ${player.status.suspensionMatches}`
+            : '',
+        12,
+      ),
     );
   }
 }
@@ -215,8 +225,9 @@ function commandCareer(): void {
   const seasons = num('seasons', 10);
 
   console.log(pad('Sn', 4) + pad('Champion', 22) + pad('Top scorer', 20) +
-    padLeft('Gls', 4) + padLeft('Xfers', 7) + padLeft('Spend', 10) + padLeft('Retired', 9) + padLeft('Youth', 7));
-  console.log('-'.repeat(83));
+    padLeft('Gls', 4) + padLeft('Xfers', 7) + padLeft('Spend', 10) + padLeft('Retire', 7) +
+    padLeft('Youth', 7) + '   ' + pad('Breakthrough', 22));
+  console.log('-'.repeat(107));
 
   simulateCareer(world, rng, {
     seasons,
@@ -227,7 +238,13 @@ function commandCareer(): void {
         pad(summary.topScorer?.playerName ?? '-', 20) +
         padLeft(summary.topScorer?.goals ?? 0, 4) +
         padLeft(summary.transfers.length, 7) + padLeft(formatMoney(spend), 10) +
-        padLeft(summary.retirements, 9) + padLeft(summary.youthPromoted, 7),
+        padLeft(summary.retirements, 7) + padLeft(summary.youthPromoted, 7) + '   ' +
+        pad(
+          summary.development.breakthrough
+            ? `${summary.development.breakthrough.playerName} (${summary.development.breakthrough.age}) +${summary.development.breakthrough.gain.toFixed(0)}`
+            : '',
+          22,
+        ),
       );
     },
   });

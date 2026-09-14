@@ -11,6 +11,25 @@ export const AGING_TUNING = {
   /** How fast a player closes the gap to their age-curve target each season. */
   developmentRateMin: 0.45,
   developmentRateMax: 0.9,
+  /**
+   * Share of a season's minutes at which a player gets the full benefit of
+   * playing. Below this they develop more slowly; a young player who never gets
+   * on the pitch barely improves at all, which is what makes giving a prospect
+   * games an actual decision rather than a free choice.
+   */
+  fullMinutesShare: 0.6,
+  /** Development rate for a player who never plays, as a share of the full rate. */
+  benchDevelopmentFloor: 0.3,
+  /** Playing regularly slows decline a little: match sharpness. */
+  declineReliefFromPlaying: 0.15,
+  /**
+   * Coaching quality by club reputation. Kept deliberately narrow: a big club
+   * developing players faster feeds straight back into winning, reputation and
+   * revenue, and in a closed single-division league nothing damps that loop.
+   * Real football has relegation, cups and foreign buyers pulling against it.
+   */
+  coachingFloor: 0.88,
+  coachingScale: 0.26,
   /** Random season-to-season noise in ability, in ability points. */
   developmentNoise: 1.2,
   /** Attributes that fade with age regardless of overall ability. */
@@ -44,16 +63,35 @@ function retirementChance(age: number): number {
   return last[1];
 }
 
+/** Coaching quality a club offers, derived from its standing. */
+export function coachingQuality(reputation: number): number {
+  const A = AGING_TUNING;
+  return A.coachingFloor + (reputation / 100) * A.coachingScale;
+}
+
+export interface DevelopmentContext {
+  /** Minutes the player got this season. */
+  minutes: number;
+  /** Matches in the season, for working out the share of minutes available. */
+  seasonMatches: number;
+  /** Coaching quality at their club. */
+  coaching: number;
+}
+
+const DEFAULT_CONTEXT: DevelopmentContext = { minutes: 0, seasonMatches: 38, coaching: 0.9 };
+
 /**
  * Ages a player one season. Ability moves toward what the age curve says they
- * should be, so a 20 year old with high potential climbs and a 33 year old
- * declines -- but only partway each season, and with noise, so players are not
- * all identical to their curve.
- *
- * Milestone 3 will drive this with training and playing time; for now age and
- * potential are the only inputs.
+ * should be, but how fast depends on how much football they played and how good
+ * their coaching is. A 19 year old who starts every week at a big club closes
+ * most of the gap to their potential; the same player watching from the bench
+ * barely moves.
  */
-export function developPlayer(rng: Rng, player: Player): void {
+export function developPlayer(
+  rng: Rng,
+  player: Player,
+  context: DevelopmentContext = DEFAULT_CONTEXT,
+): void {
   const A = AGING_TUNING;
   player.age += 1;
 
@@ -74,24 +112,35 @@ export function developPlayer(rng: Rng, player: Player): void {
     }
   }
 
-  // Then set the overall level from the age curve.
+  // Then move the overall level toward what the age curve says it should be.
   const ability = abilityIn(player.attributes, player.position);
   const target = player.potential * developmentFactor(player.age);
-  const rate = rng.float(A.developmentRateMin, A.developmentRateMax);
-  const next = clamp(
-    ability + (target - ability) * rate + rng.gaussian(0, A.developmentNoise),
-    15,
-    99,
-  );
+  const gap = target - ability;
 
+  const available = Math.max(1, context.seasonMatches * 90);
+  const share = clamp(context.minutes / available, 0, 1);
+  const playingFactor = Math.min(1, share / A.fullMinutesShare);
+
+  let rate = rng.float(A.developmentRateMin, A.developmentRateMax);
+  if (gap > 0) {
+    // Improving: games and coaching are what turn potential into ability.
+    rate *= (A.benchDevelopmentFloor + (1 - A.benchDevelopmentFloor) * playingFactor) * context.coaching;
+  } else {
+    // Declining: it happens either way, but regular football keeps you sharper.
+    rate *= 1 - A.declineReliefFromPlaying * playingFactor;
+  }
+
+  const next = clamp(ability + gap * rate + rng.gaussian(0, A.developmentNoise), 15, 99);
   calibrateAbility(player.attributes, player.position, next);
 }
 
-export function shouldRetire(rng: Rng, player: Player): boolean {
+export function shouldRetire(rng: Rng, player: Player, minutes = 0): boolean {
   // Fringe players give up earlier than stars.
   const ability = currentAbility(player);
   const abilityFactor = ability < 55 ? 1.5 : ability > 75 ? 0.7 : 1;
-  return rng.chance(clamp(retirementChance(player.age) * abilityFactor, 0, 1));
+  // A veteran who has stopped playing is likelier to call it a day.
+  const playedFactor = player.age >= 31 && minutes < 900 ? 1.4 : 1;
+  return rng.chance(clamp(retirementChance(player.age) * abilityFactor * playedFactor, 0, 1));
 }
 
 /**

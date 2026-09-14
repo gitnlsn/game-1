@@ -22,7 +22,7 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 55 tests
+pnpm test                               # 73 tests
 ```
 
 ## How the match engine works
@@ -50,7 +50,44 @@ One match:
 On top: per-match form rolls, late-game fatigue, and a game-state effect where
 trailing sides push and leading sides sit deeper.
 
+Matches also produce bookings, sendings-off, injuries and up to five
+substitutions a side, and they write back to the players involved: minutes,
+goals, fitness, form and morale.
+
 Every tunable number lives in `MATCH_TUNING` in `src/match/engine.ts`.
+
+## Fitness, form and rotation
+
+Every player carries a status: condition, form, morale, and any injury or ban.
+These feed into `effectiveness()`, which is how much of their ability a player
+actually brings today — and because **selection uses that same number**,
+rotation falls out of it rather than needing a separate rule. A tired player is
+weighted down further still, because resting someone now protects later matches.
+
+Playing a full match costs condition in proportion to the player's stamina, and
+a week's rest gives back a flat amount plus a share of whatever is missing.
+Those two settle an ever-present around 65 condition and a rotated player near
+full fitness, which is what makes squad depth worth paying for. Across a season
+a club uses ~21 players, with its most-used eleven taking ~78% of the minutes.
+
+## Development
+
+Ability moves toward what the age curve says it should be, but **how fast
+depends on how much football a player got and how good their coaching is**. A 19
+year old who starts every week closes most of the gap to his potential; the same
+player watching from the bench barely moves. Over a career an under-21 regular
+gains about 4.9 ability a season against 2.1 for one who does not play — a gap
+of nearly 3 points a year, which is what makes giving a prospect games an actual
+decision rather than a free choice.
+
+Ageing is not uniform: players lose pace, stamina and strength from around 29
+while composure, positioning and vision keep improving into their thirties. So
+an ageing playmaker holds his value in a way an ageing winger does not.
+
+Coaching quality is deliberately a narrow band. A big club developing players
+faster feeds straight back into winning, reputation and revenue, and in a closed
+single-division league nothing damps that loop — real football has relegation,
+cups and foreign buyers pulling against it.
 
 ## The economy
 
@@ -119,10 +156,14 @@ seasons / 15,200 matches, all 13 benchmarks within tolerance:
 | Home / away goals | 1.52 / 1.20 | 1.52 / 1.23 |
 | Home wins / draws / away wins | 44.5% / 24.2% / 31.3% | 44% / 25% / 31% |
 | Shots (on target) per match | 24.7 (9.1) | 25 (8.7) |
-| Goalless matches | 6.6% | 7.5% |
+| Goalless matches | 6.5% | 7.5% |
 | Won by 4+ goals | 5.4% | 3.5% |
-| Champion points | 78.2 | 86 |
-| Top scorer goals | 25.7 | 24 |
+| Champion points | 84.7 | 86 |
+| Top scorer goals | 24.7 | 24 |
+| Yellow / red cards per match | 3.84 / 0.104 | 3.9 / 0.10 |
+| Substitutions per match | 8.52 | 8.5 |
+| Injuries per club per season | 11.5 | ~12 |
+| Players used per club | 21.1 | ~24 |
 
 It also reports the **strength/position correlation** — how reliably the better
 squad finishes higher. Real leagues sit around 0.75–0.85; the engine is at 0.832.
@@ -136,7 +177,8 @@ competition once there are several. And blowouts at 5.4% are still above the
 real 3.5%; getting closer needs squad rotation and injuries, which do not exist
 yet.
 
-Performance: world generation 5ms, a full 380-match season 30ms.
+Performance: world generation 8ms; a full 380-match season 94ms with fitness,
+injuries, cards and finances all tracked (30ms for the match engine alone).
 
 ### Economic calibration
 
@@ -156,7 +198,10 @@ decays. Across 8 seeds x 25 seasons:
 | Top / median squad value | 2.9 | 2.2–3.9 | 4 ± 2.5 |
 | Best-50 players at one club % | 19.5 | 16–24 | 14 ± 10 |
 | League cash as % of revenue | 15.6 | 4–26 | 25 ± 25 |
-| Squad quality vs season 1 % | 100.3 | 99–103 | 100 ± 8 |
+| Squad quality vs season 1 % | 100.5 | 99–102 | 100 ± 8 |
+| U21 regular, ability/season | 4.73 | 4.6–4.9 | 4 ± 3 |
+| Gain: U21 regular vs benched | 2.63 | 2.5–2.8 | 2.5 ± 2 |
+| Over-31 ability/season | −2.00 | −2.0 | −2.5 ± 2 |
 
 The last row is the one that matters most and it is the bug this whole harness
 exists to catch. Academy players were originally generated below the standard of
@@ -177,15 +222,23 @@ Honest caveats on the economy:
 - **One club can dominate.** Title share reached 44% on one seed. That is
   realistic for football — Bayern win the Bundesliga far more often than that —
   but a run where one club wins half the titles is possible.
-- **Development is minimal.** Ability currently follows age and potential only.
-  Training, playing time and form arrive in milestone 3, and should also soften
-  the remaining blowout rate by making squads rotate.
+- **One club can win a lot.** Title dominance averages ~40% over 25 seasons and
+  reached 68% on one seed. That is inside the real range (over 25 seasons the
+  most successful club took ~52% of Premier League titles and ~72% of
+  Bundesliga), and it is checked not to be a hoarding dynasty: top/median squad
+  value sits at 2.6 and no club holds more than ~20% of the best fifty players.
+- **No cups or continental football.** Clubs play 38 matches and nothing else,
+  so they rotate less than real clubs do — which is why the minutes-share target
+  is 72% rather than the ~62% a real fixture list would produce.
 
-Two benchmarks were corrected after first being set badly, which is worth
-recording: "distinct champions as a share of seasons" falls as a career
+Four benchmarks were corrected after first being set badly, which is worth
+recording. "Distinct champions as a share of seasons" falls as a career
 lengthens even when nothing changes, and "richest / median cash balance" divides
-by a median sitting near zero whenever clubs carry debt. Both were replaced with
-horizon-independent measures that survive a longer run.
+by a median sitting near zero whenever clubs carry debt — both replaced with
+horizon-independent measures. The clubs-in-debt and title-dominance targets were
+both set more optimistically than real football warrants and were moved to match
+it. Changing a measuring stick to make a number pass is a real risk, so each
+change carries its reasoning in the code.
 
 ## Not real players
 
@@ -215,10 +268,14 @@ Built:
 - [x] Club reputation that follows results, so the hierarchy can change
 - [x] Multi-season career loop and economic validation harness
 
+- [x] Fitness, form and morale, with rotation emerging from selection
+- [x] Injuries, bookings, suspensions and five substitutions a side
+- [x] Development driven by playing time and coaching quality
+
 Next:
 
-- [ ] Player development: training, playing time, form, wonderkids
-- [ ] Injuries, suspensions, squad rotation, morale
 - [ ] Multiple divisions, promotion and relegation, cups
+- [ ] Loans, so a blocked prospect can go and play somewhere else
 - [ ] Expo mobile app
 - [ ] Foreign clubs, so the transfer market is not closed
+- [ ] Manager decisions: tactics, team talks, training schedules

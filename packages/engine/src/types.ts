@@ -35,6 +35,31 @@ export interface Contract {
   yearsRemaining: number;
 }
 
+/**
+ * Everything about a player that changes week to week rather than season to
+ * season. Condition, form and morale all feed into how well they actually play,
+ * so a tired, out-of-form player is measurably worse than their ability implies.
+ */
+export interface PlayerStatus {
+  /** Match fitness, 0-100. Falls with minutes played, recovers with rest. */
+  condition: number;
+  /** Short-term form, -10 to +10. Moves with performances and results. */
+  form: number;
+  /** Morale, 0-100. Driven by results and by getting a game. */
+  morale: number;
+  /** Matches still to sit out injured. 0 means fit. */
+  injuryMatches: number;
+  /** Matches still to sit out suspended. */
+  suspensionMatches: number;
+  /** Yellow cards this season; enough of them earns a ban. */
+  yellowCards: number;
+  redCards: number;
+  appearances: number;
+  minutes: number;
+  goals: number;
+  assists: number;
+}
+
 export interface Player {
   id: string;
   firstName: string;
@@ -51,6 +76,7 @@ export interface Player {
    */
   potential: number;
   contract: Contract;
+  status: PlayerStatus;
 }
 
 /**
@@ -121,7 +147,15 @@ export interface Fixture {
   awayClubId: string;
 }
 
-export type MatchEventType = 'goal' | 'shot' | 'shot_on_target' | 'chance_missed';
+export type MatchEventType =
+  | 'goal'
+  | 'shot'
+  | 'shot_on_target'
+  | 'chance_missed'
+  | 'yellow_card'
+  | 'red_card'
+  | 'injury'
+  | 'substitution';
 
 export interface MatchEvent {
   minute: number;
@@ -129,6 +163,8 @@ export interface MatchEvent {
   clubId: string;
   playerId: string;
   assistPlayerId?: string;
+  /** For a substitution, the player coming on. */
+  replacementPlayerId?: string;
 }
 
 export interface TeamMatchStats {

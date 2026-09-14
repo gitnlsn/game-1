@@ -10,7 +10,9 @@ import { recordExpense, recordIncome } from '../economy/finances.js';
 import { simulateSeason } from '../league/season.js';
 import { processContracts, runTransferWindow, expireFreeAgents } from '../transfers/market.js';
 import { TRANSFER_TUNING } from '../transfers/market.js';
-import { developPlayer, promoteYouth, shouldRetire } from './aging.js';
+import { coachingQuality, developPlayer, promoteYouth, shouldRetire } from './aging.js';
+import { currentAbility } from '../world/players.js';
+import { resetSeasonStatus } from '../world/status.js';
 
 export const CAREER_TUNING = {
   /**
@@ -34,6 +36,24 @@ export interface ClubSeasonFinance {
   transfersOut: number;
 }
 
+/**
+ * Whether the development model is actually doing its job. The gap between the
+ * first two numbers is the whole point of tying development to playing time: a
+ * prospect who plays should pull clear of one who does not.
+ */
+export interface DevelopmentStats {
+  /** Mean ability gained by under-21s who played most of the season. */
+  regularYouthGain: number;
+  /** Mean ability gained by under-21s who barely featured. */
+  benchYouthGain: number;
+  /** Mean ability lost by players over 31. */
+  veteranDecline: number;
+  regularYouthCount: number;
+  benchYouthCount: number;
+  /** Biggest single-season riser, for a bit of colour. */
+  breakthrough: { playerName: string; clubName: string; age: number; gain: number } | undefined;
+}
+
 export interface SeasonSummary {
   season: number;
   table: TableRow[];
@@ -42,6 +62,7 @@ export interface SeasonSummary {
   transfers: Transfer[];
   retirements: number;
   youthPromoted: number;
+  development: DevelopmentStats;
   finances: ClubSeasonFinance[];
 }
 
@@ -77,13 +98,15 @@ export function simulateCareerSeason(world: World, rng: Rng): SeasonSummary {
   for (const club of clubs) resetSeasonRecord(club);
   setTransferBudgets(clubs, clubs.length);
 
-  const season: SeasonResult = simulateSeason(world, rng, { economy: true });
+  const season: SeasonResult = simulateSeason(world, rng, { economy: true, playerState: true });
   distributeSeasonIncome(clubs, season.table);
 
   const finances = clubs.map((club) => toClubSeasonFinance(club));
 
   // Close season: age, retire, renew, promote, then trade.
-  const retirements = ageAndRetire(world, rng);
+  const seasonMatches = (clubs.length - 1) * 2;
+  const development = createDevelopmentStats();
+  const retirements = ageAndRetire(world, rng, seasonMatches, development);
   updateReputations(clubs, season.table);
   for (const club of clubs) applyCloseSeasonSpending(club, clubs.length);
   processContracts(rng, world);
@@ -110,6 +133,7 @@ export function simulateCareerSeason(world: World, rng: Rng): SeasonSummary {
     transfers,
     retirements,
     youthPromoted,
+    development: finaliseDevelopmentStats(development),
     finances,
   };
 }
@@ -127,31 +151,105 @@ function toClubSeasonFinance(club: Club): ClubSeasonFinance {
   };
 }
 
-function ageAndRetire(world: World, rng: Rng): number {
+interface DevelopmentAccumulator {
+  regularYouthTotal: number;
+  regularYouthCount: number;
+  benchYouthTotal: number;
+  benchYouthCount: number;
+  veteranTotal: number;
+  veteranCount: number;
+  breakthrough: DevelopmentStats['breakthrough'];
+}
+
+function createDevelopmentStats(): DevelopmentAccumulator {
+  return {
+    regularYouthTotal: 0, regularYouthCount: 0,
+    benchYouthTotal: 0, benchYouthCount: 0,
+    veteranTotal: 0, veteranCount: 0,
+    breakthrough: undefined,
+  };
+}
+
+function finaliseDevelopmentStats(acc: DevelopmentAccumulator): DevelopmentStats {
+  return {
+    regularYouthGain: acc.regularYouthCount > 0 ? acc.regularYouthTotal / acc.regularYouthCount : 0,
+    benchYouthGain: acc.benchYouthCount > 0 ? acc.benchYouthTotal / acc.benchYouthCount : 0,
+    veteranDecline: acc.veteranCount > 0 ? acc.veteranTotal / acc.veteranCount : 0,
+    regularYouthCount: acc.regularYouthCount,
+    benchYouthCount: acc.benchYouthCount,
+    breakthrough: acc.breakthrough,
+  };
+}
+
+function recordDevelopment(
+  acc: DevelopmentAccumulator,
+  player: Player,
+  clubName: string,
+  gain: number,
+  minutesShare: number,
+): void {
+  // Age is already incremented at this point, so under-22 here means they spent
+  // the season as an under-21.
+  if (player.age <= 22) {
+    if (minutesShare >= 0.5) {
+      acc.regularYouthTotal += gain;
+      acc.regularYouthCount++;
+    } else if (minutesShare < 0.2) {
+      acc.benchYouthTotal += gain;
+      acc.benchYouthCount++;
+    }
+    if (!acc.breakthrough || gain > acc.breakthrough.gain) {
+      acc.breakthrough = { playerName: player.displayName, clubName, age: player.age, gain };
+    }
+  } else if (player.age >= 32) {
+    acc.veteranTotal += gain;
+    acc.veteranCount++;
+  }
+}
+
+function ageAndRetire(
+  world: World,
+  rng: Rng,
+  seasonMatches: number,
+  development: DevelopmentAccumulator,
+): number {
   let retirements = 0;
 
   for (const club of world.league.clubs) {
+    const coaching = coachingQuality(club.reputation);
     const staying: Player[] = [];
+
     for (const player of club.squad) {
-      developPlayer(rng, player);
-      if (shouldRetire(rng, player)) {
+      const minutes = player.status.minutes;
+      const before = currentAbility(player);
+      developPlayer(rng, player, { minutes, seasonMatches, coaching });
+      recordDevelopment(
+        development,
+        player,
+        club.name,
+        currentAbility(player) - before,
+        minutes / (seasonMatches * 90),
+      );
+      if (shouldRetire(rng, player, minutes)) {
         world.players.delete(player.id);
         retirements++;
       } else {
+        resetSeasonStatus(player);
         staying.push(player);
       }
     }
     club.squad = staying;
   }
 
-  // Free agents age too, and drop out if they retire.
+  // Free agents age too, with no club to coach them, and drop out if they retire.
   world.freeAgents = world.freeAgents.filter((player) => {
-    developPlayer(rng, player);
-    if (shouldRetire(rng, player)) {
+    developPlayer(rng, player, { minutes: 0, seasonMatches, coaching: 0.85 });
+    if (shouldRetire(rng, player, 0)) {
       world.players.delete(player.id);
       retirements++;
       return false;
     }
+    resetSeasonStatus(player);
     return true;
   });
 

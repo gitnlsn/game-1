@@ -41,3 +41,4 @@ export * from './clubs.js';
 export * from './names.js';
 export * from './players.js';
 export * from './positions.js';
+export * from './status.js';

@@ -3,6 +3,7 @@ import type { Fixture, MatchResult, SeasonResult, World } from '../types.js';
 import { simulateMatch } from '../match/engine.js';
 import { generateFixtures } from './fixtures.js';
 import { buildTable } from './table.js';
+import { advancePlayerWeek } from '../world/status.js';
 import {
   applyMatchdayIncome,
   payWeeklyOperatingCosts,
@@ -19,6 +20,11 @@ export interface SimulateSeasonOptions {
    * a one-off season can be simulated without touching club finances.
    */
   economy?: boolean;
+  /**
+   * Track fitness, minutes, cards and injuries across the season. Off by default
+   * so a season can be simulated without mutating the players.
+   */
+  playerState?: boolean;
 }
 
 export function simulateSeason(
@@ -41,12 +47,22 @@ export function simulateSeason(
     const away = clubById.get(fixture.awayClubId);
     if (!home || !away) throw new Error(`simulateSeason: unknown club in fixture round ${fixture.round}`);
 
-    if (options.economy && fixture.round !== currentRound) {
+    if (fixture.round !== currentRound) {
       currentRound = fixture.round;
-      for (const club of clubs) {
-        payWeeklySponsorship(club);
-        payWeeklyWages(club);
-        payWeeklyOperatingCosts(club, clubs.length);
+
+      if (options.economy) {
+        for (const club of clubs) {
+          payWeeklySponsorship(club);
+          payWeeklyWages(club);
+          payWeeklyOperatingCosts(club, clubs.length);
+        }
+      }
+
+      // A week passes between rounds: everyone recovers, bans and lay-offs tick.
+      if (options.playerState) {
+        for (const club of clubs) {
+          for (const player of club.squad) advancePlayerWeek(player);
+        }
       }
     }
 
@@ -56,7 +72,9 @@ export function simulateSeason(
       applyMatchdayIncome(home, away, pointsPerGame);
     }
 
-    const result = simulateMatch(rng, home, away);
+    const result = simulateMatch(rng, home, away, {
+      ...(options.playerState ? { updatePlayerState: true } : {}),
+    });
     results.push(result);
 
     const homePoints = result.home.goals > result.away.goals ? 3 : result.home.goals === result.away.goals ? 1 : 0;

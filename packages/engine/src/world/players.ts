@@ -3,6 +3,7 @@ import type { AttributeKey, Attributes, Player, Position } from '../types.js';
 import { generateName, NAME_POOLS, type NamePool } from './names.js';
 import { abilityIn, POSITION_WEIGHTS } from './positions.js';
 import { expectedWage } from '../economy/valuation.js';
+import { createPlayerStatus } from './status.js';
 
 const ATTRIBUTE_KEYS: readonly AttributeKey[] = [
   'finishing', 'passing', 'dribbling', 'crossing', 'tackling', 'heading',
@@ -151,6 +152,7 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player
       wage: expectedWage({ attributes, position: options.position, age }),
       yearsRemaining: rng.int(1, 4),
     },
+    status: createPlayerStatus(),
   };
 }
 

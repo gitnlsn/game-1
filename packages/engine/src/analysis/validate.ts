@@ -32,6 +32,19 @@ export const BENCHMARKS: readonly Benchmark[] = [
   { key: 'championPoints', label: 'Champion points', target: 86, tolerance: 9, decimals: 1 },
   { key: 'bottomPoints', label: 'Last place points', target: 26, tolerance: 8, decimals: 1 },
   { key: 'topScorerGoals', label: 'Top scorer goals', target: 24, tolerance: 7, decimals: 1 },
+  // Discipline, injuries and rotation.
+  { key: 'yellowsPerMatch', label: 'Yellow cards per match', target: 3.9, tolerance: 1.2, decimals: 2 },
+  { key: 'redsPerMatch', label: 'Red cards per match', target: 0.1, tolerance: 0.07, decimals: 3 },
+  { key: 'subsPerMatch', label: 'Substitutions per match', target: 8.5, tolerance: 2, decimals: 2 },
+  { key: 'injuriesPerClubSeason', label: 'Injuries per club per season', target: 12, tolerance: 6, decimals: 1 },
+  { key: 'playersUsedPerClub', label: 'Players used per club', target: 24, tolerance: 5, decimals: 1 },
+  /*
+   * Real clubs spread minutes more widely than this, but they also play cups and
+   * continental football on top of the league. These clubs play 38 matches and
+   * nothing else, so a settled side concentrates minutes more than a real one
+   * would. Revisit once there are cup competitions.
+   */
+  { key: 'topElevenMinuteShare', label: 'Minutes share of top 11 %', target: 72, tolerance: 8, decimals: 1 },
 ];
 
 export interface ValidationReport {
@@ -67,6 +80,8 @@ export function validateEngine(options: ValidateOptions = {}): ValidationReport 
   let shots = 0, shotsOnTarget = 0, goalless = 0;
   let championPoints = 0, bottomPoints = 0, topScorerGoals = 0, blowouts = 0;
   let correlationTotal = 0;
+  let yellows = 0, reds = 0, injuries = 0, substitutions = 0;
+  let playersUsed = 0, clubSeasons = 0, topElevenMinutes = 0, totalMinutes = 0;
 
   const scorelineCounts = new Map<string, number>();
 
@@ -75,7 +90,7 @@ export function validateEngine(options: ValidateOptions = {}): ValidationReport 
     const rng = new Rng(`${baseSeed}:season:${s}`);
 
     const strengthByClub = new Map(world.league.clubs.map((c) => [c.id, clubStrength(c)]));
-    const season = simulateSeason(world, rng);
+    const season = simulateSeason(world, rng, { playerState: true });
 
     for (const result of season.results) {
       matches++;
@@ -90,6 +105,29 @@ export function validateEngine(options: ValidateOptions = {}): ValidationReport 
       if (result.home.goals > result.away.goals) homeWins++;
       else if (result.home.goals < result.away.goals) awayWins++;
       else draws++;
+    }
+
+    for (const result of season.results) {
+      for (const event of result.events) {
+        if (event.type === 'yellow_card') yellows++;
+        else if (event.type === 'red_card') reds++;
+        else if (event.type === 'injury') injuries++;
+        else if (event.type === 'substitution') substitutions++;
+      }
+    }
+
+    // Rotation: how many players a club actually used, and how concentrated
+    // minutes were in its most-used eleven.
+    for (const club of world.league.clubs) {
+      clubSeasons++;
+      const minutes = club.squad
+        .map((player) => player.status.minutes)
+        .filter((m) => m > 0)
+        .sort((a, b) => b - a);
+      playersUsed += minutes.length;
+      const total = minutes.reduce((sum, m) => sum + m, 0);
+      totalMinutes += total;
+      topElevenMinutes += minutes.slice(0, 11).reduce((sum, m) => sum + m, 0);
     }
 
     championPoints += season.table[0]?.points ?? 0;
@@ -112,6 +150,12 @@ export function validateEngine(options: ValidateOptions = {}): ValidationReport 
     championPoints: championPoints / seasons,
     bottomPoints: bottomPoints / seasons,
     topScorerGoals: topScorerGoals / seasons,
+    yellowsPerMatch: yellows / matches,
+    redsPerMatch: reds / matches,
+    subsPerMatch: substitutions / matches,
+    injuriesPerClubSeason: clubSeasons > 0 ? injuries / clubSeasons : 0,
+    playersUsedPerClub: clubSeasons > 0 ? playersUsed / clubSeasons : 0,
+    topElevenMinuteShare: totalMinutes > 0 ? (topElevenMinutes / totalMinutes) * 100 : 0,
   };
 
   const checks = BENCHMARKS.map((benchmark) => {
