@@ -1,0 +1,12 @@
+{
+  "name": "game1",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "sim": "pnpm --filter @game1/engine sim",
+    "test": "pnpm -r test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
