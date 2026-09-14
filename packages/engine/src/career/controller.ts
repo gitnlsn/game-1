@@ -1,5 +1,13 @@
 import { Rng } from '../rng/index.js';
-import type { Club, Fixture, MatchResult, TableRow, World } from '../types.js';
+import type {
+  Club,
+  Fixture,
+  MatchResult,
+  TableRow,
+  TeamSheet,
+  TeamSheetIssue,
+  World,
+} from '../types.js';
 import {
   createSeasonState,
   finaliseSeason,
@@ -9,6 +17,8 @@ import {
   currentTable,
   type SeasonState,
 } from '../league/season.js';
+import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
+import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
 import { createWorld } from '../world/index.js';
 import {
   createScoutingState,
@@ -194,4 +204,61 @@ export function endSeason(career: Career): SeasonSummary {
   });
 
   return summary;
+}
+
+
+// --- Team selection -------------------------------------------------------
+
+/**
+ * The eleven the engine would pick left to itself, expressed as a sheet. The
+ * natural starting point for a selection screen, and identical to what happens
+ * today if the manager never touches it.
+ */
+export function suggestedTeamSheet(career: Career, formation?: string): TeamSheet {
+  const club = managedClub(career);
+  const shape = formation && FORMATIONS[formation] ? formation : DEFAULT_FORMATION;
+  const { lineup } = resolveTeamSheet(club, undefined, shape);
+
+  return {
+    clubId: club.id,
+    formation: shape,
+    starters: lineup.slots.map((slot) => slot.player.id),
+    bench: lineup.bench.map((player) => player.id),
+  };
+}
+
+/** The sheet that will be used for the next match, auto-picked if none is set. */
+export function currentTeamSheet(career: Career): TeamSheet {
+  return career.season.teamSheets.get(career.managedClubId) ?? suggestedTeamSheet(career);
+}
+
+/**
+ * Who would actually take the pitch, and anything the engine had to correct.
+ * A screen should call this immediately before kick-off as well as on open: a
+ * player can pick up an injury between setting a sheet and playing it.
+ */
+export function previewLineup(career: Career): { lineup: Lineup; issues: TeamSheetIssue[] } {
+  return resolveTeamSheet(
+    managedClub(career),
+    career.season.teamSheets.get(career.managedClubId),
+    DEFAULT_FORMATION,
+  );
+}
+
+/**
+ * Stores a sheet and returns anything wrong with it. Deliberately does not throw:
+ * a manager should be able to save a sheet containing a doubtful player and be
+ * told about it, rather than have it rejected.
+ */
+export function setTeamSheet(career: Career, sheet: TeamSheet): TeamSheetIssue[] {
+  career.season.teamSheets.set(career.managedClubId, {
+    ...sheet,
+    clubId: career.managedClubId,
+  });
+  return previewLineup(career).issues;
+}
+
+/** Hands selection back to the engine. */
+export function clearTeamSheet(career: Career): void {
+  career.season.teamSheets.delete(career.managedClubId);
 }

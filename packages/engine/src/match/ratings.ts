@@ -1,4 +1,4 @@
-import type { Club, Player, Position } from '../types.js';
+import type { Club, Player, Position, TeamSheet, TeamSheetIssue } from '../types.js';
 import { abilityIn, DEFAULT_FORMATION, FORMATIONS, positionFamiliarity } from '../world/positions.js';
 import { isAvailable } from '../world/status.js';
 
@@ -57,6 +57,10 @@ export interface SelectLineupOptions {
    * only useful for inspecting a squad's theoretical best eleven.
    */
   respectAvailability?: boolean;
+  /** A manager's instructions. Unfilled slots fall through to the auto-pick. */
+  teamSheet?: TeamSheet;
+  /** Collects anything the engine had to correct. */
+  issues?: TeamSheetIssue[];
 }
 
 export interface TeamRating {
@@ -93,8 +97,19 @@ export function selectLineup(
   formationName: string = DEFAULT_FORMATION,
   options: SelectLineupOptions = {},
 ): Lineup {
-  const formation = FORMATIONS[formationName];
-  if (!formation) throw new Error(`Unknown formation: ${formationName}`);
+  const sheet = options.teamSheet;
+  const issues = options.issues;
+
+  let resolvedFormation = sheet?.formation ?? formationName;
+  if (!FORMATIONS[resolvedFormation]) {
+    if (sheet) {
+      issues?.push({ kind: 'unknown_formation' });
+      resolvedFormation = FORMATIONS[formationName] ? formationName : DEFAULT_FORMATION;
+    } else {
+      throw new Error(`Unknown formation: ${formationName}`);
+    }
+  }
+  const formation = FORMATIONS[resolvedFormation]!;
 
   const respectAvailability = options.respectAvailability ?? true;
   let candidates = respectAvailability ? club.squad.filter(isAvailable) : club.squad;
@@ -104,11 +119,52 @@ export function selectLineup(
   if (candidates.length < formation.length) candidates = club.squad;
 
   const used = new Set<string>();
-  const slots: LineupSlot[] = [];
+  const slots: (LineupSlot | undefined)[] = new Array(formation.length).fill(undefined);
 
-  const order = [...formation].sort((a, b) => (a === 'GK' ? -1 : b === 'GK' ? 1 : 0));
+  if (sheet && sheet.starters.length !== formation.length) {
+    issues?.push({ kind: 'wrong_length' });
+  }
 
-  for (const position of order) {
+  // Pass one: honour whatever the manager pinned, reporting anything that can no
+  // longer be picked.
+  if (sheet) {
+    const squadById = new Map(club.squad.map((player) => [player.id, player]));
+    formation.forEach((position, index) => {
+      const wanted = sheet.starters[index];
+      if (wanted === undefined) return;
+
+      const player = squadById.get(wanted);
+      if (!player) {
+        issues?.push({ kind: 'not_in_squad', slotIndex: index, playerId: wanted });
+        return;
+      }
+      if (used.has(player.id)) {
+        issues?.push({ kind: 'duplicate', slotIndex: index, playerId: wanted });
+        return;
+      }
+      if (respectAvailability && !isAvailable(player)) {
+        issues?.push({
+          kind: player.status.injuryMatches > 0 ? 'injured' : 'suspended',
+          slotIndex: index,
+          playerId: wanted,
+        });
+        return;
+      }
+
+      used.add(player.id);
+      slots[index] = toSlot(player, position);
+    });
+  }
+
+  // Pass two: the existing greedy pick fills whatever is left, seeded with the
+  // players already spoken for. Keepers first, since they are the least
+  // substitutable.
+  const remaining = formation
+    .map((position, index) => ({ position, index }))
+    .filter(({ index }) => slots[index] === undefined)
+    .sort((a, b) => (a.position === 'GK' ? -1 : b.position === 'GK' ? 1 : 0));
+
+  for (const { position, index } of remaining) {
     let best: LineupSlot | undefined;
     let bestScore = -Infinity;
     for (const player of candidates) {
@@ -121,18 +177,70 @@ export function selectLineup(
     }
     if (!best) throw new Error(`selectLineup: squad too small for ${club.name}`);
     used.add(best.player.id);
-    slots.push(best);
+    slots[index] = best;
+
+    // Report who actually took a slot the manager had asked someone else to fill.
+    const wanted = sheet?.starters[index];
+    if (wanted !== undefined && issues) {
+      const issue = issues.find((i) => i.slotIndex === index);
+      if (issue) issue.replacementId = best.player.id;
+    }
   }
 
-  const goalkeeper = slots.find((s) => s.position === 'GK');
-  if (!goalkeeper) throw new Error(`selectLineup: no goalkeeper slot in ${formationName}`);
+  const filled = slots as LineupSlot[];
+  const goalkeeper = filled.find((slot) => slot.position === 'GK');
+  if (!goalkeeper) throw new Error(`selectLineup: no goalkeeper slot in ${resolvedFormation}`);
 
-  const bench = candidates
-    .filter((player) => !used.has(player.id))
-    .sort((a, b) => rawAbility(b) - rawAbility(a))
-    .slice(0, EFFECTIVENESS_TUNING.benchSize);
+  // Preferred substitutes first, then the best of the rest.
+  const preferred: Player[] = [];
+  if (sheet) {
+    const squadById = new Map(club.squad.map((player) => [player.id, player]));
+    for (const id of sheet.bench) {
+      const player = squadById.get(id);
+      if (!player || used.has(id)) continue;
+      if (respectAvailability && !isAvailable(player)) continue;
+      preferred.push(player);
+      used.add(id);
+    }
+  }
 
-  return { clubId: club.id, formation: formationName, slots, goalkeeper, bench };
+  const bench = [
+    ...preferred,
+    ...candidates
+      .filter((player) => !used.has(player.id))
+      .sort((a, b) => rawAbility(b) - rawAbility(a)),
+  ].slice(0, EFFECTIVENESS_TUNING.benchSize);
+
+  return { clubId: club.id, formation: resolvedFormation, slots: filled, goalkeeper, bench };
+}
+
+/**
+ * Reads a team sheet into an eleven, reporting anything it had to correct.
+ *
+ * The engine never writes back to the sheet. A player who is injured this week
+ * is silently replaced and returns automatically when fit, so there is no "your
+ * team sheet was cleared" moment.
+ */
+export function resolveTeamSheet(
+  club: Club,
+  sheet: TeamSheet | undefined,
+  fallbackFormation: string = DEFAULT_FORMATION,
+): { lineup: Lineup; issues: TeamSheetIssue[] } {
+  const issues: TeamSheetIssue[] = [];
+  const lineup = selectLineup(club, fallbackFormation, {
+    ...(sheet ? { teamSheet: sheet } : {}),
+    issues,
+  });
+  return { lineup, issues };
+}
+
+/** The same checks as resolveTeamSheet, without building anything. For UI warnings. */
+export function validateTeamSheet(
+  club: Club,
+  sheet: TeamSheet,
+  fallbackFormation: string = DEFAULT_FORMATION,
+): TeamSheetIssue[] {
+  return resolveTeamSheet(club, sheet, fallbackFormation).issues;
 }
 
 /** Rates a player in a slot, after position familiarity and today's condition. */

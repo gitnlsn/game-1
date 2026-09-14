@@ -1,10 +1,10 @@
 import { Rng, clamp } from '../rng/index.js';
-import type { Club, MatchEvent, MatchResult, Player, Position } from '../types.js';
+import type { Club, MatchEvent, MatchResult, Player, Position, TeamSheet } from '../types.js';
 import { STATUS_TUNING } from '../world/status.js';
 import {
   computeTeamRating,
   effectiveness,
-  selectLineup,
+  resolveTeamSheet,
   toSlot,
   type Lineup,
   type LineupSlot,
@@ -143,8 +143,12 @@ export const MATCH_TUNING = {
 export interface SimulateMatchOptions {
   /** Neutral venue: no home advantage or crowd possession bias. */
   neutral?: boolean;
-  homeFormation?: string;
-  awayFormation?: string;
+  /**
+   * A manager's team sheet. Omitted for a club the engine picks for, which is
+   * every AI club and any human club that has not set one.
+   */
+  homeSheet?: TeamSheet;
+  awaySheet?: TeamSheet;
   /**
    * Treat this as a real fixture: record minutes and goals, drain condition, and
    * apply cards and injuries to the players involved. Off by default so a one-off
@@ -196,8 +200,8 @@ export function simulateMatch(
   const homeForm = clamp(rng.gaussian(1, T.performanceVariance), T.formFloor, T.formCeiling);
   const awayForm = clamp(rng.gaussian(1, T.performanceVariance), T.formFloor, T.formCeiling);
 
-  const home = createTeamState(homeClub, options.homeFormation, venueBoost * homeForm);
-  const away = createTeamState(awayClub, options.awayFormation, awayForm);
+  const home = createTeamState(homeClub, options.homeSheet, venueBoost * homeForm);
+  const away = createTeamState(awayClub, options.awaySheet, awayForm);
 
   const events: MatchEvent[] = [];
   // Possession is accumulated minute by minute rather than fixed at kickoff, so
@@ -254,8 +258,8 @@ export function simulateMatch(
   };
 }
 
-function createTeamState(club: Club, formation: string | undefined, boost: number): TeamState {
-  const lineup = selectLineup(club, formation);
+function createTeamState(club: Club, sheet: TeamSheet | undefined, boost: number): TeamState {
+  const { lineup } = resolveTeamSheet(club, sheet);
   const stamina =
     lineup.slots.reduce((sum, slot) => sum + slot.player.attributes.stamina, 0) / lineup.slots.length;
 

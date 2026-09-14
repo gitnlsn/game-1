@@ -1,5 +1,5 @@
 import { Rng } from '../rng/index.js';
-import type { Fixture, MatchResult, SeasonResult, TableRow, World } from '../types.js';
+import type { Fixture, MatchResult, SeasonResult, TableRow, TeamSheet, World } from '../types.js';
 import { simulateMatch } from '../match/engine.js';
 import { generateFixtures } from './fixtures.js';
 import { buildTable } from './table.js';
@@ -25,6 +25,11 @@ export interface SimulateSeasonOptions {
    * so a season can be simulated without mutating the players.
    */
   playerState?: boolean;
+  /**
+   * Team sheets by club id. A club with no entry is picked for by the engine, so
+   * the headless path -- where nobody supplies one -- is untouched.
+   */
+  teamSheets?: Iterable<readonly [string, TeamSheet]>;
 }
 
 /**
@@ -44,6 +49,12 @@ export interface SeasonState {
   /** Running points and games, so gate receipts respond to how the season is going. */
   points: Map<string, number>;
   played: Map<string, number>;
+  /**
+   * Held here rather than on Club because clubStrength() and the transfer AI both
+   * take a Club, and would start depending on the human's selection by accident.
+   * A Map also serialises trivially, where a callback would not.
+   */
+  teamSheets: Map<string, TeamSheet>;
 }
 
 export function createSeasonState(
@@ -65,6 +76,7 @@ export function createSeasonState(
     options,
     points: new Map(),
     played: new Map(),
+    teamSheets: new Map(options.teamSheets ?? []),
   };
 }
 
@@ -120,8 +132,12 @@ export function playRound(state: SeasonState): MatchResult[] {
       applyMatchdayIncome(home, away, pointsPerGame);
     }
 
+    const homeSheet = state.teamSheets.get(home.id);
+    const awaySheet = state.teamSheets.get(away.id);
     const result = simulateMatch(rng, home, away, {
       ...(options.playerState ? { updatePlayerState: true } : {}),
+      ...(homeSheet ? { homeSheet } : {}),
+      ...(awaySheet ? { awaySheet } : {}),
     });
     state.results.push(result);
     roundResults.push(result);

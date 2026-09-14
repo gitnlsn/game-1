@@ -1,11 +1,19 @@
 import { Rng } from '../rng/index.js';
-import type { Club, Fixture, MatchEvent, MatchResult, Player, ScoutingState } from '../types.js';
+import type {
+  Club,
+  Fixture,
+  MatchEvent,
+  MatchResult,
+  Player,
+  ScoutingState,
+  TeamSheet,
+} from '../types.js';
 import { createSeasonState } from '../league/season.js';
 import { ensurePlayerIdsAbove } from '../world/players.js';
 import type { Career } from './controller.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -43,6 +51,8 @@ export interface SavedCareer {
     totalRounds: number;
     points: [string, number][];
     played: [string, number][];
+    /** Added in save version 3. */
+    teamSheets: [string, TeamSheet][];
   };
   history: SeasonSummary[];
   /** Added in save version 2. */
@@ -72,6 +82,7 @@ export function toSavedCareer(career: Career): SavedCareer {
       totalRounds: season.totalRounds,
       points: [...season.points.entries()],
       played: [...season.played.entries()],
+      teamSheets: [...season.teamSheets.entries()],
     },
     history: career.history,
     scouting: career.scouting,
@@ -131,6 +142,11 @@ const MIGRATIONS: Record<number, Migration> = {
     }
 
     return { ...saved, version: 2, scouting: { reports: {} } };
+  },
+  /** v3 added team selection. An existing career simply has no sheet set. */
+  2: (saved) => {
+    const season = (saved.season as Record<string, unknown>) ?? {};
+    return { ...saved, version: 3, season: { ...season, teamSheets: [] } };
   },
 };
 
@@ -208,6 +224,7 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
   season.totalRounds = saved.season.totalRounds;
   season.points = new Map(saved.season.points);
   season.played = new Map(saved.season.played);
+  season.teamSheets = new Map(saved.season.teamSheets ?? []);
 
   return {
     world,

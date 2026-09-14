@@ -173,6 +173,43 @@ export interface World {
   season: number;
 }
 
+/**
+ * A manager's instructions for one match. Held as ids rather than as players or
+ * a built lineup, so it survives a save, a transfer and an injury without going
+ * stale -- a Lineup carries abilities computed when it was built, which are
+ * already wrong by kick-off once a week of recovery has run.
+ */
+export interface TeamSheet {
+  clubId: string;
+  /** Formation key. Falls back to the default if it is not recognised. */
+  formation: string;
+  /**
+   * One entry per formation slot, in formation order. `undefined` means "pick
+   * the best available for this slot", so a half-filled sheet is valid: pin the
+   * three players you care about and let the engine sort out the rest.
+   */
+  starters: (string | undefined)[];
+  /** Preferred substitutes, best first. Short lists are topped up automatically. */
+  bench: string[];
+}
+
+export type TeamSheetIssueKind =
+  | 'unknown_formation'
+  | 'wrong_length'
+  | 'not_in_squad'
+  | 'injured'
+  | 'suspended'
+  | 'duplicate';
+
+/** Something the engine had to correct when reading a team sheet. */
+export interface TeamSheetIssue {
+  kind: TeamSheetIssueKind;
+  slotIndex?: number;
+  playerId?: string;
+  /** Who took the slot instead. */
+  replacementId?: string;
+}
+
 export interface Fixture {
   round: number;
   homeClubId: string;

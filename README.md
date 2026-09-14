@@ -22,7 +22,7 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 110 tests
+pnpm test                               # 121 tests
 pnpm typecheck
 ```
 
@@ -116,6 +116,34 @@ a week's rest gives back a flat amount plus a share of whatever is missing.
 Those two settle an ever-present around 65 condition and a rotated player near
 full fitness, which is what makes squad depth worth paying for. Across a season
 a club uses ~21 players, with its most-used eleven taking ~78% of the minutes.
+
+## Picking the team
+
+A **team sheet** is the manager's instructions for one match: a formation, eleven
+slots and a bench. It holds **player ids, not a built lineup** — a `Lineup`
+carries abilities computed at the moment it was built, which are already stale by
+kick-off once a week of recovery has run. Ids resolved at kick-off are the only
+shape that survives a save, a transfer and an injury.
+
+Sheets live on the season, not the club. `clubStrength()` and the transfer AI
+both take a `Club`, and would start depending on the human's selection by
+accident.
+
+Two properties make it pleasant to use:
+
+- **A blank slot means "you pick"**, so a half-filled sheet is valid. Pin the
+  three players you care about and let the engine sort out the rest — it is the
+  existing greedy selection seeded with whoever you named.
+- **The engine never writes back to the sheet.** A player injured this week is
+  replaced for that match and returns automatically when fit. There is no "your
+  team sheet was cleared" moment, and a test asserts the rest of the selection
+  survives an injury untouched.
+
+`resolveTeamSheet` reports everything it had to correct — a player who has been
+sold, someone named twice, an unrecognised formation — so a screen can say "2
+changes forced by injuries" rather than silently fielding someone else. A club
+with no sheet is picked for exactly as before, which is why the whole feature is
+provably additive: both validator digests are byte-identical to before it existed.
 
 ## Hidden potential and scouting
 
