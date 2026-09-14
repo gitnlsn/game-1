@@ -37,11 +37,11 @@ export const MATCH_TUNING = {
   shotChanceCeiling: 0.72,
   conversionCeiling: 0.55,
   /** Exponent on the attack-vs-defence ratio when creating a shot. */
-  shotExponent: 1.2,
+  shotExponent: 0.7,
   /** Baseline chance a shot is on target. */
   onTargetBase: 0.35,
   /** Baseline chance an on-target shot beats the keeper. */
-  conversionBase: 0.296,
+  conversionBase: 0.288,
   /** Exponent on shooter-vs-keeper quality when converting. */
   conversionExponent: 1.0,
   /** Share of goals that are credited an assist. */
@@ -60,8 +60,49 @@ export const MATCH_TUNING = {
    * forward and a leading side sits deeper. Produces late comebacks and pushes
    * the draw rate toward the real-world figure.
    */
-  chasingBoost: 0.145,
-  chasingFrom: 50,
+  chasingBoost: 0.7,
+  /**
+   * The other half of the score-state effect. A side protecting a lead drops
+   * deeper and defends it, which is what stops a two-goal win becoming a five.
+   * Only the attacking half of this was modelled, despite the comment above
+   * describing both.
+   */
+  shellBoost: 0.25,
+  /**
+   * Score effects ramp in from here rather than switching on at a threshold: a
+   * lead changes how a side plays a little at the half hour and a great deal in
+   * the last ten minutes, and the clock running down is the reason.
+   */
+  gameStateFrom: 10,
+  /** Bounds on what the scoreline can do to a side's attack or defence. */
+  gameStateFloor: 0.5,
+  gameStateCeiling: 1.7,
+  /**
+   * How much the individual matchup swings chance creation, on top of the team
+   * ratings. This is what stops two players of equal overall ability being
+   * interchangeable: a quick, direct forward against a slow defender creates
+   * chances a team rating cannot express.
+   */
+  duelExponent: 0.75,
+  /**
+   * How far an individual matchup is allowed to swing the chance of a shot. At 1
+   * the raw contest applies in full; lower values pull it toward even.
+   *
+   * This is separate from whether attributes matter: who takes the chance, who
+   * defends it, whether it comes through the air and who gets on the rebound are
+   * all decided by attributes at full strength regardless. This constant only
+   * sets how much a mismatch multiplies the *rate* of chances, which is what
+   * drives the scoreline spread.
+   */
+  duelWeight: 0.8,
+  /** Share of chances delivered into the box rather than worked on the ground. */
+  aerialShare: 0.22,
+  /** Chance a save is spilled, before the keeper's handling is applied. */
+  reboundBase: 0.14,
+  /** Conversion of a rebound: a scrappy chance, but from close range. */
+  reboundConversion: 0.34,
+  /** In-match tiring of an individual, for a player with no stamina to speak of. */
+  inMatchConditionDrain: 0.1,
   /** Fatigue drag applied to a tiring side in the closing stages. */
   fatigueFrom: 70,
   fatigueMax: 0.06,
@@ -120,6 +161,12 @@ interface TeamState {
   rating: TeamRating;
   /** Keeper quality before home advantage and form, for the shooter-vs-keeper duel. */
   goalkeepingBase: number;
+  /** Shot-stopping alone: reflexes and positioning, not ball-playing. */
+  keeperShotStopping: number;
+  /** How cleanly the keeper holds what he reaches. Low handling spills rebounds. */
+  keeperHandling: number;
+  /** Feeds possession retention. */
+  keeperDistribution: number;
   goals: number;
   shots: number;
   shotsOnTarget: number;
@@ -152,17 +199,11 @@ export function simulateMatch(
   const home = createTeamState(homeClub, options.homeFormation, venueBoost * homeForm);
   const away = createTeamState(awayClub, options.awayFormation, awayForm);
 
-  // Possession follows midfield control, sharpened by an exponent so that a
-  // clearly better midfield actually dominates the ball.
-  const homeMid = Math.pow(home.rating.midfield, T.possessionExponent);
-  const awayMid = Math.pow(away.rating.midfield, T.possessionExponent);
-  const homePossession = clamp(
-    homeMid / (homeMid + awayMid) + (options.neutral ? 0 : T.homePossessionBias),
-    0.2,
-    0.8,
-  );
-
   const events: MatchEvent[] = [];
+  // Possession is accumulated minute by minute rather than fixed at kickoff, so
+  // a sending off or a substitution actually changes who has the ball.
+  let possessionSum = 0;
+  let possessionMinutes = 0;
   const stoppage = rng.int(1, 5);
   const finalMinute = 90 + stoppage;
 
@@ -171,6 +212,10 @@ export function simulateMatch(
     resolveInjuries(rng, home, away, minute, events);
     considerSubstitutions(rng, home, minute, events);
     considerSubstitutions(rng, away, minute, events);
+
+    const homePossession = possessionShare(home, away, options.neutral === true);
+    possessionSum += homePossession;
+    possessionMinutes++;
 
     if (!rng.chance(T.attackRate)) continue;
 
@@ -186,6 +231,8 @@ export function simulateMatch(
     applyEventOutcomes(rng, events, [home, away]);
   }
 
+  const homeShare = possessionMinutes > 0 ? possessionSum / possessionMinutes : 0.5;
+
   return {
     homeClubId: homeClub.id,
     awayClubId: awayClub.id,
@@ -194,14 +241,14 @@ export function simulateMatch(
       goals: home.goals,
       shots: home.shots,
       shotsOnTarget: home.shotsOnTarget,
-      possession: Math.round(homePossession * 100),
+      possession: Math.round(homeShare * 100),
     },
     away: {
       clubId: awayClub.id,
       goals: away.goals,
       shots: away.shots,
       shotsOnTarget: away.shotsOnTarget,
-      possession: 100 - Math.round(homePossession * 100),
+      possession: 100 - Math.round(homeShare * 100),
     },
     events,
   };
@@ -218,6 +265,9 @@ function createTeamState(club: Club, formation: string | undefined, boost: numbe
     boost,
     rating: { attack: 1, midfield: 1, defence: 1, goalkeeping: 1 },
     goalkeepingBase: 1,
+    keeperShotStopping: 1,
+    keeperHandling: 50,
+    keeperDistribution: 50,
     goals: 0,
     shots: 0,
     shotsOnTarget: 0,
@@ -242,12 +292,73 @@ function refreshRating(team: TeamState): void {
   const short = Math.max(0, 11 - team.onPitch.length);
 
   team.goalkeepingBase = base.goalkeeping;
+
+  /*
+   * A keeper is no longer one number. Shot-stopping decides the duel, handling
+   * decides whether what he saves stays saved, and distribution helps his side
+   * keep the ball -- so two keepers of equal overall rating now play differently.
+   */
+  const keeper = team.onPitch.find((slot) => slot.position === 'GK')?.player;
+  const keeperEffect = keeper ? effectiveness(keeper) : 1;
+  /*
+   * Spread across five attributes rather than two or three. Averaging fewer
+   * inputs makes keeper quality more variable across the league, and a wider
+   * spread between the best and worst keeper shows up directly as more lopsided
+   * scorelines. Reflexes still lead; handling and distribution earn their keep
+   * through the rebound and possession instead of through this number.
+   */
+  team.keeperShotStopping = keeper
+    ? (keeper.attributes.reflexes * 0.4 +
+        keeper.attributes.positioning * 0.22 +
+        keeper.attributes.composure * 0.16 +
+        keeper.attributes.handling * 0.12 +
+        keeper.attributes.strength * 0.1) *
+      keeperEffect
+    : base.goalkeeping;
+  team.keeperHandling = keeper ? keeper.attributes.handling * keeperEffect : 50;
+  team.keeperDistribution = keeper ? keeper.attributes.distribution : 50;
+
+  // Recomputed here, not once at kickoff: bringing on fresh legs has to reduce
+  // how tired the side is.
+  team.stamina =
+    team.onPitch.reduce((sum, slot) => sum + slot.player.attributes.stamina, 0) /
+    Math.max(1, team.onPitch.length);
   team.rating = {
     attack: base.attack * team.boost * Math.pow(T.shorthandedAttack, short),
     midfield: base.midfield * team.boost * Math.pow(T.shorthandedMidfield, short),
     defence: base.defence * team.boost * Math.pow(T.shorthandedDefence, short),
     goalkeeping: base.goalkeeping * team.boost,
   };
+}
+
+/**
+ * Share of the ball the home side has right now. Midfield control decides it,
+ * sharpened by an exponent, with the keeper's distribution worth a little: a
+ * keeper who can play keeps possession alive.
+ */
+function possessionShare(home: TeamState, away: TeamState, neutral: boolean): number {
+  const T = MATCH_TUNING;
+  const control = (team: TeamState) =>
+    Math.pow(team.rating.midfield * (1 + (team.keeperDistribution - 50) / 500), T.possessionExponent);
+
+  const homeControl = control(home);
+  return clamp(
+    homeControl / (homeControl + control(away)) + (neutral ? 0 : T.homePossessionBias),
+    0.2,
+    0.8,
+  );
+}
+
+/**
+ * How much of their ability a player brings *right now*, including how long they
+ * have been on the pitch. `effectiveness` alone reads the condition they started
+ * with, which does not move until after the final whistle.
+ */
+function matchEffectiveness(team: TeamState, player: Player, minute: number): number {
+  const T = MATCH_TUNING;
+  const played = Math.max(0, minute - (team.enteredAt.get(player.id) ?? 0));
+  const shortfall = clamp((75 - player.attributes.stamina) / 50, 0, 1);
+  return effectiveness(player) * (1 - T.inMatchConditionDrain * clamp(played / 90, 0, 1.1) * shortfall);
 }
 
 /** Legs go late in the game, and the fitter side suffers less. */
@@ -260,11 +371,37 @@ function fatigueMultiplier(team: TeamState, minute: number): number {
 }
 
 /** Teams chasing a game attack harder; teams protecting a lead attack less. */
+/** How strongly the scoreline is shaping play, 0 early and 1 at the whistle. */
+function gameStateWeight(minute: number): number {
+  const T = MATCH_TUNING;
+  return clamp((minute - T.gameStateFrom) / (90 - T.gameStateFrom), 0, 1);
+}
+
+/**
+ * How far ahead or behind a side is, for the purpose of shaping play. Capped,
+ * but deliberately NOT saturating: a square-root response was tried and made
+ * things worse, because it weakens the brake at exactly the two- and three-goal
+ * margins where a comfortable win turns into a rout.
+ */
+function leadResponse(lead: number): number {
+  return clamp(lead, -3, 3);
+}
+
 function chasingMultiplier(attacker: TeamState, defender: TeamState, minute: number): number {
   const T = MATCH_TUNING;
-  if (minute <= T.chasingFrom) return 1;
-  const lead = clamp(attacker.goals - defender.goals, -3, 3);
-  return 1 - lead * T.chasingBoost;
+  const raw = 1 - leadResponse(attacker.goals - defender.goals) * T.chasingBoost * gameStateWeight(minute);
+  // Clamped: a comfortable lead makes a side cautious, never negative. Without a
+  // floor a large chasingBoost drives attack strength below zero, which makes the
+  // attack-versus-defence ratio meaningless.
+  return clamp(raw, T.gameStateFloor, T.gameStateCeiling);
+}
+
+/** A side defending a lead sits deeper and is harder to break down. */
+function shellMultiplier(defender: TeamState, attacker: TeamState, minute: number): number {
+  const T = MATCH_TUNING;
+  const raw =
+    1 + leadResponse(Math.max(0, defender.goals - attacker.goals)) * T.shellBoost * gameStateWeight(minute);
+  return clamp(raw, T.gameStateFloor, T.gameStateCeiling);
 }
 
 function resolveAttack(
@@ -278,26 +415,45 @@ function resolveAttack(
 
   const chase = chasingMultiplier(attacker, defender, minute);
   const attackStrength = attacker.rating.attack * fatigueMultiplier(attacker, minute) * chase;
-  const defenceStrength = defender.rating.defence * fatigueMultiplier(defender, minute);
+  const defenceStrength =
+    defender.rating.defence *
+    fatigueMultiplier(defender, minute) *
+    shellMultiplier(defender, attacker, minute);
 
   // Ratio sits at 0.5 when evenly matched; the exponent turns a small quality
   // edge into a meaningfully larger share of chances.
   const edge = attackStrength / (attackStrength + defenceStrength);
-  const shotChance = clamp(T.shotBase * Math.pow(edge / 0.5, T.shotExponent), 0.05, T.shotChanceCeiling);
-  if (!rng.chance(shotChance)) return;
 
-  const shooter = pickShooter(rng, attacker);
-  attacker.shots++;
-  events.push({ minute, type: 'shot', clubId: attacker.club.id, playerId: shooter.id });
+  // Worked on the ground, or delivered into the box?
+  const aerial = rng.chance(T.aerialShare);
+  const shooter = aerial ? pickAerialTarget(rng, attacker) : pickShooter(rng, attacker);
+  const marker = pickDefender(rng, defender);
 
   /*
-   * Finishing a chance is a duel between two players, so both sides of it carry
-   * the same adjustments: each player's own condition, form and morale, and
-   * nothing else. Home advantage and team form belong to chance creation, where
-   * they are already applied to the ratings -- folding them in here as well
-   * counts them twice and inflates home scoring.
+   * The individual matchup, on top of the team ratings. This is what makes a
+   * named defender do something, and what separates two forwards of equal
+   * overall ability: one beats his man for pace, the other wins it in the air.
    */
-  const shooterEffect = effectiveness(shooter);
+  const rawDuel = aerial
+    ? contest(
+        aerialThreat(shooter) * matchEffectiveness(attacker, shooter, minute),
+        aerialResistance(marker) * matchEffectiveness(defender, marker, minute),
+      )
+    : contest(
+        groundThreat(shooter) * matchEffectiveness(attacker, shooter, minute),
+        groundResistance(marker) * matchEffectiveness(defender, marker, minute),
+      );
+  const duel = 0.5 + (rawDuel - 0.5) * T.duelWeight;
+
+  const shotChance = clamp(
+    T.shotBase * Math.pow(edge / 0.5, T.shotExponent) * Math.pow(duel / 0.5, T.duelExponent),
+    0.05,
+    T.shotChanceCeiling,
+  );
+  if (!rng.chance(shotChance)) return;
+
+  const shooterEffect = matchEffectiveness(attacker, shooter, minute);
+  recordShot(attacker, shooter, minute, events);
 
   const accuracy = clamp(
     T.onTargetBase * Math.pow((shooter.attributes.composure * shooterEffect) / 55, 0.5),
@@ -309,29 +465,131 @@ function resolveAttack(
     return;
   }
 
-  attacker.shotsOnTarget++;
-  events.push({ minute, type: 'shot_on_target', clubId: attacker.club.id, playerId: shooter.id });
+  recordShotOnTarget(attacker, shooter, minute, events);
 
-  // Finishing quality against the keeper decides whether it goes in.
+  /*
+   * Finishing a chance is a duel between two players, so both sides of it carry
+   * the same adjustments: each player's own condition, form and morale, and
+   * nothing else. Home advantage and team form belong to chance creation, where
+   * they are already applied to the ratings -- folding them in here as well
+   * counts them twice and inflates home scoring.
+   */
   const finishing =
-    (shooter.attributes.finishing * 0.7 + shooter.attributes.composure * 0.3) * shooterEffect;
-  const keeper = defender.goalkeepingBase;
+    (aerial
+      ? shooter.attributes.heading * 0.7 + shooter.attributes.composure * 0.3
+      : shooter.attributes.finishing * 0.7 + shooter.attributes.composure * 0.3) * shooterEffect;
+
   const conversion = clamp(
-    T.conversionBase * Math.pow(finishing / keeper, T.conversionExponent),
+    T.conversionBase * Math.pow(finishing / defender.keeperShotStopping, T.conversionExponent),
     0.08,
     T.conversionCeiling,
   );
-  if (!rng.chance(conversion)) return;
 
-  attacker.goals++;
-  const assist = rng.chance(T.assistRate) ? pickAssister(rng, attacker, shooter) : undefined;
+  if (rng.chance(conversion)) {
+    scoreGoal(rng, attacker, shooter, minute, events);
+    return;
+  }
+
+  // Saved -- but not every save is held. A keeper with poor hands spills it.
+  const spill = clamp(T.reboundBase * (1 - defender.keeperHandling / 100), 0, 0.4);
+  if (!rng.chance(spill)) return;
+
+  const follower = pickShooter(rng, attacker);
+  recordShot(attacker, follower, minute, events);
+  recordShotOnTarget(attacker, follower, minute, events);
+  if (rng.chance(T.reboundConversion)) scoreGoal(rng, attacker, follower, minute, events);
+}
+
+function recordShot(team: TeamState, player: Player, minute: number, events: MatchEvent[]): void {
+  team.shots++;
+  events.push({ minute, type: 'shot', clubId: team.club.id, playerId: player.id });
+}
+
+function recordShotOnTarget(
+  team: TeamState,
+  player: Player,
+  minute: number,
+  events: MatchEvent[],
+): void {
+  team.shotsOnTarget++;
+  events.push({ minute, type: 'shot_on_target', clubId: team.club.id, playerId: player.id });
+}
+
+function scoreGoal(
+  rng: Rng,
+  team: TeamState,
+  scorer: Player,
+  minute: number,
+  events: MatchEvent[],
+): void {
+  const T = MATCH_TUNING;
+  team.goals++;
+  const assist = rng.chance(T.assistRate) ? pickAssister(rng, team, scorer) : undefined;
   events.push({
     minute,
     type: 'goal',
-    clubId: attacker.club.id,
-    playerId: shooter.id,
+    clubId: team.club.id,
+    playerId: scorer.id,
     ...(assist ? { assistPlayerId: assist.id } : {}),
   });
+}
+
+/** A contest between two qualities, returning the attacker's share, 0-1. */
+function contest(threat: number, resistance: number): number {
+  return threat / Math.max(1, threat + resistance);
+}
+
+function groundThreat(player: Player): number {
+  const a = player.attributes;
+  return a.dribbling * 0.5 + a.pace * 0.35 + a.strength * 0.15;
+}
+
+function groundResistance(player: Player): number {
+  const a = player.attributes;
+  return a.tackling * 0.4 + a.positioning * 0.25 + a.pace * 0.2 + a.workRate * 0.15;
+}
+
+function aerialThreat(player: Player): number {
+  const a = player.attributes;
+  return a.heading * 0.65 + a.strength * 0.35;
+}
+
+function aerialResistance(player: Player): number {
+  const a = player.attributes;
+  return a.heading * 0.6 + a.strength * 0.3 + a.positioning * 0.1;
+}
+
+/** Who is defending the move. Centre backs most, forwards least. */
+const DEFENDING_SHARE: Record<string, number> = {
+  CB: 8, LB: 5, RB: 5, DM: 5, CM: 3, AM: 1.2, LW: 1, RW: 1, ST: 0.6, GK: 0,
+};
+
+function pickDefender(rng: Rng, team: TeamState): Player {
+  const outfield = team.onPitch.filter((slot) => slot.position !== 'GK');
+  if (outfield.length === 0) return team.onPitch[0]!.player;
+
+  /*
+   * Weighted by quality as well as position. A defence is organised: the better
+   * defender reads the danger and gets there first, so he is involved more often
+   * than his weaker partner. Picking uniformly exposes a side's weakest link as
+   * often as its best and turns an uneven defence into a rout.
+   */
+  return rng.pickWeighted(outfield, (slot) => {
+    const share = DEFENDING_SHARE[slot.position] ?? 2;
+    return share * Math.max(10, groundResistance(slot.player)) / 60;
+  }).player;
+}
+
+/** Who attacks a ball into the box. Height and presence, not finishing. */
+const AERIAL_SHARE: Record<string, number> = {
+  ST: 8, CB: 3, AM: 2.5, CM: 2.2, LW: 2, RW: 2, DM: 1.8, LB: 1, RB: 1, GK: 0.02,
+};
+
+function pickAerialTarget(rng: Rng, team: TeamState): Player {
+  return rng.pickWeighted(team.onPitch, (slot) => {
+    const share = AERIAL_SHARE[slot.position] ?? 1;
+    return share * Math.max(10, slot.player.attributes.heading) / 60;
+  }).player;
 }
 
 /** Attacking players shoot most, weighted by how dangerous they are. */

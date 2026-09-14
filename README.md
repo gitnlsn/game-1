@@ -85,8 +85,17 @@ One match:
    is a function of the attributes involved on both sides, not a global constant.
 6. **Attribution** — scorer and assister drawn from weighted distributions.
 
-On top: per-match form rolls, late-game fatigue, and a game-state effect where
-trailing sides push and leading sides sit deeper.
+A keeper is not one number: **reflexes and positioning** decide the save,
+**handling** decides whether the save stays saved, and **distribution** helps his
+side keep the ball. Measured over 6,000 matches, moving a keeper's reflexes by
+±20 is worth 0.43 goals a game, his handling 0.17 and his distribution 0.07 —
+three distinct jobs rather than one average.
+
+On top: per-match form rolls, late-game fatigue, individual in-match tiring, and
+a game-state effect where trailing sides push and leading sides sit deeper. Both
+halves of that are now modelled and both are bounded: an unbounded chasing term
+drives a comfortable leader's attack strength *negative*, which makes the
+attack-versus-defence ratio meaningless.
 
 Matches also produce bookings, sendings-off, injuries and up to five
 substitutions a side, and they write back to the players involved: minutes,
@@ -190,31 +199,37 @@ seasons / 15,200 matches, all 19 benchmarks within tolerance:
 
 | Metric | Engine | Real |
 | --- | --- | --- |
-| Goals per match | 2.72 | 2.75 |
-| Home / away goals | 1.49 / 1.22 | 1.52 / 1.23 |
-| Home wins / draws / away wins | 44.0% / 23.7% / 32.3% | 44% / 25% / 31% |
-| Shots (on target) per match | 24.9 (9.1) | 25 (8.7) |
-| Goalless matches | 6.8% | 7.5% |
+| Goals per match | 2.64 | 2.75 |
+| Home / away goals | 1.44 / 1.20 | 1.52 / 1.23 |
+| Home wins / draws / away wins | 43.2% / 23.9% / 32.9% | 44% / 25% / 31% |
+| Shots (on target) per match | 24.1 (9.0) | 25 (8.7) |
+| Goalless matches | 6.4% | 7.5% |
 | Won by 4+ goals | 5.1% | 3.5% |
-| Champion points | 85.1 | 86 |
-| Top scorer goals | 24.9 | 24 |
+| Champion points | 85.4 | 86 |
+| Top scorer goals | 25.9 | 24 |
 | Yellow / red cards per match | 3.84 / 0.104 | 3.9 / 0.10 |
 | Substitutions per match | 8.52 | 8.5 |
 | Injuries per club per season | 11.4 | ~12 |
 | Players used per club | 21.1 | ~24 |
 
 It also reports the **strength/position correlation** — how reliably the better
-squad finishes higher. Real leagues sit around 0.75–0.85; the engine is at 0.850 — at the top of that range, and worth watching.
+squad finishes higher. Real leagues sit around 0.75–0.85; the engine is at 0.849 — at the top of that range, and worth watching.
 Pushing this to 1.0 would be easy and would ruin the game: nothing unexpected
 would ever happen.
 
 Two caveats on the table above. Champion points sit toward the low end of the
 benchmark, which is right for a Brazilian-style league (Série A champions
 typically take 70–80) but low for the Premier League — worth splitting per
-competition once there are several. And blowouts at 5.1% are still above the
-real 3.5%. Squad rotation and injuries were expected to close that gap and did
-not; the remaining cause is that individual defending is not modelled, so a
-weaker side has no way to dig in. That is milestone 4's attribute work.
+competition once there are several. And blowouts sit at 5.1% against a real
+3.5%, right at the edge of tolerance.
+
+That last number is the honest cost of individual duels. Giving attributes a
+direct effect necessarily widens the spread of scorelines: a good forward against
+a poor defender creates chances a team average cannot express, and that shows up
+as bigger wins. The two are in direct tension, and the balance here was chosen to
+keep every other benchmark comfortable. Pushing the duel harder was tried — it
+buys sharper individual effects at the cost of draws, last-place points and a
+league that gets measurably more predictable.
 
 Performance: world generation 8ms; a full 380-match season 94ms with fitness,
 injuries, cards and finances all tracked (30ms for the match engine alone).

@@ -150,7 +150,13 @@ describe('multi-seed calibration sweep', () => {
   let reports: { seed: string; report: EconomyReport }[];
 
   beforeAll(() => {
-    reports = seeds.map((seed) => ({ seed, report: validateEconomy({ seasons: 15, seed }) }));
+    /*
+     * 25 seasons, not the 15 the single-seed suites use. Title dominance needs a
+     * horizon to be readable at: over 15 seasons it ranges from 33% to 67% across
+     * seeds purely by chance, and settles to 37-48% by 25. Measuring it short
+     * produces failures that say nothing about the engine.
+     */
+    reports = seeds.map((seed) => ({ seed, report: validateEconomy({ seasons: 25, seed }) }));
   });
 
   it('passes every economy benchmark on every seed', () => {
