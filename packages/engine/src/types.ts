@@ -71,10 +71,15 @@ export interface Player {
   position: Position;
   attributes: Attributes;
   /**
-   * Hidden ceiling on ability, 1-100. Development pushes ability toward it and
-   * never past it. Drives the "wonderkid" stories once training exists.
+   * True ceiling on ability, 1-100. Development pushes ability toward it and
+   * never past it.
+   *
+   * ENGINE-PRIVATE. This is the simulation's ground truth and nothing
+   * player-facing may read it -- the UI goes through `scoutedPotential`, which
+   * returns a range rather than a number. The AI is deliberately allowed to read
+   * it directly; see the note in `world/scouting.ts` for why.
    */
-  potential: number;
+  hiddenPotential: number;
   contract: Contract;
   status: PlayerStatus;
 }
@@ -109,6 +114,33 @@ export interface ClubFinances {
   /** Weekly wage ceiling the club will not knowingly exceed. */
   wageBudget: number;
   season: FinancialRecord;
+}
+
+/** What a manager has learned about one player. */
+export interface ScoutingReport {
+  playerId: string;
+  /** Accumulated familiarity. Higher means a tighter estimate. */
+  knowledge: number;
+  /** Season the report was last added to, so the UI can say it is going stale. */
+  updatedSeason: number;
+}
+
+export interface ScoutingState {
+  reports: Record<string, ScoutingReport>;
+}
+
+/**
+ * A read on how good a player might become. Never an exact number: that is the
+ * point. `low` and `high` bound it, and `confidence` says how much to trust it.
+ */
+export interface PotentialEstimate {
+  estimate: number;
+  low: number;
+  high: number;
+  /** 0 is a pure guess, 1 is as good as knowing. */
+  confidence: number;
+  /** A phrase a UI can show instead of numbers when confidence is very low. */
+  label: string;
 }
 
 export interface Club {

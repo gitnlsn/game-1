@@ -63,12 +63,12 @@ describe('developPlayer', () => {
     expect(currentAbility(old)).toBeLessThan(oldBefore);
   });
 
-  it('never pushes a player past their potential', () => {
+  it('never pushes a player past their hiddenPotential', () => {
     const rng = new Rng('ceiling');
     const player = generatePlayer(rng, { position: 'ST', potentialTarget: 70, age: 17 });
     for (let i = 0; i < 12; i++) developPlayer(rng, player);
-    // The curve tops out at 1.0 of potential, with a little noise allowed.
-    expect(currentAbility(player)).toBeLessThanOrEqual(player.potential + 3);
+    // The curve tops out at 1.0 of hiddenPotential, with a little noise allowed.
+    expect(currentAbility(player)).toBeLessThanOrEqual(player.hiddenPotential + 3);
   });
 
   it('takes pace from ageing players while their reading of the game improves', () => {

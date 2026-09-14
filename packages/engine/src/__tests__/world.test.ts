@@ -80,11 +80,11 @@ describe('createWorld', () => {
     }
   });
 
-  it('never generates a player whose potential is below their ability floor', () => {
-    const world = createWorld({ seed: 'potential' });
+  it('never generates a player whose hiddenPotential is below their ability floor', () => {
+    const world = createWorld({ seed: 'hiddenPotential' });
     for (const player of world.players.values()) {
-      expect(player.potential).toBeGreaterThanOrEqual(20);
-      expect(player.potential).toBeLessThanOrEqual(99);
+      expect(player.hiddenPotential).toBeGreaterThanOrEqual(20);
+      expect(player.hiddenPotential).toBeLessThanOrEqual(99);
       expect(player.age).toBeGreaterThanOrEqual(16);
       expect(player.age).toBeLessThanOrEqual(38);
     }

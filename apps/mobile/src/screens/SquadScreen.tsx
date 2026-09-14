@@ -5,7 +5,10 @@ import {
   formatMoney,
   managedClub,
   marketValue,
+  scoutReport,
+  type Career,
   type Player,
+  type PotentialEstimate,
 } from '@game1/engine';
 import { Badge, Card, SectionTitle } from '../components/ui';
 import { colors, conditionColor, positionColor, radius, ratingColor, spacing } from '../theme';
@@ -74,13 +77,13 @@ export function SquadScreen() {
         keyExtractor={(player) => player.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => <PlayerRow player={item} />}
+        renderItem={({ item }) => <PlayerRow player={item} report={scoutReport(career!, item)} />}
       />
     </View>
   );
 }
 
-function PlayerRow({ player }: { player: Player }) {
+function PlayerRow({ player, report }: { player: Player; report: PotentialEstimate }) {
   const ability = currentAbility(player);
   const { status } = player;
 
@@ -114,7 +117,16 @@ function PlayerRow({ player }: { player: Player }) {
           <Text style={[styles.abilityValue, { color: ratingColor(ability) }]}>
             {ability.toFixed(0)}
           </Text>
-          <Text style={styles.potentialValue}>pot {player.potential}</Text>
+          {/*
+            A range, never a number. How good a player might become is something
+            you form a view on, not something you read off him.
+          */}
+          <Text
+            style={[styles.potentialValue, { opacity: 0.45 + report.confidence * 0.55 }]}
+            numberOfLines={1}
+          >
+            {report.low === report.high ? `${report.high}` : `${report.low}–${report.high}`}
+          </Text>
         </View>
       </View>
 
@@ -191,7 +203,7 @@ const styles = StyleSheet.create({
   playerMeta: { color: colors.faint, fontSize: 11, marginTop: 1 },
   abilityBox: { alignItems: 'flex-end', minWidth: 44 },
   abilityValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  potentialValue: { color: colors.faint, fontSize: 10 },
+  potentialValue: { color: colors.faint, fontSize: 10, fontVariant: ['tabular-nums'] },
   playerBottom: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -20,7 +20,7 @@ export const VALUATION_TUNING = {
    */
   wageFactor: 0.135,
   wageCompression: 0.82,
-  /** Extra value for unrealised potential, applied to players under 26. */
+  /** Extra value for unrealised hiddenPotential, applied to players under 26. */
   potentialPremium: 0.9,
   /** A player in the last year of their deal is cheap; one with 4 years is not. */
   contractMultipliers: [0.35, 0.62, 0.85, 0.95, 1] as const,
@@ -73,7 +73,7 @@ export function marketValue(player: Player): number {
 
   // Young players are priced partly on what they might become.
   if (player.age < 26) {
-    const headroom = Math.max(0, player.potential - ability);
+    const headroom = Math.max(0, player.hiddenPotential - ability);
     const youthWeight = (26 - player.age) / 10;
     value *= 1 + (headroom / 100) * V.potentialPremium * youthWeight * 4;
   }

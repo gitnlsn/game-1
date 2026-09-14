@@ -15,10 +15,10 @@ const ATTRIBUTE_KEYS: readonly AttributeKey[] = [
 const GK_KEYS: readonly AttributeKey[] = ['reflexes', 'handling', 'distribution'];
 
 /**
- * Fraction of a player's potential that is realised at a given age. Players
+ * Fraction of a player's hiddenPotential that is realised at a given age. Players
  * develop fast through their early twenties, peak around 27-29, then decline.
  * This is the single curve that makes squad-building a real decision: a 19 year
- * old at 0.68 of a high potential is worth more than a 33 year old at 0.91 of
+ * old at 0.68 of a high hiddenPotential is worth more than a 33 year old at 0.91 of
  * a mediocre one.
  */
 const DEVELOPMENT_CURVE: readonly (readonly [age: number, factor: number])[] = [
@@ -102,7 +102,7 @@ export function calibrateAbility(
 
 export interface GeneratePlayerOptions {
   position: Position;
-  /** Mean potential for this player, 1-100. Noise is applied on top. */
+  /** Mean hiddenPotential for this player, 1-100. Noise is applied on top. */
   potentialTarget: number;
   age?: number;
   nationality?: NamePool;
@@ -144,11 +144,11 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player
     (options.domesticPool && rng.chance(0.62) ? options.domesticPool : rng.pick(NAME_POOLS));
 
   const age = options.age ?? generateAge(rng);
-  const potential = clamp(Math.round(rng.gaussian(options.potentialTarget, 6)), 20, 99);
+  const hiddenPotential = clamp(Math.round(rng.gaussian(options.potentialTarget, 6)), 20, 99);
 
-  // Current ability is a share of potential set by age, with a little noise so
+  // Current ability is a share of hiddenPotential set by age, with a little noise so
   // that not every 24 year old is exactly on curve.
-  const ability = clamp(potential * developmentFactor(age) * rng.float(0.95, 1.03), 15, 99);
+  const ability = clamp(hiddenPotential * developmentFactor(age) * rng.float(0.95, 1.03), 15, 99);
 
   const name = generateUniqueName(rng, pool, options.takenNames);
   options.takenNames?.add(name.displayName);
@@ -164,7 +164,7 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player
     age,
     position: options.position,
     attributes,
-    potential,
+    hiddenPotential,
     // Contract terms follow from ability, so they are set after attributes.
     contract: {
       wage: expectedWage({ attributes, position: options.position, age }),

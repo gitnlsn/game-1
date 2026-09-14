@@ -177,7 +177,7 @@ function commandSquad(): void {
     console.log(
       pad(starters.has(player.id) ? '  XI' : '', 5) +
       pad(player.displayName, 20) + pad(player.position, 5) + pad(player.nationality, 5) +
-      padLeft(player.age, 4) + padLeft(currentAbility(player).toFixed(0), 5) + padLeft(player.potential, 5) +
+      padLeft(player.age, 4) + padLeft(currentAbility(player).toFixed(0), 5) + padLeft(player.hiddenPotential, 5) +
       padLeft(formatMoney(marketValue(player)), 9) + padLeft(formatMoney(player.contract.wage), 8) +
       padLeft(`${player.contract.yearsRemaining}y`, 5) +
       padLeft(player.status.condition.toFixed(0), 6) +

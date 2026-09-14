@@ -33,11 +33,11 @@ describe('marketValue', () => {
 
   it('peaks in a player\'s early twenties and falls away with age', () => {
     // Ability is held fixed so this measures the age curve alone. Varying age
-    // while holding *potential* fixed would not: an older player sits closer to
-    // their potential, so they would be the better player as well as the older one.
+    // while holding *hiddenPotential* fixed would not: an older player sits closer to
+    // their hiddenPotential, so they would be the better player as well as the older one.
     const base = generatePlayer(new Rng('age-value'), { position: 'CM', potentialTarget: 80, age: 26 });
     const at = (age: number) =>
-      marketValue({ ...base, age, potential: 80, contract: { wage: 0, yearsRemaining: 3 } });
+      marketValue({ ...base, age, hiddenPotential: 80, contract: { wage: 0, yearsRemaining: 3 } });
 
     expect(at(23)).toBeGreaterThan(at(18));
     expect(at(23)).toBeGreaterThan(at(30));

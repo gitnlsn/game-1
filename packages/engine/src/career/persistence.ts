@@ -1,11 +1,11 @@
 import { Rng } from '../rng/index.js';
-import type { Club, Fixture, MatchEvent, MatchResult, Player } from '../types.js';
+import type { Club, Fixture, MatchEvent, MatchResult, Player, ScoutingState } from '../types.js';
 import { createSeasonState } from '../league/season.js';
 import { ensurePlayerIdsAbove } from '../world/players.js';
 import type { Career } from './controller.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -45,6 +45,8 @@ export interface SavedCareer {
     played: [string, number][];
   };
   history: SeasonSummary[];
+  /** Added in save version 2. */
+  scouting: ScoutingState;
 }
 
 export function toSavedCareer(career: Career): SavedCareer {
@@ -72,6 +74,7 @@ export function toSavedCareer(career: Career): SavedCareer {
       played: [...season.played.entries()],
     },
     history: career.history,
+    scouting: career.scouting,
   };
 }
 
@@ -104,12 +107,32 @@ type Migration = (saved: AnySave) => AnySave;
  * One entry per version, keyed by the version it upgrades *from*. Migrations are
  * pure data shaping with no randomness, so a migrated career resumes on exactly
  * the RNG sequence it would have.
- *
- * There is nothing here yet -- the save format has only ever had one shape. The
- * chain exists so that the first shape change does not delete everyone's career,
- * which is what the previous throw-and-wipe did.
  */
-const MIGRATIONS: Record<number, Migration> = {};
+const MIGRATIONS: Record<number, Migration> = {
+  /**
+   * v2 added scouting and renamed `potential` to `hiddenPotential`. A career from
+   * v1 starts out knowing nothing, and every player has to be renamed -- miss
+   * that and market values silently become NaN for everyone under 26, because
+   * the youth premium is the only place that reads the field.
+   */
+  1: (saved) => {
+    const renamePlayer = (player: Record<string, unknown>) => {
+      if (player.hiddenPotential === undefined && player.potential !== undefined) {
+        player.hiddenPotential = player.potential;
+        delete player.potential;
+      }
+    };
+
+    for (const club of (saved.clubs as { squad: Record<string, unknown>[] }[]) ?? []) {
+      for (const player of club.squad ?? []) renamePlayer(player);
+    }
+    for (const player of (saved.freeAgents as Record<string, unknown>[]) ?? []) {
+      renamePlayer(player);
+    }
+
+    return { ...saved, version: 2, scouting: { reports: {} } };
+  },
+};
 
 /** Raised when a save cannot be brought up to the current format. */
 export class UnsupportedSaveError extends Error {
@@ -192,6 +215,7 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     managedClubId: saved.managedClubId,
     season,
     history: saved.history,
+    scouting: saved.scouting ?? { reports: {} },
   };
 }
 

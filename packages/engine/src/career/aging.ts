@@ -84,7 +84,7 @@ const DEFAULT_CONTEXT: DevelopmentContext = { minutes: 0, seasonMatches: 38, coa
  * Ages a player one season. Ability moves toward what the age curve says they
  * should be, but how fast depends on how much football they played and how good
  * their coaching is. A 19 year old who starts every week at a big club closes
- * most of the gap to their potential; the same player watching from the bench
+ * most of the gap to their hiddenPotential; the same player watching from the bench
  * barely moves.
  */
 export function developPlayer(
@@ -114,7 +114,7 @@ export function developPlayer(
 
   // Then move the overall level toward what the age curve says it should be.
   const ability = abilityIn(player.attributes, player.position);
-  const target = player.potential * developmentFactor(player.age);
+  const target = player.hiddenPotential * developmentFactor(player.age);
   const gap = target - ability;
 
   const available = Math.max(1, context.seasonMatches * 90);
@@ -123,7 +123,7 @@ export function developPlayer(
 
   let rate = rng.float(A.developmentRateMin, A.developmentRateMax);
   if (gap > 0) {
-    // Improving: games and coaching are what turn potential into ability.
+    // Improving: games and coaching are what turn hiddenPotential into ability.
     rate *= (A.benchDevelopmentFloor + (1 - A.benchDevelopmentFloor) * playingFactor) * context.coaching;
   } else {
     // Declining: it happens either way, but regular football keeps you sharper.

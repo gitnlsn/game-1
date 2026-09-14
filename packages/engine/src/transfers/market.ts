@@ -369,7 +369,7 @@ export function processContracts(rng: Rng, world: World): { renewed: number; rel
       const ability = abilityIn(player.attributes, player.position);
       const worthKeeping =
         ability >= targetAbility(club.reputation) - 10 ||
-        (player.age <= 22 && player.potential >= targetAbility(club.reputation));
+        (player.age <= 22 && player.hiddenPotential >= targetAbility(club.reputation));
       const newWage = Math.round(expectedWage(player) * rng.float(1, 1.2));
       const affordable = wageBill(keeping) + newWage <= club.finances.wageBudget;
       const mustKeep = keeping.length + 1 <= T.minSquadSize;

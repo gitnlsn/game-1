@@ -22,7 +22,7 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 98 tests
+pnpm test                               # 110 tests
 pnpm typecheck
 ```
 
@@ -116,6 +116,38 @@ a week's rest gives back a flat amount plus a share of whatever is missing.
 Those two settle an ever-present around 65 condition and a rotated player near
 full fitness, which is what makes squad depth worth paying for. Across a season
 a club uses ~21 players, with its most-used eleven taking ~78% of the minutes.
+
+## Hidden potential and scouting
+
+How good a player might become is **engine-private**. `Player.hiddenPotential` is
+the simulation's ground truth; nothing player-facing may read it, and the UI goes
+through `scoutedPotential`, which returns a *range* rather than a number.
+
+A scout's blind spot on a given player is drawn once and fixed for the life of the
+world, from a throwaway generator seeded on the world and the player id. Only the
+*width* of the band shrinks as you learn more, so an estimate closes in on the
+truth rather than jumping about — "we had him at 70–84, now 74–79, he turned out
+76" reads as learning, where redrawing the midpoint each time would read as dice.
+
+That throwaway generator matters more than it looks: reports are read on every
+render, so drawing from the career's own RNG would mean opening the squad screen
+changed next week's results. There is a test asserting the career's RNG state is
+untouched after reading every report in a squad.
+
+Knowledge accrues for free and deterministically. You inherit your squad already
+knowing it well — your coaches have watched them daily — except the teenagers who
+have never played, which is the doubt actually worth having. After that you learn
+by watching: minutes played for your own, and facing a side for theirs. So the
+squad list shows a tight `80–86` against an established 23-year-old and a wide
+`48–66` against an 18-year-old nobody has seen.
+
+**The AI deliberately cheats**, and the code says so. Giving nineteen rival clubs
+noisy potential would misprice every under-26 through `marketValue`, moving squad
+values, transfer volume and squad ages — recalibrating the whole economy to buy a
+fairness property nobody can observe. Your edge was never information parity; it
+is that you can *act*. `marketValue` likewise keeps the true number, because it is
+the market's price. `scoutedValue` runs the same curve on your estimate, and the
+gap between the two is where a bargain or a mistake lives.
 
 ## Development
 
