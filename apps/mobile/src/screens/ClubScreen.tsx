@@ -1,5 +1,7 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   formatMoney,
   isAvailable,
@@ -17,6 +19,9 @@ import {
 import { Badge, Button, Card, Divider, KeyValue, SectionTitle, StatTile, textStyles } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+import type { RootStackParamList } from '../nav/routes';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const ORDINAL_SUFFIX = ['th', 'st', 'nd', 'rd'];
 function ordinal(n: number): string {
@@ -34,16 +39,12 @@ function outcomeFor(result: MatchResult, clubId: string): 'W' | 'D' | 'L' {
 
 const OUTCOME_COLOR = { W: colors.accent, D: colors.muted, L: colors.danger } as const;
 
-export function ClubScreen({
-  onPlay,
-  onFinishSeason,
-}: {
-  onPlay: () => void;
-  onFinishSeason: () => void;
-}) {
-  const { career, busy } = useGame();
+export function ClubScreen() {
+  const navigation = useNavigation<Nav>();
+  const { career, busy, playRound, finishSeason, settings } = useGame();
   if (!career) return null;
 
+  void settings;
   const club = managedClub(career);
   const table = leagueTable(career);
   const row = table.find((r) => r.clubId === club.id);
@@ -73,6 +74,14 @@ export function ClubScreen({
             Season {career.world.season} · {club.city} · Reputation {club.reputation}
           </Text>
         </View>
+        <Pressable
+          onPress={() => navigation.navigate('settings')}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+          style={styles.gear}
+        >
+          <Text style={styles.gearIcon}>⚙</Text>
+        </Pressable>
         <View style={styles.positionBox}>
           <Text style={styles.positionValue}>{seasonStarted ? ordinal(position) : '—'}</Text>
           <Text style={styles.positionLabel}>
@@ -105,7 +114,10 @@ export function ClubScreen({
           </Text>
           <Button
             label="End season"
-            onPress={onFinishSeason}
+            onPress={async () => {
+              const summary = await finishSeason();
+              if (summary) navigation.navigate('seasonSummary');
+            }}
             loading={busy}
             style={styles.playButton}
           />
@@ -132,7 +144,24 @@ export function ClubScreen({
               : ''}
           </Text>
 
-          <Button label="Play match" onPress={onPlay} loading={busy} style={styles.playButton} />
+          <Button
+            label="Pick team"
+            onPress={() => navigation.navigate('teamSelection')}
+            style={styles.playButton}
+          />
+          {/* For the 38 rounds a season where you do not care to pick. */}
+          <Button
+            label="Quick play"
+            variant="secondary"
+            loading={busy}
+            onPress={async () => {
+              const outcome = await playRound();
+              if (outcome?.ownMatch && career) {
+                navigation.navigate('matchResult', { round: career.season.nextRound - 1 });
+              }
+            }}
+            style={styles.quickButton}
+          />
         </Card>
       ) : null}
 
@@ -244,6 +273,9 @@ const styles = StyleSheet.create({
   opponentName: { color: colors.text, fontSize: 18, fontWeight: '700', flex: 1 },
   opponentMeta: { color: colors.muted, fontSize: 12, marginTop: 4 },
   playButton: { marginTop: spacing.md },
+  quickButton: { marginTop: spacing.sm },
+  gear: { padding: spacing.xs, marginRight: spacing.xs },
+  gearIcon: { color: colors.muted, fontSize: 18 },
   finishedText: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   noForm: { color: colors.faint, fontSize: 13, fontStyle: 'italic' },
   resultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3 },

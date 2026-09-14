@@ -6,7 +6,6 @@ import {
   Text,
   View,
   type StyleProp,
-  type TextStyle,
   type ViewStyle,
 } from 'react-native';
 import { colors, radius, spacing } from '../theme';
@@ -47,6 +46,90 @@ export function StatTile({
       <Text style={[styles.statValue, tint ? { color: tint } : null]} numberOfLines={1}>
         {value}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * A selectable pill. Extracted from the sort chips, which were missing the
+ * accessibility state a screen-reader user needs to tell which one is active.
+ */
+export function Chip({
+  label,
+  selected,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected, disabled: !!disabled }}
+      style={[styles.chip, selected ? styles.chipSelected : null, disabled ? styles.chipDisabled : null]}
+    >
+      <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function ChipRow<T extends string>({
+  options,
+  value,
+  onChange,
+  style,
+}: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[styles.chipRow, style]}>
+      {options.map((option) => (
+        <Chip
+          key={option.value}
+          label={option.label}
+          selected={option.value === value}
+          onPress={() => onChange(option.value)}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** A labelled 0-100 bar. Always paired with the number, never colour alone. */
+export function StatBar({
+  label,
+  value,
+  color,
+  width = 78,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  width?: number;
+}) {
+  return (
+    <View style={{ width }} accessibilityLabel={`${label} ${Math.round(value)}`}>
+      <View style={styles.statBarHeader}>
+        <Text style={styles.statBarLabel}>{label}</Text>
+        <Text style={styles.statBarValue}>{Math.round(value)}</Text>
+      </View>
+      <View style={styles.statBarTrack}>
+        <View
+          style={[
+            styles.statBarFill,
+            { width: `${Math.max(2, Math.min(100, value))}%`, backgroundColor: color },
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -151,12 +234,6 @@ export function EmptyNote({ children }: { children: React.ReactNode }) {
 export const textStyles = StyleSheet.create({
   title: { color: colors.text, fontSize: 22, fontWeight: '700' },
   subtitle: { color: colors.muted, fontSize: 13 },
-  body: { color: colors.text, fontSize: 14 },
-  mono: {
-    color: colors.text,
-    fontSize: 13,
-    fontVariant: ['tabular-nums'],
-  } as TextStyle,
 });
 
 const styles = StyleSheet.create({
@@ -202,6 +279,41 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontVariant: ['tabular-nums'],
   },
+  chip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  chipSelected: { borderColor: colors.accent, backgroundColor: colors.accentDim },
+  chipDisabled: { opacity: 0.4 },
+  chipText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  chipTextSelected: { color: '#EAFBEF' },
+  chipRow: { flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' },
+  statBarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  statBarLabel: {
+    color: colors.faint,
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statBarValue: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  statBarTrack: {
+    height: 5,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginTop: 3,
+  },
+  statBarFill: { height: 5, borderRadius: 3 },
   badge: {
     borderWidth: 1,
     borderRadius: radius.sm,

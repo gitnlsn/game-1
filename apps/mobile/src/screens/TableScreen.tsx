@@ -1,16 +1,28 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { finaliseSeason, leagueTable } from '@game1/engine';
 import { Card, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+import type { RootStackParamList } from '../nav/routes';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function TableScreen() {
-  const { career } = useGame();
-  if (!career) return null;
+  const navigation = useNavigation<Nav>();
+  const { career, version } = useGame();
 
-  const table = leagueTable(career);
-  const scorers = finaliseSeason(career.season).scorers.slice(0, 10);
+  // finaliseSeason rebuilds the scorer map from every result in the season, so
+  // it must not run on every render.
+  const table = useMemo(() => (career ? leagueTable(career) : []), [career, version]);
+  const scorers = useMemo(
+    () => (career ? finaliseSeason(career.season).scorers.slice(0, 10) : []),
+    [career, version],
+  );
+
+  if (!career) return null;
 
   return (
     <ScrollView
@@ -39,6 +51,9 @@ export function TableScreen() {
           return (
             <View
               key={row.clubId}
+              accessibilityLabel={`${index + 1}. ${row.clubName}, played ${row.played}, ${row.points} points${
+                index === 0 ? ', league leaders' : index >= table.length - 3 ? ', relegation zone' : ''
+              }`}
               style={[styles.row, own ? styles.ownRow : null, { borderLeftColor: zone }]}
             >
               <Text style={[styles.pos, styles.cell]}>{index + 1}</Text>
@@ -67,7 +82,13 @@ export function TableScreen() {
           <Text style={styles.empty}>No goals scored yet this season.</Text>
         ) : (
           scorers.map((scorer, index) => (
-            <View key={scorer.playerId} style={styles.scorerRow}>
+            <Pressable
+              key={scorer.playerId}
+              onPress={() => navigation.navigate('player', { playerId: scorer.playerId })}
+              accessibilityRole="button"
+              accessibilityLabel={`${scorer.playerName}, ${scorer.clubName}, ${scorer.goals} goals`}
+              style={styles.scorerRow}
+            >
               <Text style={styles.scorerRank}>{index + 1}</Text>
               <Text style={styles.scorerName} numberOfLines={1}>
                 {scorer.playerName}
@@ -76,7 +97,7 @@ export function TableScreen() {
                 {scorer.clubName}
               </Text>
               <Text style={styles.scorerGoals}>{scorer.goals}</Text>
-            </View>
+            </Pressable>
           ))
         )}
       </Card>

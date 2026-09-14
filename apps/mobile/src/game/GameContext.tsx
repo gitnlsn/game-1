@@ -14,6 +14,7 @@ import {
 } from '@game1/engine';
 
 const SAVE_KEY = 'game1:career:v1';
+const SETTINGS_KEY = 'game1:settings';
 /** A save we could not read is moved here rather than deleted. */
 const QUARANTINE_KEY = 'game1:career:unreadable';
 
@@ -21,6 +22,13 @@ export interface SaveProblem {
   kind: 'too_new' | 'no_migration_path' | 'damaged';
   message: string;
 }
+
+export interface Settings {
+  /** Show the match play out minute by minute, or just give the result. */
+  matchMode: 'instant' | 'replay';
+}
+
+const DEFAULT_SETTINGS: Settings = { matchMode: 'replay' };
 
 export interface RoundOutcome {
   /** The managed club's match, if they played this round. */
@@ -37,13 +45,20 @@ interface GameContextValue {
   version: number;
   loading: boolean;
   busy: boolean;
+  settings: Settings;
   newCareer: (seed: string, managedClubId: string) => void;
-  playRound: () => RoundOutcome | undefined;
-  finishSeason: () => SeasonSummary | undefined;
+  playRound: () => Promise<RoundOutcome | undefined>;
+  finishSeason: () => Promise<SeasonSummary | undefined>;
   abandonCareer: () => void;
+  updateSettings: (patch: Partial<Settings>) => void;
 }
 
 const GameContext = createContext<GameContextValue | undefined>(undefined);
+
+/** Lets React paint before a long synchronous block runs. */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const [career, setCareer] = useState<Career | undefined>();
@@ -51,12 +66,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saveProblem, setSaveProblem] = useState<SaveProblem | undefined>();
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
 
   // Restore a save on launch.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        const settingsJson = await AsyncStorage.getItem(SETTINGS_KEY);
+        if (!cancelled && settingsJson) {
+          setSettings({ ...DEFAULT_SETTINGS, ...(JSON.parse(settingsJson) as Partial<Settings>) });
+        }
+
         const json = await AsyncStorage.getItem(SAVE_KEY);
         if (!cancelled && json) setCareer(deserializeCareer(json));
       } catch (error) {
@@ -104,10 +125,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [persist],
   );
 
-  const playRound = useCallback((): RoundOutcome | undefined => {
+  const playRound = useCallback(async (): Promise<RoundOutcome | undefined> => {
     if (!career || isSeasonComplete(career)) return undefined;
 
     setBusy(true);
+    // Yield a frame so the spinner actually paints. Both setBusy calls used to
+    // sit in one synchronous callback, so React batched them away and the UI
+    // simply froze while ten matches simulated.
+    await nextFrame();
     try {
       const results = advanceRound(career);
       const ownMatch = results.find(
@@ -121,10 +146,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [career, persist]);
 
-  const finishSeason = useCallback((): SeasonSummary | undefined => {
+  const finishSeason = useCallback(async (): Promise<SeasonSummary | undefined> => {
     if (!career || !isSeasonComplete(career)) return undefined;
 
     setBusy(true);
+    await nextFrame();
     try {
       const summary = endSeason(career);
       setVersion((v) => v + 1);
@@ -143,14 +169,22 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const dismissSaveProblem = useCallback(() => setSaveProblem(undefined), []);
 
+  const updateSettings = useCallback((patch: Partial<Settings>) => {
+    setSettings((current) => {
+      const next = { ...current, ...patch };
+      AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const value = useMemo<GameContextValue>(
     () => ({
-      career, version, loading, busy, saveProblem,
-      newCareer, playRound, finishSeason, abandonCareer, dismissSaveProblem,
+      career, version, loading, busy, saveProblem, settings,
+      newCareer, playRound, finishSeason, abandonCareer, dismissSaveProblem, updateSettings,
     }),
     [
-      career, version, loading, busy, saveProblem,
-      newCareer, playRound, finishSeason, abandonCareer, dismissSaveProblem,
+      career, version, loading, busy, saveProblem, settings,
+      newCareer, playRound, finishSeason, abandonCareer, dismissSaveProblem, updateSettings,
     ],
   );
 
@@ -161,11 +195,4 @@ export function useGame(): GameContextValue {
   const context = useContext(GameContext);
   if (!context) throw new Error('useGame must be used inside a GameProvider');
   return context;
-}
-
-/** Narrower hook for screens that cannot render without a career. */
-export function useCareer(): Career {
-  const { career } = useGame();
-  if (!career) throw new Error('useCareer used with no career in progress');
-  return career;
 }

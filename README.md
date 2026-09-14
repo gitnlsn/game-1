@@ -33,10 +33,32 @@ pnpm mobile          # Expo dev server: scan the QR code with Expo Go
 pnpm mobile:web      # or run it in a browser
 ```
 
-Expo / React Native, four tabs — **Club**, **Squad**, **Table**, **Money**. Pick a
-club (a big one expects trophies, a small one expects you to survive), play the
-season a round at a time, and watch the squad age around you. Careers save to
-device storage after every round and resume on launch.
+Expo / React Native. Four tabs — **Club**, **Squad**, **Table**, **Money** — over a
+React Navigation stack, so player detail, team selection, the match and the season
+review are all pushed screens with proper back behaviour.
+
+Pick a club, **pick your team**, play the season a round at a time, and watch the
+squad age around you. Careers save to device storage after every round and resume
+on launch.
+
+**Team selection** is the screen the rest of it exists for: a formation picker,
+the eleven laid out by line, tap-one-then-another to swap, the rest of the squad
+below with fitness and availability, and a live attack/midfield/defence readout so
+a choice has a number attached — putting a goalkeeper at centre forward drops the
+attack rating from 76 to 53 before you kick off. **Auto pick** is the engine's own
+selection, so it is provably the pre-existing behaviour, and **Quick play** on the
+club screen skips the screen entirely: there are 38 rounds in a season and a
+manager who does not care should not be taxed every week.
+
+**Player detail** shows all sixteen attributes grouped technical / mental /
+physical / goalkeeping, condition, form, morale, contract, season stats, and the
+scouting band. Goalkeeping is pushed to the bottom for outfielders, where it is
+noise, and to the top for keepers.
+
+**Matches play out or resolve instantly**, your choice in settings, with a skip
+always available. The replay works on the existing event log — every event already
+carries a minute — so no engine re-architecture was needed. It is a replay rather
+than a live simulation, which is why in-match substitutions are still not possible.
 
 The app imports `@game1/engine` as a normal package and holds a `Career` in React
 context. The engine mutates the world in place, so the context carries a version
@@ -62,6 +84,17 @@ A few notes on how it is put together:
   squads do, so loading rebuilds the lookup table from the squads rather than
   deserialising twice. Get that wrong and a transfer moves one copy while the
   rest of the game reads another.
+- **Route params carry ids, never objects.** The engine mutates its world in
+  place, so a `Player` captured as a navigation param is stale the moment
+  anything happens.
+- **Confirmations are a custom dialog, not `Alert`.** `Alert.alert` in
+  react-native-web is a function with an empty body: it works on a device and
+  silently does nothing in a browser, which is where this is developed. A
+  destructive action that quietly skips its confirmation is worse than none.
+- **The replay is driven by elapsed time, not timer ticks.** Browsers clamp
+  timers in an unfocused tab — measured at ~1s against a requested 110ms — which
+  stretched a six-second replay into a minute. Reading the clock from wall-clock
+  time means throttling costs frames instead.
 
 ## How the match engine works
 

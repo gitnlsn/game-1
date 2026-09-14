@@ -1,18 +1,24 @@
 import React from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { formatMoney, type Career, type SeasonSummary } from '@game1/engine';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { formatMoney } from '@game1/engine';
 import { Button, Card, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
+import { useGame } from '../game/GameContext';
+import type { RootStackParamList } from '../nav/routes';
 
-export function SeasonSummaryScreen({
-  career,
-  summary,
-  onDismiss,
-}: {
-  career: Career;
-  summary: SeasonSummary;
-  onDismiss: () => void;
-}) {
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+export function SeasonSummaryScreen() {
+  const navigation = useNavigation<Nav>();
+  const { career } = useGame();
+
+  // Read the season just finished out of the career rather than carrying it as a
+  // route param: the world mutates in place, so a captured object goes stale.
+  const summary = career?.history[career.history.length - 1];
+  if (!career || !summary) return null;
+
   const position = summary.table.findIndex((row) => row.clubId === career.managedClubId) + 1;
   const own = summary.table[position - 1];
   const won = position === 1;
@@ -22,7 +28,6 @@ export function SeasonSummaryScreen({
   const outgoing = summary.transfers.filter((t) => t.fromClubId === career.managedClubId);
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onDismiss}>
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Text style={styles.heading}>Season {summary.season} review</Text>
@@ -91,10 +96,12 @@ export function SeasonSummaryScreen({
         </ScrollView>
 
         <View style={styles.footer}>
-          <Button label={`Start season ${career.world.season}`} onPress={onDismiss} />
+          <Button
+            label={`Start season ${career.world.season}`}
+            onPress={() => navigation.navigate('tabs')}
+          />
         </View>
       </View>
-    </Modal>
   );
 }
 

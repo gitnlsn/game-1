@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   currentAbility,
   formatMoney,
@@ -13,6 +15,9 @@ import {
 import { Badge, Card, SectionTitle } from '../components/ui';
 import { colors, conditionColor, positionColor, radius, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+import type { RootStackParamList } from '../nav/routes';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 type SortKey = 'ability' | 'age' | 'value' | 'minutes';
 
@@ -24,6 +29,7 @@ const SORTS: { key: SortKey; label: string }[] = [
 ];
 
 export function SquadScreen() {
+  const navigation = useNavigation<Nav>();
   const { career, version } = useGame();
   const [sort, setSort] = useState<SortKey>('ability');
 
@@ -60,6 +66,8 @@ export function SquadScreen() {
               key={option.key}
               onPress={() => setSort(option.key)}
               accessibilityRole="button"
+              accessibilityLabel={`Sort by ${option.label}`}
+              accessibilityState={{ selected: sort === option.key }}
               style={[styles.sortChip, sort === option.key ? styles.sortChipActive : null]}
             >
               <Text
@@ -77,13 +85,27 @@ export function SquadScreen() {
         keyExtractor={(player) => player.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => <PlayerRow player={item} report={scoutReport(career!, item)} />}
+        renderItem={({ item }) => (
+          <PlayerRow
+            player={item}
+            report={scoutReport(career!, item)}
+            onPress={() => navigation.navigate('player', { playerId: item.id })}
+          />
+        )}
       />
     </View>
   );
 }
 
-function PlayerRow({ player, report }: { player: Player; report: PotentialEstimate }) {
+function PlayerRow({
+  player,
+  report,
+  onPress,
+}: {
+  player: Player;
+  report: PotentialEstimate;
+  onPress: () => void;
+}) {
   const ability = currentAbility(player);
   const { status } = player;
 
@@ -95,7 +117,12 @@ function PlayerRow({ player, report }: { player: Player; report: PotentialEstima
         : undefined;
 
   return (
-    <Card style={styles.playerCard}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${player.displayName}, ${player.position}, ability ${currentAbility(player).toFixed(0)}`}
+    >
+      <Card style={styles.playerCard}>
       <View style={styles.playerTop}>
         <View style={[styles.positionChip, { borderColor: positionColor(player.position) }]}>
           <Text style={[styles.positionText, { color: positionColor(player.position) }]}>
@@ -158,7 +185,8 @@ function PlayerRow({ player, report }: { player: Player; report: PotentialEstima
 
         {unavailable ? <Badge label={unavailable.label} color={unavailable.color} /> : null}
       </View>
-    </Card>
+      </Card>
+    </Pressable>
   );
 }
 
