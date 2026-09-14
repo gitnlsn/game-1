@@ -29,6 +29,8 @@ export const ECONOMY_TUNING = {
   formFillWeight: 0.12,
   /** How strongly a glamorous opponent moves the gate. */
   opponentFillWeight: 0.25,
+  /** Spread applied to each club's ground size and opening cash. */
+  clubVariation: 0.1,
   /** Opening balance as a share of a club's expected annual revenue. */
   openingBalanceShare: 0.18,
   /** Clubs will carry a wage bill up to this share of expected revenue. */
@@ -125,13 +127,19 @@ export function createClubFinances(
   reputation: number,
   squad: readonly Player[],
   clubCount: number,
+  rng?: Rng,
 ): ClubFinances {
   const E = ECONOMY_TUNING;
   const revenue = expectedAnnualRevenue(reputation, clubCount);
 
+  // Clubs of equal standing should not be identical down to the seat: a little
+  // variation in ground size and cash reserves makes each one its own place.
+  const groundVariation = rng ? rng.float(1 - E.clubVariation, 1 + E.clubVariation) : 1;
+  const cashVariation = rng ? rng.float(1 - E.clubVariation * 2, 1 + E.clubVariation * 2) : 1;
+
   return {
-    balance: Math.round(revenue * E.openingBalanceShare),
-    stadiumCapacity: stadiumCapacity(reputation),
+    balance: Math.round(revenue * E.openingBalanceShare * cashVariation),
+    stadiumCapacity: Math.round(stadiumCapacity(reputation) * groundVariation),
     ticketPrice: ticketPrice(reputation),
     sponsorshipPerSeason: sponsorshipIncome(reputation),
     transferBudget: 0,
@@ -282,7 +290,8 @@ export function applyCloseSeasonSpending(club: Club, clubCount: number): void {
     club.finances.season.ownerDrawings += drawings;
   }
 
-  // Ticket prices track the club's standing.
+  // Ticket prices track the club's standing. Ground size is deliberately left
+  // alone: it only ever changes through expansion above.
   club.finances.ticketPrice = ticketPrice(club.reputation);
   club.finances.sponsorshipPerSeason = sponsorshipIncome(club.reputation);
 }

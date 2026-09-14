@@ -2,5 +2,10 @@ packages:
   - "packages/*"
   - "apps/*"
 
+# React Native's toolchain relies on a flat node_modules: Metro and the many
+# implicit peer dependencies in the RN ecosystem do not cope with pnpm's default
+# isolated layout.
+nodeLinker: hoisted
+
 allowBuilds:
   esbuild: true

@@ -92,13 +92,25 @@ export function simulateCareer(
   return summaries;
 }
 
-export function simulateCareerSeason(world: World, rng: Rng): SeasonSummary {
+/** Prepares clubs for a new season: clears the books and sets budgets. */
+export function beginSeason(world: World): void {
   const clubs = world.league.clubs;
-
   for (const club of clubs) resetSeasonRecord(club);
   setTransferBudgets(clubs, clubs.length);
+}
 
+export function simulateCareerSeason(world: World, rng: Rng): SeasonSummary {
+  beginSeason(world);
   const season: SeasonResult = simulateSeason(world, rng, { economy: true, playerState: true });
+  return closeSeason(world, rng, season);
+}
+
+/**
+ * Everything that happens once the last match is played: prize money, ageing,
+ * retirements, contracts, the academy intake and the transfer window.
+ */
+export function closeSeason(world: World, rng: Rng, season: SeasonResult): SeasonSummary {
+  const clubs = world.league.clubs;
   distributeSeasonIncome(clubs, season.table);
 
   const finances = clubs.map((club) => toClubSeasonFinance(club));
@@ -111,9 +123,17 @@ export function simulateCareerSeason(world: World, rng: Rng): SeasonSummary {
   for (const club of clubs) applyCloseSeasonSpending(club, clubs.length);
   processContracts(rng, world);
 
+  // One registry for the whole division, so an academy intake cannot reuse a
+  // name that already belongs to someone at another club.
+  const leagueNames = new Set<string>();
+  for (const club of clubs) {
+    for (const player of club.squad) leagueNames.add(player.displayName);
+  }
+  for (const player of world.freeAgents) leagueNames.add(player.displayName);
+
   let youthPromoted = 0;
   for (const club of clubs) {
-    youthPromoted += promoteYouth(rng, club, TRANSFER_TUNING.targetSquadSize).length;
+    youthPromoted += promoteYouth(rng, club, TRANSFER_TUNING.targetSquadSize, leagueNames).length;
     for (const player of club.squad) world.players.set(player.id, player);
   }
 

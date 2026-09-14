@@ -4,9 +4,15 @@
   "version": "0.0.0",
   "scripts": {
     "sim": "pnpm --filter @game1/engine sim",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "build:engine": "pnpm --filter @game1/engine build",
+    "mobile": "pnpm build:engine && pnpm --filter @game1/mobile exec expo start",
+    "mobile:web": "pnpm build:engine && pnpm --filter @game1/mobile exec expo start --web"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

@@ -91,13 +91,17 @@ function startersByPosition(formation: readonly Position[]): Map<Position, numbe
 /** Quality drop for each successive player at the same position. */
 const DEPTH_PENALTY: readonly number[] = [0, -3, -7, -11, -14];
 
-export function generateSquad(rng: Rng, reputation: number, domesticPool: NamePool): Player[] {
+export function generateSquad(
+  rng: Rng,
+  reputation: number,
+  domesticPool: NamePool,
+  takenNames: Set<string> = new Set(),
+): Player[] {
   // A club's reputation sets the mean potential of the players it can attract.
   const clubBase = 30 + reputation * 0.62;
   const formation = FORMATIONS[DEFAULT_FORMATION]!;
   const starters = startersByPosition(formation);
   const squad: Player[] = [];
-  const takenNames = new Set<string>();
 
   for (const position of Object.keys(SQUAD_SHAPE) as Position[]) {
     const count = SQUAD_SHAPE[position];
@@ -139,6 +143,9 @@ export function generateClubs(rng: Rng, options: GenerateClubsOptions): Club[] {
   const style = CLUB_STYLES[nationality] ?? CLUB_STYLES.ENG!;
   const domesticPool = NAME_POOL_BY_CODE.get(nationality) ?? NAME_POOL_BY_CODE.get('ENG')!;
   const taken = new Set<string>();
+  // Shared across the division: two players called "Careca" at different clubs
+  // reads as a bug when they appear together in the scoring charts.
+  const takenNames = new Set<string>();
   const clubs: Club[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -147,7 +154,7 @@ export function generateClubs(rng: Rng, options: GenerateClubsOptions): Club[] {
     const t = count === 1 ? 0 : i / (count - 1);
     const reputation = clamp(Math.round(rng.gaussian(top - (top - bottom) * t, 2.5)), 20, 99);
     const { name, city } = generateClubName(rng, style, taken);
-    const squad = generateSquad(rng, reputation, domesticPool);
+    const squad = generateSquad(rng, reputation, domesticPool, takenNames);
 
     const club: Club = {
       id: `c${i + 1}`,
@@ -157,7 +164,7 @@ export function generateClubs(rng: Rng, options: GenerateClubsOptions): Club[] {
       nationality,
       reputation,
       squad,
-      finances: createClubFinances(reputation, squad, count),
+      finances: createClubFinances(reputation, squad, count, rng),
     };
 
     fitWagesToBudget(club);

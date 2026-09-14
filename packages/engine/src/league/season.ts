@@ -1,5 +1,5 @@
 import { Rng } from '../rng/index.js';
-import type { Fixture, MatchResult, SeasonResult, World } from '../types.js';
+import type { Fixture, MatchResult, SeasonResult, TableRow, World } from '../types.js';
 import { simulateMatch } from '../match/engine.js';
 import { generateFixtures } from './fixtures.js';
 import { buildTable } from './table.js';
@@ -27,70 +27,142 @@ export interface SimulateSeasonOptions {
   playerState?: boolean;
 }
 
-export function simulateSeason(
+/**
+ * A season in progress. Kept as explicit state rather than a loop so a game can
+ * play one round at a time and show the results, while `simulateSeason` runs the
+ * whole thing at once for the tuning harness.
+ */
+export interface SeasonState {
+  world: World;
+  rng: Rng;
+  fixtures: Fixture[];
+  results: MatchResult[];
+  /** The next round to be played, 1-based. */
+  nextRound: number;
+  totalRounds: number;
+  options: SimulateSeasonOptions;
+  /** Running points and games, so gate receipts respond to how the season is going. */
+  points: Map<string, number>;
+  played: Map<string, number>;
+}
+
+export function createSeasonState(
   world: World,
   rng: Rng,
   options: SimulateSeasonOptions = {},
-): SeasonResult {
+): SeasonState {
+  const clubs = world.league.clubs;
+  const fixtures = options.fixtures ?? generateFixtures(clubs.map((c) => c.id), rng);
+  const totalRounds = fixtures.reduce((max, fixture) => Math.max(max, fixture.round), 0);
+
+  return {
+    world,
+    rng,
+    fixtures,
+    results: [],
+    nextRound: 1,
+    totalRounds,
+    options,
+    points: new Map(),
+    played: new Map(),
+  };
+}
+
+export function seasonComplete(state: SeasonState): boolean {
+  return state.nextRound > state.totalRounds;
+}
+
+/** The fixtures that make up the next round, before it is played. */
+export function upcomingRound(state: SeasonState): Fixture[] {
+  return state.fixtures.filter((fixture) => fixture.round === state.nextRound);
+}
+
+/**
+ * Plays one round: a week passes first (wages, recovery, bans ticking down),
+ * then every match in the round is played.
+ */
+export function playRound(state: SeasonState): MatchResult[] {
+  if (seasonComplete(state)) return [];
+
+  const { world, rng, options } = state;
   const clubs = world.league.clubs;
   const clubById = new Map(clubs.map((club) => [club.id, club]));
-  const fixtures = options.fixtures ?? generateFixtures(clubs.map((c) => c.id), rng);
 
-  const results: MatchResult[] = [];
-  // Running points, so gate receipts can respond to how the season is going.
-  const points = new Map<string, number>();
-  const played = new Map<string, number>();
-  let currentRound = 0;
+  if (options.economy) {
+    for (const club of clubs) {
+      payWeeklySponsorship(club);
+      payWeeklyWages(club);
+      payWeeklyOperatingCosts(club, clubs.length);
+    }
+  }
 
-  for (const fixture of fixtures) {
+  // A week passes between rounds: everyone recovers, bans and lay-offs tick.
+  if (options.playerState) {
+    for (const club of clubs) {
+      for (const player of club.squad) advancePlayerWeek(player);
+    }
+  }
+
+  const roundResults: MatchResult[] = [];
+
+  for (const fixture of state.fixtures) {
+    if (fixture.round !== state.nextRound) continue;
+
     const home = clubById.get(fixture.homeClubId);
     const away = clubById.get(fixture.awayClubId);
-    if (!home || !away) throw new Error(`simulateSeason: unknown club in fixture round ${fixture.round}`);
-
-    if (fixture.round !== currentRound) {
-      currentRound = fixture.round;
-
-      if (options.economy) {
-        for (const club of clubs) {
-          payWeeklySponsorship(club);
-          payWeeklyWages(club);
-          payWeeklyOperatingCosts(club, clubs.length);
-        }
-      }
-
-      // A week passes between rounds: everyone recovers, bans and lay-offs tick.
-      if (options.playerState) {
-        for (const club of clubs) {
-          for (const player of club.squad) advancePlayerWeek(player);
-        }
-      }
+    if (!home || !away) {
+      throw new Error(`playRound: unknown club in fixture round ${fixture.round}`);
     }
 
     if (options.economy) {
-      const games = played.get(home.id) ?? 0;
-      const pointsPerGame = games === 0 ? 1.3 : (points.get(home.id) ?? 0) / games;
+      const games = state.played.get(home.id) ?? 0;
+      const pointsPerGame = games === 0 ? 1.3 : (state.points.get(home.id) ?? 0) / games;
       applyMatchdayIncome(home, away, pointsPerGame);
     }
 
     const result = simulateMatch(rng, home, away, {
       ...(options.playerState ? { updatePlayerState: true } : {}),
     });
-    results.push(result);
+    state.results.push(result);
+    roundResults.push(result);
 
-    const homePoints = result.home.goals > result.away.goals ? 3 : result.home.goals === result.away.goals ? 1 : 0;
-    points.set(home.id, (points.get(home.id) ?? 0) + homePoints);
-    points.set(away.id, (points.get(away.id) ?? 0) + (homePoints === 3 ? 0 : homePoints === 1 ? 1 : 3));
-    played.set(home.id, (played.get(home.id) ?? 0) + 1);
-    played.set(away.id, (played.get(away.id) ?? 0) + 1);
+    const homePoints =
+      result.home.goals > result.away.goals ? 3 : result.home.goals === result.away.goals ? 1 : 0;
+    const awayPoints = homePoints === 3 ? 0 : homePoints;
+    state.points.set(home.id, (state.points.get(home.id) ?? 0) + homePoints);
+    state.points.set(away.id, (state.points.get(away.id) ?? 0) + awayPoints);
+    state.played.set(home.id, (state.played.get(home.id) ?? 0) + 1);
+    state.played.set(away.id, (state.played.get(away.id) ?? 0) + 1);
 
     options.onMatch?.(result, fixture);
   }
 
+  state.nextRound += 1;
+  return roundResults;
+}
+
+/** The table as it stands right now, mid-season or at the end. */
+export function currentTable(state: SeasonState): TableRow[] {
+  return buildTable(state.world.league.clubs, state.results);
+}
+
+export function finaliseSeason(state: SeasonState): SeasonResult {
   return {
-    table: buildTable(clubs, results),
-    results,
-    scorers: buildScorers(world, results),
+    table: currentTable(state),
+    results: state.results,
+    scorers: buildScorers(state.world, state.results),
   };
+}
+
+/** Plays a whole season in one go. */
+export function simulateSeason(
+  world: World,
+  rng: Rng,
+  options: SimulateSeasonOptions = {},
+): SeasonResult {
+  const state = createSeasonState(world, rng, options);
+  while (!seasonComplete(state)) playRound(state);
+  return finaliseSeason(state);
 }
 
 function buildScorers(world: World, results: readonly MatchResult[]): SeasonResult['scorers'] {

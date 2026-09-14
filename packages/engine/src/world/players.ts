@@ -156,11 +156,34 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player
   };
 }
 
+/**
+ * Draws a name nobody in the league is already using. Redrawing alone is not
+ * enough once a whole division is sharing one pool, so the display format
+ * escalates instead -- which is what real football does when two players share a
+ * name: first the full forename, then a second surname.
+ */
 function generateUniqueName(rng: Rng, pool: NamePool, taken: Set<string> | undefined) {
   let name = generateName(rng, pool);
-  for (let attempt = 0; taken?.has(name.displayName) && attempt < 40; attempt++) {
+  if (!taken) return name;
+
+  for (let attempt = 0; attempt < 25 && taken.has(name.displayName); attempt++) {
     name = generateName(rng, pool);
   }
+  if (!taken.has(name.displayName)) return name;
+
+  const full = { ...name, displayName: `${name.firstName} ${name.lastName}` };
+  if (!taken.has(full.displayName)) return full;
+
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const second = rng.pick(pool.last);
+    if (second === name.lastName) continue;
+    const compound = {
+      ...name,
+      displayName: `${name.firstName.charAt(0)}. ${name.lastName} ${second}`,
+    };
+    if (!taken.has(compound.displayName)) return compound;
+  }
+
   return name;
 }
 

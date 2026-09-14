@@ -11,6 +11,7 @@ import type { World } from '../types.js';
 /** Every invariant that must hold no matter how many seasons have been played. */
 function assertWorldIsCoherent(world: World): void {
   const seen = new Map<string, string>();
+  const names = new Set<string>();
 
   for (const club of world.league.clubs) {
     expect(club.squad.length, `${club.name} squad size`).toBeGreaterThanOrEqual(
@@ -25,6 +26,10 @@ function assertWorldIsCoherent(world: World): void {
       // No player may be at two clubs at once.
       expect(seen.has(player.id), `${player.displayName} duplicated`).toBe(false);
       seen.set(player.id, club.id);
+
+      // Academy intakes must not reintroduce a name already in use.
+      expect(names.has(player.displayName), `duplicate name ${player.displayName}`).toBe(false);
+      names.add(player.displayName);
 
       expect(player.contract.wage).toBeGreaterThan(0);
       expect(player.contract.yearsRemaining).toBeGreaterThanOrEqual(0);

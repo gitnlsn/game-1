@@ -70,12 +70,13 @@ describe('createWorld', () => {
     expect(names.size).toBe(world.league.clubs.length);
   });
 
-  it('never repeats a display name inside one squad', () => {
-    for (const seed of ['dup-a', 'dup-b', 'dup-c']) {
-      for (const club of createWorld({ seed }).league.clubs) {
-        const names = club.squad.map((p) => p.displayName);
-        expect(new Set(names).size, `${club.name} @ ${seed}`).toBe(names.length);
-      }
+  it('never repeats a display name anywhere in the league', () => {
+    // Two players called "Careca" at different clubs read as a bug the moment
+    // they appear together in a scoring chart.
+    for (const seed of ['dup-a', 'dup-b', 'dup-c', 'dup-d']) {
+      const world = createWorld({ seed });
+      const names = [...world.players.values()].map((p) => p.displayName);
+      expect(new Set(names).size, `duplicates @ ${seed}`).toBe(names.length);
     }
   });
 

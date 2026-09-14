@@ -148,9 +148,14 @@ export function shouldRetire(rng: Rng, player: Player, minutes = 0): boolean {
  * the positions the club is actually short of. Youth quality follows club
  * reputation, so big clubs produce better prospects.
  */
-export function promoteYouth(rng: Rng, club: Club, minSquadSize: number): Player[] {
+export function promoteYouth(
+  rng: Rng,
+  club: Club,
+  minSquadSize: number,
+  leagueNames?: Set<string>,
+): Player[] {
   const domesticPool = NAME_POOL_BY_CODE.get(club.nationality) ?? NAME_POOL_BY_CODE.get('ENG')!;
-  const takenNames = new Set(club.squad.map((p) => p.displayName));
+  const takenNames = leagueNames ?? new Set(club.squad.map((p) => p.displayName));
   const promoted: Player[] = [];
 
   const counts = new Map<Position, number>();

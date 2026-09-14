@@ -6,7 +6,7 @@ tuning harness and on-device.
 
 ```
 packages/engine   the simulation: world generation, match engine, league
-apps/mobile       Expo / React Native app (not built yet)
+apps/mobile       Expo / React Native app
 ```
 
 ## Running it
@@ -22,8 +22,46 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 73 tests
+pnpm test                               # 80 tests
+pnpm typecheck
 ```
+
+## The app
+
+```bash
+pnpm mobile          # Expo dev server: scan the QR code with Expo Go
+pnpm mobile:web      # or run it in a browser
+```
+
+Expo / React Native, four tabs — **Club**, **Squad**, **Table**, **Money**. Pick a
+club (a big one expects trophies, a small one expects you to survive), play the
+season a round at a time, and watch the squad age around you. Careers save to
+device storage after every round and resume on launch.
+
+The app imports `@game1/engine` as a normal package and holds a `Career` in React
+context. The engine mutates the world in place, so the context carries a version
+counter that screens re-render against — the engine has no idea React exists, and
+that is the point: the same code runs in the CLI harness and on the phone.
+
+`pnpm mobile` rebuilds the engine first, because the app consumes its compiled
+output from `packages/engine/dist` rather than its TypeScript source. When
+working on both at once, run `pnpm --filter @game1/engine build:watch` alongside.
+
+A few notes on how it is put together:
+
+- **Saves are the whole world, not a replay.** A career serialises to about
+  470 KB — squads dominate it. Match logs are trimmed on save: goals are kept
+  everywhere so the scoring charts survive, but substitutions and bookings are
+  kept only for your own recent matches, which cuts a season's save by half.
+  Saving a round takes well under a millisecond; a whole round — ten matches
+  simulated, state updated, game saved — measures 10–20 ms.
+- **Reloading resumes exactly.** The RNG's internal state is saved with the
+  world, so a career picks up mid-season and produces the same results it would
+  have without the interruption. There is a test for precisely that.
+- **Player objects have identity.** `world.players` holds the same objects the
+  squads do, so loading rebuilds the lookup table from the squads rather than
+  deserialising twice. Get that wrong and a transfer moves one copy while the
+  rest of the game reads another.
 
 ## How the match engine works
 
@@ -271,11 +309,14 @@ Built:
 - [x] Fitness, form and morale, with rotation emerging from selection
 - [x] Injuries, bookings, suspensions and five substitutions a side
 - [x] Development driven by playing time and coaching quality
+- [x] Expo mobile app: club selection, round-by-round play, squad, table,
+      finances, season review, and saves that resume exactly
 
 Next:
 
+- [ ] Team selection and tactics in the app — currently the XI picks itself
+- [ ] A transfer screen, so the window is something you do rather than watch
 - [ ] Multiple divisions, promotion and relegation, cups
 - [ ] Loans, so a blocked prospect can go and play somewhere else
-- [ ] Expo mobile app
 - [ ] Foreign clubs, so the transfer market is not closed
-- [ ] Manager decisions: tactics, team talks, training schedules
+- [ ] Manager decisions: team talks, training schedules

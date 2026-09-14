@@ -12,6 +12,16 @@ export class Rng {
     for (let i = 0; i < 4; i++) this.next();
   }
 
+  /** Current internal state, for saving a game mid-career. */
+  getState(): number {
+    return this.state;
+  }
+
+  /** Restores a generator to a previously saved state. */
+  setState(state: number): void {
+    this.state = state >>> 0;
+  }
+
   /** Uniform float in [0, 1). */
   next(): number {
     this.state = (this.state + 0x6d2b79f5) >>> 0;
