@@ -28,6 +28,13 @@ export type Position = 'GK' | 'CB' | 'LB' | 'RB' | 'DM' | 'CM' | 'AM' | 'LW' | '
 
 export type PositionGroup = 'GK' | 'DEF' | 'MID' | 'FWD';
 
+export interface Contract {
+  /** Weekly wage, in the engine's neutral money units. */
+  wage: number;
+  /** Seasons left to run. At 0 the player leaves on a free transfer. */
+  yearsRemaining: number;
+}
+
 export interface Player {
   id: string;
   firstName: string;
@@ -43,6 +50,39 @@ export interface Player {
    * never past it. Drives the "wonderkid" stories once training exists.
    */
   potential: number;
+  contract: Contract;
+}
+
+/**
+ * Money in and out for a single season. Positive numbers throughout; `wages`
+ * and `playerPurchases` are costs, not negative income.
+ */
+export interface FinancialRecord {
+  gateReceipts: number;
+  sponsorship: number;
+  prizeMoney: number;
+  playerSales: number;
+  wages: number;
+  /** Staff, stadium, academy, travel, admin -- everything that is not wages. */
+  operatingCosts: number;
+  /** Ground expansion and other capital spending. */
+  infrastructure: number;
+  /** Profit taken out by the owners once reserves are comfortable. */
+  ownerDrawings: number;
+  playerPurchases: number;
+}
+
+export interface ClubFinances {
+  /** Cash in the bank. Going negative is debt, not an error. */
+  balance: number;
+  stadiumCapacity: number;
+  ticketPrice: number;
+  sponsorshipPerSeason: number;
+  /** Cash the club is willing to commit to fees this window. */
+  transferBudget: number;
+  /** Weekly wage ceiling the club will not knowingly exceed. */
+  wageBudget: number;
+  season: FinancialRecord;
 }
 
 export interface Club {
@@ -54,6 +94,7 @@ export interface Club {
   /** 1-100. Drives squad quality now, and budgets/transfer pull later. */
   reputation: number;
   squad: Player[];
+  finances: ClubFinances;
 }
 
 export interface League {
@@ -68,6 +109,10 @@ export interface World {
   league: League;
   /** Every player in the world, indexed by id, for O(1) lookup during a match. */
   players: Map<string, Player>;
+  /** Players whose contracts expired and who no club has signed yet. */
+  freeAgents: Player[];
+  /** Seasons played so far. */
+  season: number;
 }
 
 export interface Fixture {
@@ -101,6 +146,18 @@ export interface MatchResult {
   home: TeamMatchStats;
   away: TeamMatchStats;
   events: MatchEvent[];
+}
+
+export interface Transfer {
+  playerId: string;
+  playerName: string;
+  fromClubId: string;
+  toClubId: string;
+  fee: number;
+  /** Weekly wage agreed at the new club. */
+  wage: number;
+  /** A free transfer is a player whose contract expired. */
+  free: boolean;
 }
 
 export interface TableRow {

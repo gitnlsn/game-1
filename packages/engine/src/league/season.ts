@@ -3,11 +3,22 @@ import type { Fixture, MatchResult, SeasonResult, World } from '../types.js';
 import { simulateMatch } from '../match/engine.js';
 import { generateFixtures } from './fixtures.js';
 import { buildTable } from './table.js';
+import {
+  applyMatchdayIncome,
+  payWeeklyOperatingCosts,
+  payWeeklySponsorship,
+  payWeeklyWages,
+} from '../economy/finances.js';
 
 export interface SimulateSeasonOptions {
   fixtures?: Fixture[];
   /** Called after each match, for UI progress or day-by-day play later. */
   onMatch?: (result: MatchResult, fixture: Fixture) => void;
+  /**
+   * Apply matchday income and weekly wages as the season runs. Off by default so
+   * a one-off season can be simulated without touching club finances.
+   */
+  economy?: boolean;
 }
 
 export function simulateSeason(
@@ -20,13 +31,40 @@ export function simulateSeason(
   const fixtures = options.fixtures ?? generateFixtures(clubs.map((c) => c.id), rng);
 
   const results: MatchResult[] = [];
+  // Running points, so gate receipts can respond to how the season is going.
+  const points = new Map<string, number>();
+  const played = new Map<string, number>();
+  let currentRound = 0;
+
   for (const fixture of fixtures) {
     const home = clubById.get(fixture.homeClubId);
     const away = clubById.get(fixture.awayClubId);
     if (!home || !away) throw new Error(`simulateSeason: unknown club in fixture round ${fixture.round}`);
 
+    if (options.economy && fixture.round !== currentRound) {
+      currentRound = fixture.round;
+      for (const club of clubs) {
+        payWeeklySponsorship(club);
+        payWeeklyWages(club);
+        payWeeklyOperatingCosts(club, clubs.length);
+      }
+    }
+
+    if (options.economy) {
+      const games = played.get(home.id) ?? 0;
+      const pointsPerGame = games === 0 ? 1.3 : (points.get(home.id) ?? 0) / games;
+      applyMatchdayIncome(home, away, pointsPerGame);
+    }
+
     const result = simulateMatch(rng, home, away);
     results.push(result);
+
+    const homePoints = result.home.goals > result.away.goals ? 3 : result.home.goals === result.away.goals ? 1 : 0;
+    points.set(home.id, (points.get(home.id) ?? 0) + homePoints);
+    points.set(away.id, (points.get(away.id) ?? 0) + (homePoints === 3 ? 0 : homePoints === 1 ? 1 : 3));
+    played.set(home.id, (played.get(home.id) ?? 0) + 1);
+    played.set(away.id, (played.get(away.id) ?? 0) + 1);
+
     options.onMatch?.(result, fixture);
   }
 

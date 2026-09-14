@@ -6,6 +6,8 @@
  *   pnpm sim validate [--seasons N]
  *   pnpm sim match    [--seed X] [--home i] [--away j]
  *   pnpm sim squad    [--club i]
+ *   pnpm sim economy  [--seasons N]   multi-season economic health check
+ *   pnpm sim career   [--seasons N]   season-by-season career summary
  */
 import { Rng } from './rng/index.js';
 import { validateEngine } from './analysis/validate.js';
@@ -13,6 +15,10 @@ import { simulateSeason } from './league/season.js';
 import { clubStrength, computeTeamRating, selectLineup } from './match/ratings.js';
 import { simulateMatch } from './match/engine.js';
 import { createWorld, currentAbility } from './world/index.js';
+import { validateEconomy } from './analysis/economy.js';
+import { simulateCareer } from './career/career.js';
+import { formatMoney, marketValue, wageBill } from './economy/valuation.js';
+import { expectedAnnualRevenue } from './economy/finances.js';
 import type { Club, World } from './types.js';
 
 const args = process.argv.slice(2);
@@ -142,21 +148,114 @@ function commandSquad(): void {
     `Defence ${rating.defence.toFixed(1)}  Keeper ${rating.goalkeeping.toFixed(1)}\n`,
   );
 
-  console.log(pad('', 5) + pad('Name', 20) + pad('Pos', 5) + pad('Nat', 5) + padLeft('Age', 4) + padLeft('Abi', 5) + padLeft('Pot', 5));
-  console.log('-'.repeat(49));
+  console.log(
+    `Squad value ${formatMoney(club.squad.reduce((sum, p) => sum + marketValue(p), 0))}   ` +
+    `Wages ${formatMoney(wageBill(club.squad))}/wk   ` +
+    `Balance ${formatMoney(club.finances.balance)}   ` +
+    `Stadium ${club.finances.stadiumCapacity.toLocaleString()} @ ${club.finances.ticketPrice}\n`,
+  );
+
+  console.log(
+    pad('', 5) + pad('Name', 20) + pad('Pos', 5) + pad('Nat', 5) + padLeft('Age', 4) +
+    padLeft('Abi', 5) + padLeft('Pot', 5) + padLeft('Value', 9) + padLeft('Wage', 8) + padLeft('Ctr', 5),
+  );
+  console.log('-'.repeat(71));
 
   const ordered = [...club.squad].sort((a, b) => currentAbility(b) - currentAbility(a));
   for (const player of ordered) {
     console.log(
       pad(starters.has(player.id) ? '  XI' : '', 5) +
       pad(player.displayName, 20) + pad(player.position, 5) + pad(player.nationality, 5) +
-      padLeft(player.age, 4) + padLeft(currentAbility(player).toFixed(0), 5) + padLeft(player.potential, 5),
+      padLeft(player.age, 4) + padLeft(currentAbility(player).toFixed(0), 5) + padLeft(player.potential, 5) +
+      padLeft(formatMoney(marketValue(player)), 9) + padLeft(formatMoney(player.contract.wage), 8) +
+      padLeft(`${player.contract.yearsRemaining}y`, 5),
+    );
+  }
+}
+
+function commandEconomy(): void {
+  const seasons = num('seasons', 20);
+  console.log(`Simulating a ${seasons}-season career...\n`);
+  const report = validateEconomy({ seasons, seed: flag('seed', 'economy'), clubCount: num('clubs', 20) });
+
+  console.log(pad('Metric', 30) + padLeft('Value', 9) + padLeft('Target', 16) + '   Status');
+  console.log('-'.repeat(70));
+  for (const check of report.checks) {
+    const decimals = check.benchmark.decimals ?? 1;
+    console.log(
+      pad(check.benchmark.label, 30) +
+      padLeft(check.value.toFixed(decimals), 9) +
+      padLeft(`${check.benchmark.target} +/- ${check.benchmark.tolerance}`, 16) +
+      (check.pass ? '   ok' : '   OFF'),
+    );
+  }
+
+  console.log('\nFinal balances\n');
+  console.log(pad('Club', 22) + padLeft('Balance', 11) + padLeft('Rep', 6) + padLeft('Squad value', 13));
+  for (const row of report.finalBalances) {
+    console.log(
+      pad(row.clubName, 22) + padLeft(formatMoney(row.balance), 11) +
+      padLeft(row.reputation, 6) + padLeft(formatMoney(row.squadValue), 13),
+    );
+  }
+
+  const counts = new Map<string, number>();
+  for (const champion of report.champions) counts.set(champion, (counts.get(champion) ?? 0) + 1);
+  console.log('\nTitles won');
+  for (const [club, wins] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log('  ' + pad(club, 22) + '#'.repeat(wins) + ' ' + wins);
+  }
+
+  console.log(`\n${report.passed ? 'Economy stable across all checks.' : 'Some economic checks are off.'}`);
+}
+
+function commandCareer(): void {
+  const world = buildWorld();
+  const rng = new Rng(flag('seed', 'default') + ':career');
+  const seasons = num('seasons', 10);
+
+  console.log(pad('Sn', 4) + pad('Champion', 22) + pad('Top scorer', 20) +
+    padLeft('Gls', 4) + padLeft('Xfers', 7) + padLeft('Spend', 10) + padLeft('Retired', 9) + padLeft('Youth', 7));
+  console.log('-'.repeat(83));
+
+  simulateCareer(world, rng, {
+    seasons,
+    onSeason: (summary) => {
+      const spend = summary.transfers.reduce((sum, t) => sum + t.fee, 0);
+      console.log(
+        pad(summary.season, 4) + pad(summary.championName, 22) +
+        pad(summary.topScorer?.playerName ?? '-', 20) +
+        padLeft(summary.topScorer?.goals ?? 0, 4) +
+        padLeft(summary.transfers.length, 7) + padLeft(formatMoney(spend), 10) +
+        padLeft(summary.retirements, 9) + padLeft(summary.youthPromoted, 7),
+      );
+    },
+  });
+
+  console.log('\nBiggest squads by value now\n');
+  const ranked = [...world.league.clubs]
+    .map((club) => ({
+      club,
+      value: club.squad.reduce((sum, p) => sum + marketValue(p), 0),
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  console.log(pad('Club', 22) + padLeft('Rep', 5) + padLeft('Squad value', 13) +
+    padLeft('Wages/wk', 11) + padLeft('Balance', 11) + padLeft('Revenue', 11));
+  for (const { club, value } of ranked) {
+    console.log(
+      pad(club.name, 22) + padLeft(club.reputation, 5) + padLeft(formatMoney(value), 13) +
+      padLeft(formatMoney(wageBill(club.squad)), 11) +
+      padLeft(formatMoney(club.finances.balance), 11) +
+      padLeft(formatMoney(expectedAnnualRevenue(club.reputation, world.league.clubs.length)), 11),
     );
   }
 }
 
 const commands: Record<string, () => void> = {
   season: commandSeason,
+  economy: commandEconomy,
+  career: commandCareer,
   validate: commandValidate,
   match: commandMatch,
   squad: commandSquad,

@@ -2,6 +2,7 @@ import { Rng, clamp } from '../rng/index.js';
 import type { Club, Player, Position } from '../types.js';
 import { NAME_POOL_BY_CODE, type NamePool } from './names.js';
 import { generatePlayer } from './players.js';
+import { createClubFinances, fitWagesToBudget } from '../economy/finances.js';
 import { DEFAULT_FORMATION, FORMATIONS, SQUAD_SHAPE } from './positions.js';
 
 interface ClubNamingStyle {
@@ -146,16 +147,21 @@ export function generateClubs(rng: Rng, options: GenerateClubsOptions): Club[] {
     const t = count === 1 ? 0 : i / (count - 1);
     const reputation = clamp(Math.round(rng.gaussian(top - (top - bottom) * t, 2.5)), 20, 99);
     const { name, city } = generateClubName(rng, style, taken);
+    const squad = generateSquad(rng, reputation, domesticPool);
 
-    clubs.push({
+    const club: Club = {
       id: `c${i + 1}`,
       name,
       shortName: shortNameFor(name),
       city,
       nationality,
       reputation,
-      squad: generateSquad(rng, reputation, domesticPool),
-    });
+      squad,
+      finances: createClubFinances(reputation, squad, count),
+    };
+
+    fitWagesToBudget(club);
+    clubs.push(club);
   }
 
   return clubs;

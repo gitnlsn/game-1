@@ -25,6 +25,8 @@ export function createWorld(options: CreateWorldOptions): World {
 
   return {
     seed: options.seed,
+    freeAgents: [],
+    season: 1,
     league: {
       id: 'l1',
       name: options.leagueName ?? 'Liga Nacional',

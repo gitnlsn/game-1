@@ -2,6 +2,7 @@ import { Rng, clamp } from '../rng/index.js';
 import type { AttributeKey, Attributes, Player, Position } from '../types.js';
 import { generateName, NAME_POOLS, type NamePool } from './names.js';
 import { abilityIn, POSITION_WEIGHTS } from './positions.js';
+import { expectedWage } from '../economy/valuation.js';
 
 const ATTRIBUTE_KEYS: readonly AttributeKey[] = [
   'finishing', 'passing', 'dribbling', 'crossing', 'tackling', 'heading',
@@ -73,7 +74,20 @@ export function generateAttributes(rng: Rng, position: Position, targetAbility: 
     attributes[key] = clamp(Math.round(rng.gaussian(mean, 7)), 1, 99);
   }
 
-  // Calibrate: nudge the position-relevant attributes until ability hits target.
+  calibrateAbility(attributes, position, targetAbility);
+  return attributes;
+}
+
+/**
+ * Shifts the position-relevant attributes until the player's weighted ability in
+ * `position` equals `targetAbility`, leaving the shape of the attribute set
+ * intact. Used both when generating a player and when they develop or decline.
+ */
+export function calibrateAbility(
+  attributes: Attributes,
+  position: Position,
+  targetAbility: number,
+): Attributes {
   const relevant = ATTRIBUTE_KEYS.filter((key) => POSITION_WEIGHTS[position][key] !== undefined);
   for (let pass = 0; pass < 8; pass++) {
     const delta = targetAbility - abilityIn(attributes, position);
@@ -82,7 +96,6 @@ export function generateAttributes(rng: Rng, position: Position, targetAbility: 
       attributes[key] = clamp(Math.round(attributes[key] + delta), 1, 99);
     }
   }
-
   return attributes;
 }
 
@@ -121,6 +134,8 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player
   const name = generateUniqueName(rng, pool, options.takenNames);
   options.takenNames?.add(name.displayName);
 
+  const attributes = generateAttributes(rng, options.position, ability);
+
   return {
     id: `p${++playerCounter}`,
     firstName: name.firstName,
@@ -129,8 +144,13 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player
     nationality: pool.code,
     age,
     position: options.position,
-    attributes: generateAttributes(rng, options.position, ability),
+    attributes,
     potential,
+    // Contract terms follow from ability, so they are set after attributes.
+    contract: {
+      wage: expectedWage({ attributes, position: options.position, age }),
+      yearsRemaining: rng.int(1, 4),
+    },
   };
 }
 
