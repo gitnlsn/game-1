@@ -22,8 +22,9 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 121 tests
+pnpm test                               # 136 tests (engine + app)
 pnpm typecheck
+pnpm calibrate                          # fails if any benchmark has drifted
 ```
 
 ## The app
@@ -209,6 +210,32 @@ fairness property nobody can observe. Your edge was never information parity; it
 is that you can *act*. `marketValue` likewise keeps the true number, because it is
 the market's price. `scoutedValue` runs the same curve on your estimate, and the
 gap between the two is where a bargain or a mistake lives.
+
+## Tests and CI
+
+`pnpm test` runs both packages: 124 engine tests and 12 app tests. `pnpm calibrate`
+runs the real harnesses and **exits non-zero if any benchmark has drifted**, so CI
+gates on calibration rather than only on tests — the two catch different things,
+and the economy once failed on its own default seed while the suite stayed green.
+
+Two tests are worth calling out.
+
+**The cross-process save round-trip** spawns real processes: one writes a career,
+another loads it and plays on. Loading in a *fresh* process is not the same as
+loading in one that has already built a world, because module-level state starts
+at its initial value — which is the state every app launch is in. Every other
+persistence test runs in-process and is structurally blind to that whole class of
+bug. This one catches the player-id collision that silently overwrote real players
+for three milestones.
+
+**The app's save handling is tested directly** rather than through a rendered
+component. `src/game/saves.ts` takes a narrow storage interface, so a fake can be
+made to fail reads or writes on demand: a damaged save is quarantined rather than
+deleted, a save from a newer build is distinguished from a corrupt one, and if
+quarantining itself fails the original is left where it is rather than lost.
+
+Still missing, and worth knowing: **there are no component or render tests.** The
+app's logic is covered where it is riskiest, but nothing asserts a screen renders.
 
 ## Development
 

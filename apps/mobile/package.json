@@ -18,7 +18,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^2.1.8"
   },
   "scripts": {
     "start": "expo start",
@@ -27,7 +28,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "build:android": "npx eas-cli build --platform android --profile production --local",
-    "eas-build-post-install": "pnpm --filter @game1/engine build"
+    "eas-build-post-install": "pnpm --filter @game1/engine build",
+    "test": "vitest run"
   },
   "private": true
 }

@@ -117,6 +117,8 @@ function commandValidate(): void {
   }
 
   console.log(`\n${report.matches} matches simulated. ${report.passed ? 'All benchmarks within tolerance.' : 'Some benchmarks are off.'}`);
+  // Non-zero on failure so CI can gate on calibration, not just on tests.
+  if (!report.passed) process.exitCode = 1;
 }
 
 function commandMatch(): void {
@@ -234,6 +236,7 @@ function commandEconomy(): void {
   }
 
   console.log(`\n${report.passed ? 'Economy stable across all checks.' : 'Some economic checks are off.'}`);
+  if (!report.passed) process.exitCode = 1;
 }
 
 function commandCareer(): void {

@@ -2,38 +2,29 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   advanceRound,
-  deserializeCareer,
   endSeason,
   isSeasonComplete,
-  serializeCareer,
   startCareer,
-  UnsupportedSaveError,
   type Career,
   type MatchResult,
   type SeasonSummary,
 } from '@game1/engine';
+import {
+  clearCareer,
+  DEFAULT_SETTINGS,
+  loadCareer,
+  loadSettings,
+  saveCareer,
+  saveSettings,
+  type SaveProblem,
+  type Settings,
+} from './saves';
 
-const SAVE_KEY = 'game1:career:v1';
-const SETTINGS_KEY = 'game1:settings';
-/** A save we could not read is moved here rather than deleted. */
-const QUARANTINE_KEY = 'game1:career:unreadable';
-
-export interface SaveProblem {
-  kind: 'too_new' | 'no_migration_path' | 'damaged';
-  message: string;
-}
-
-export interface Settings {
-  /** Show the match play out minute by minute, or just give the result. */
-  matchMode: 'instant' | 'replay';
-}
-
-const DEFAULT_SETTINGS: Settings = { matchMode: 'replay' };
+export type { SaveProblem, Settings };
 
 export interface RoundOutcome {
   /** The managed club's match, if they played this round. */
   ownMatch: MatchResult | undefined;
-  results: MatchResult[];
 }
 
 interface GameContextValue {
@@ -73,32 +64,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const settingsJson = await AsyncStorage.getItem(SETTINGS_KEY);
-        if (!cancelled && settingsJson) {
-          setSettings({ ...DEFAULT_SETTINGS, ...(JSON.parse(settingsJson) as Partial<Settings>) });
-        }
+        const loadedSettings = await loadSettings(AsyncStorage);
+        if (!cancelled) setSettings(loadedSettings);
 
-        const json = await AsyncStorage.getItem(SAVE_KEY);
-        if (!cancelled && json) setCareer(deserializeCareer(json));
-      } catch (error) {
-        /*
-         * A career is hours of someone's time. Move the unreadable save aside
-         * and say what went wrong instead of deleting it, so a bad build or a
-         * half-written file is recoverable rather than terminal.
-         */
-        const problem: SaveProblem =
-          error instanceof UnsupportedSaveError
-            ? { kind: error.reason, message: error.message }
-            : { kind: 'damaged', message: 'This save could not be read and may be damaged.' };
-
-        try {
-          const json = await AsyncStorage.getItem(SAVE_KEY);
-          if (json) await AsyncStorage.setItem(QUARANTINE_KEY, json);
-          await AsyncStorage.removeItem(SAVE_KEY);
-        } catch {
-          // Quarantining is best-effort; never let it mask the original problem.
-        }
-        if (!cancelled) setSaveProblem(problem);
+        const result = await loadCareer(AsyncStorage);
+        if (cancelled) return;
+        if (result.kind === 'career') setCareer(result.career);
+        else if (result.kind === 'problem') setSaveProblem(result.problem);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -110,9 +82,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const persist = useCallback((next: Career) => {
     // Fire and forget: the game never blocks on the save completing.
-    AsyncStorage.setItem(SAVE_KEY, serializeCareer(next)).catch((error) =>
-      console.warn('Could not save', error),
-    );
+    saveCareer(AsyncStorage, next).catch((error) => console.warn('Could not save', error));
   }, []);
 
   const newCareer = useCallback(
@@ -140,7 +110,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       );
       setVersion((v) => v + 1);
       persist(career);
-      return { ownMatch, results };
+      return { ownMatch };
     } finally {
       setBusy(false);
     }
@@ -164,7 +134,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const abandonCareer = useCallback(() => {
     setCareer(undefined);
     setVersion((v) => v + 1);
-    AsyncStorage.removeItem(SAVE_KEY).catch(() => {});
+    clearCareer(AsyncStorage).catch(() => {});
   }, []);
 
   const dismissSaveProblem = useCallback(() => setSaveProblem(undefined), []);
@@ -172,7 +142,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setSettings((current) => {
       const next = { ...current, ...patch };
-      AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next)).catch(() => {});
+      saveSettings(AsyncStorage, next).catch(() => {});
       return next;
     });
   }, []);

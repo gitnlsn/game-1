@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Typecheck and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The app consumes the engine's compiled output, not its source, so the
+      # engine has to be built before anything typechecks against it.
+      - run: pnpm build:engine
+
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  calibration:
+    name: Match and economy calibration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Runs the real harnesses rather than the wider bounds the test suite uses.
+      # Exits non-zero if any benchmark has drifted outside tolerance.
+      - run: pnpm calibrate
