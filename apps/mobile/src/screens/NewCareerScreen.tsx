@@ -8,7 +8,7 @@ import {
   formatMoney,
   marketValue,
   type Club,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 import { Badge, Card, SectionTitle, textStyles } from '../components/ui';
 import { colors, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';

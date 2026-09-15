@@ -23,7 +23,7 @@ import {
   wageBill,
   type Career,
   type MatchResult,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 import { Badge, Button, Card, Divider, KeyValue, SectionTitle, StatTile, textStyles } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, spacing } from '../theme';

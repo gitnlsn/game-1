@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "Prancheta",
-    "slug": "prancheta",
+    "name": "Eleven Deep",
+    "slug": "eleven-deep",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "br.com.prancheta"
+      "bundleIdentifier": "com.elevendeep.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "br.com.prancheta",
+      "package": "com.elevendeep.app",
       "versionCode": 4
     },
     "web": {

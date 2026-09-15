@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { divisionTables, finaliseSeason, managedLeague } from '@prancheta/engine';
+import { divisionTables, finaliseSeason, managedLeague } from '@eleven-deep/engine';
 import { Card, ChipRow, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';

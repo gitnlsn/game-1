@@ -13,7 +13,7 @@ import {
   scoutValuation,
   type AttributeKey,
   type Player,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 import { Badge, Button, Card, Divider, KeyValue, SectionTitle, StatBar } from '../components/ui';
 import { colors, conditionColor, formColor, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';

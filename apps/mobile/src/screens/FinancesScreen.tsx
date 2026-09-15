@@ -10,7 +10,7 @@ import {
   recordExpense,
   recordIncome,
   wageBill,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 import { Card, Divider, KeyValue, SectionTitle, StatTile } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';

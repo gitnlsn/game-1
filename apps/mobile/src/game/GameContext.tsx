@@ -14,7 +14,7 @@ import {
   type LiveMatch,
   type MatchResult,
   type SeasonSummary,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 import {
   clearCareer,
   DEFAULT_SETTINGS,

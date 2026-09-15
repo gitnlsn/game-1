@@ -1,9 +1,9 @@
 {
-  "name": "@prancheta/mobile",
+  "name": "@eleven-deep/mobile",
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
-    "@prancheta/engine": "workspace:*",
+    "@eleven-deep/engine": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/native": "^7.3.18",
     "@react-navigation/native-stack": "^7.18.10",
@@ -28,7 +28,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "build:android": "npx eas-cli build --platform android --profile production --local",
-    "eas-build-post-install": "pnpm --filter @prancheta/engine build",
+    "eas-build-post-install": "pnpm --filter @eleven-deep/engine build",
     "test": "vitest run"
   },
   "private": true

@@ -12,7 +12,7 @@ import {
   substitute,
   TACTIC_AXES,
   type MatchEvent,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 import { Badge, Button, Card, ChipRow, Divider, SectionTitle } from '../components/ui';
 import { colors, conditionColor, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';

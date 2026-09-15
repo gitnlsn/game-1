@@ -28,7 +28,7 @@ import {
   type Club,
   type Player,
   type PotentialEstimate,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, positionColor, ratingColor, spacing } from '../theme';

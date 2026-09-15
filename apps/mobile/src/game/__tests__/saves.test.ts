@@ -6,7 +6,7 @@ import {
   serializeCareer,
   startCareer,
   type Career,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 import {
   clearCareer,
   DEFAULT_SETTINGS,

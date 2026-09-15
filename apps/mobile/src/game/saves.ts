@@ -3,7 +3,7 @@ import {
   serializeCareer,
   UnsupportedSaveError,
   type Career,
-} from '@prancheta/engine';
+} from '@eleven-deep/engine';
 
 /*
  * Deliberately still `game1:`, which the app has not been called since it was

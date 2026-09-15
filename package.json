@@ -1,15 +1,15 @@
 {
-  "name": "prancheta",
+  "name": "eleven-deep",
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "sim": "pnpm --filter @prancheta/engine sim",
+    "sim": "pnpm --filter @eleven-deep/engine sim",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "build:engine": "pnpm --filter @prancheta/engine build",
-    "mobile": "pnpm build:engine && pnpm --filter @prancheta/mobile exec expo start",
-    "mobile:web": "pnpm build:engine && pnpm --filter @prancheta/mobile exec expo start --web",
-    "calibrate": "pnpm --filter @prancheta/engine exec tsx src/cli.ts validate --seasons 25 && pnpm --filter @prancheta/engine exec tsx src/cli.ts economy --seasons 25 && pnpm --filter @prancheta/engine exec tsx src/cli.ts tactics --repeats 12 && pnpm --filter @prancheta/engine exec tsx src/cli.ts pyramid --seasons 20"
+    "build:engine": "pnpm --filter @eleven-deep/engine build",
+    "mobile": "pnpm build:engine && pnpm --filter @eleven-deep/mobile exec expo start",
+    "mobile:web": "pnpm build:engine && pnpm --filter @eleven-deep/mobile exec expo start --web",
+    "calibrate": "pnpm --filter @eleven-deep/engine exec tsx src/cli.ts validate --seasons 25 && pnpm --filter @eleven-deep/engine exec tsx src/cli.ts economy --seasons 25 && pnpm --filter @eleven-deep/engine exec tsx src/cli.ts tactics --repeats 12 && pnpm --filter @eleven-deep/engine exec tsx src/cli.ts pyramid --seasons 20"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

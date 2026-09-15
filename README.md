@@ -1,4 +1,4 @@
-# game1 — football management simulation
+# Eleven Deep — football management simulation
 
 A football management sim for mobile. The simulation is a pure TypeScript package
 with no React and no Node dependencies, so the exact same code runs in the CLI
@@ -61,14 +61,14 @@ always available. The replay works on the existing event log — every event alr
 carries a minute — so no engine re-architecture was needed. It is a replay rather
 than a live simulation, which is why in-match substitutions are still not possible.
 
-The app imports `@prancheta/engine` as a normal package and holds a `Career` in React
+The app imports `@eleven-deep/engine` as a normal package and holds a `Career` in React
 context. The engine mutates the world in place, so the context carries a version
 counter that screens re-render against — the engine has no idea React exists, and
 that is the point: the same code runs in the CLI harness and on the phone.
 
 `pnpm mobile` rebuilds the engine first, because the app consumes its compiled
 output from `packages/engine/dist` rather than its TypeScript source. When
-working on both at once, run `pnpm --filter @prancheta/engine build:watch` alongside.
+working on both at once, run `pnpm --filter @eleven-deep/engine build:watch` alongside.
 
 A few notes on how it is put together:
 

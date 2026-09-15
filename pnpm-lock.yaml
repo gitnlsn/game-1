@@ -10,7 +10,7 @@ importers:
 
   apps/mobile:
     dependencies:
-      '@prancheta/engine':
+      '@eleven-deep/engine':
         specifier: workspace:*
         version: link:../../packages/engine
       '@react-native-async-storage/async-storage':
