@@ -75,8 +75,8 @@ describe('a knockout tie', () => {
     let shootouts = 0;
 
     for (const tie of state.cup!.ties) {
-      const result = tie.result!;
-      const level = result.home.goals === result.away.goals;
+      const score = tie.score!;
+      const level = score.home === score.away;
       expect(!!tie.extraTime, `round ${tie.round}`).toBe(level);
 
       if (tie.extraTime) {

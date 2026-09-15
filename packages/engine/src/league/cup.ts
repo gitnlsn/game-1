@@ -37,8 +37,14 @@ export interface CupTie {
   round: number;
   homeClubId: string;
   awayClubId: string;
-  /** Set once played. */
-  result?: MatchResult;
+  /**
+   * Score after ninety minutes, once played.
+   *
+   * The score, not the MatchResult: the full result is already in the season's
+   * own list, and keeping a second copy of all 39 of them added 184KB to every
+   * save -- 14% of it -- for something nothing ever read.
+   */
+  score?: { home: number; away: number };
   /** Goals after extra time, when the ninety ended level. */
   extraTime?: { home: number; away: number };
   /** Shootout score, when extra time ended level too. */
@@ -157,7 +163,7 @@ export function resolveCupTie(
   options: SimulateMatchOptions = {},
 ): MatchResult {
   const result = simulateMatch(rng, home, away, options);
-  tie.result = result;
+  tie.score = { home: result.home.goals, away: result.away.goals };
 
   if (result.home.goals !== result.away.goals) {
     tie.winnerClubId = result.home.goals > result.away.goals ? home.id : away.id;
