@@ -1,4 +1,5 @@
 import { Rng, clamp } from '../rng/index.js';
+import type { BoardVerdict } from './board.js';
 import { allClubs } from '../world/index.js';
 import type { Club, Player, SeasonResult, TableRow, Transfer, World } from '../types.js';
 import {
@@ -87,6 +88,8 @@ export interface SeasonSummary {
   youthPromoted: number;
   development: DevelopmentStats;
   finances: ClubSeasonFinance[];
+  /** What the board made of it. Set by the career controller, not by closeSeason. */
+  verdict?: BoardVerdict;
 }
 
 export interface SimulateCareerOptions {

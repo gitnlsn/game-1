@@ -13,9 +13,11 @@ import type {
 import { createSeasonState } from '../league/season.js';
 import { ensurePlayerIdsAbove } from '../world/players.js';
 import type { Career } from './controller.js';
+import type { BoardState } from './board.js';
+import { BOARD_TUNING, createBoardState, refreshExpectation } from './board.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -67,6 +69,8 @@ export interface SavedCareer {
   history: SeasonSummary[];
   /** Added in save version 2. */
   scouting: ScoutingState;
+  /** Added in save version 7. */
+  board: BoardState;
 }
 
 export function toSavedCareer(career: Career): SavedCareer {
@@ -99,6 +103,7 @@ export function toSavedCareer(career: Career): SavedCareer {
     },
     history: career.history,
     scouting: career.scouting,
+    board: career.board,
   };
 }
 
@@ -207,6 +212,23 @@ const MIGRATIONS: Record<number, Migration> = {
     delete (next as Record<string, unknown>).league;
     return next;
   },
+  /**
+   * v7 gave the club a board. An existing manager is credited with the seasons
+   * already served but starts on default confidence -- reconstructing what a
+   * board would have made of a career it was not watching would be inventing
+   * history, and inventing one that could sack someone retroactively.
+   */
+  6: (saved) => ({
+    ...saved,
+    version: 7,
+    board: {
+      confidence: BOARD_TUNING.startingConfidence,
+      // 0 means "not known"; the loader computes it from the world, which a
+      // pure data migration cannot see.
+      expectation: 0,
+      seasonsInCharge: ((saved.history as unknown[]) ?? []).length,
+    },
+  }),
 };
 
 /** Raised when a save cannot be brought up to the current format. */
@@ -295,6 +317,15 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
   season.played = new Map(saved.season.played);
   season.teamSheets = new Map(saved.season.teamSheets ?? []);
 
+  const board = saved.board ?? createBoardState(world, saved.managedClubId);
+  /*
+   * Only when it is unknown. Recomputing it on every load would let the target
+   * drift as the manager trades -- sell your best player and the board quietly
+   * expects less of you, which is not how a board works.
+   */
+  if (!board.expectation) refreshExpectation(board, world, saved.managedClubId);
+
+
   return {
     world,
     rng,
@@ -302,6 +333,7 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     season,
     history: saved.history,
     scouting: saved.scouting ?? { reports: {}, capacityUsed: 0 },
+    board,
   };
 }
 

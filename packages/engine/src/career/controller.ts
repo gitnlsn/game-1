@@ -32,8 +32,17 @@ import {
 } from '../league/season.js';
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
+import type { CupState } from '../league/cup.js';
 import { resolveTactics, type Tactics } from '../match/tactics.js';
-import { allClubs, createWorld, findClub } from '../world/index.js';
+import {
+  boardMood,
+  createBoardState,
+  judgeSeason,
+  refreshExpectation,
+  type BoardState,
+  type BoardVerdict,
+} from './board.js';
+import { allClubs, createWorld, findClub, leagueOf } from '../world/index.js';
 import {
   createScoutingState,
   creditInheritedSquad,
@@ -74,6 +83,8 @@ export interface Career {
    * be affected by it.
    */
   scouting: ScoutingState;
+  /** What the board makes of you. */
+  board: BoardState;
 }
 
 export interface StartCareerOptions {
@@ -109,6 +120,7 @@ export function startCareer(options: StartCareerOptions): Career {
     season,
     history: [],
     scouting: createScoutingState(),
+    board: createBoardState(world, managedClubId),
   };
 
   // You start knowing your own squad reasonably well: your coaches have watched
@@ -238,13 +250,66 @@ export function endSeason(career: Career): SeasonSummary {
   // minutes.
   creditOwnSquad(career.scouting, managedClub(career).squad, career.world.season);
 
+  /*
+   * The board judges the season BEFORE the close season moves anybody, so the
+   * table it reads is the division that was actually played in. Judge after and
+   * a relegated club is measured against its new division, where it finished
+   * nowhere at all.
+   */
+  const league = leagueOf(career.world, career.managedClubId)!;
+  const tierIndex = career.world.leagues.indexOf(league);
+  const table = result.tables[tierIndex] ?? result.table;
+  const cup = career.season.cup;
+  const cupResult = cupOutcome(career, cup);
+
   const summary = closeSeason(career.world, career.rng, result, {
     deferWindow: true,
     managedClubId: career.managedClubId,
   });
   career.history.push(summary);
 
+  const moved = summary.promotions.find((p) => p.clubId === career.managedClubId);
+  summary.verdict = judgeSeason(career.board, {
+    table,
+    clubId: career.managedClubId,
+    league,
+    relegated: moved !== undefined && moved.to > moved.from,
+    promoted: moved !== undefined && moved.to < moved.from,
+    ...(cupResult ? { cupResult } : {}),
+  });
+
   return summary;
+}
+
+/** How far the managed club went in the cup, if there was one. */
+function cupOutcome(career: Career, cup: CupState | undefined): 'won' | 'final' | undefined {
+  if (!cup) return undefined;
+  if (cup.winnerClubId === career.managedClubId) return 'won';
+  const last = cup.ties[cup.ties.length - 1];
+  if (last && (last.homeClubId === career.managedClubId || last.awayClubId === career.managedClubId)) {
+    return 'final';
+  }
+  return undefined;
+}
+
+/** What the board makes of you right now. */
+export function boardConfidence(career: Career): {
+  confidence: number;
+  mood: string;
+  expectation: number;
+  sacked: boolean;
+} {
+  return {
+    confidence: Math.round(career.board.confidence),
+    mood: boardMood(career.board.confidence),
+    expectation: career.board.expectation,
+    sacked: career.board.sacked === true,
+  };
+}
+
+/** True once the board has dismissed you and the career is over. */
+export function isSacked(career: Career): boolean {
+  return career.board.sacked === true;
 }
 
 /**
@@ -260,6 +325,9 @@ export function startNextSeason(career: Career): Transfer[] {
   // Retired and departed players would otherwise accumulate in every save.
   pruneScouting(career.scouting, new Set(career.world.players.keys()));
   resetScoutingCapacity(career.scouting);
+  // The board re-reads the squad it has just paid for, in the division it is
+  // now in -- a promoted club is asked to survive, not to finish where it did.
+  refreshExpectation(career.board, career.world, career.managedClubId);
 
   beginSeason(career.world);
   career.season = createSeasonState(career.world, career.rng, {
