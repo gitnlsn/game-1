@@ -39,10 +39,22 @@ export const BENCHMARKS: readonly Benchmark[] = [
   { key: 'injuriesPerClubSeason', label: 'Injuries per club per season', target: 12, tolerance: 6, decimals: 1 },
   { key: 'playersUsedPerClub', label: 'Players used per club', target: 24, tolerance: 5, decimals: 1 },
   /*
-   * Real clubs spread minutes more widely than this, but they also play cups and
-   * continental football on top of the league. These clubs play 38 matches and
-   * nothing else, so a settled side concentrates minutes more than a real one
-   * would. Revisit once there are cup competitions.
+   * Revisited once there were cup competitions, as the old note here said to be.
+   * The answer was not what the note assumed.
+   *
+   * Measured over six worlds: a league-only season gives 77.8, and a season with
+   * the cup gives 78.7 -- very slightly WORSE. An earlier build, where cup ties
+   * shared a matchday with league fixtures, gave 75.9. So what spreads minutes
+   * is not how many matches a club plays, it is congestion: two matches and one
+   * week to recover between them. Giving the cup its own matchdays removed the
+   * congestion and added recovery weeks instead, and the best eleven stayed fit
+   * enough to play everything.
+   *
+   * The target stays where it is, because 78.7 sits inside it. Real clubs do
+   * spread minutes more widely, and the lever for that is a congested calendar
+   * -- midweek cup ties between weekend league games -- not more competitions.
+   * That is a calendar change with a UI cost (a club would play twice in a
+   * "round"), so it is noted rather than done here.
    */
   { key: 'topElevenMinuteShare', label: 'Minutes share of top 11 %', target: 72, tolerance: 8, decimals: 1 },
 ];

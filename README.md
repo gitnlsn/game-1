@@ -291,10 +291,65 @@ benchmark for a feature whose whole point is that it is worth at most eight
 percent -- and the harness already caps what the manager can gain by choosing
 well.
 
+## The pyramid
+
+Two divisions with three up and three down, and a knockout cup alongside. A
+career plays that by default; the match and economy harnesses keep building
+single-division worlds, because what they measure is the shape of one division
+and a second would only add noise.
+
+Clubs are generated in one call and split by reputation rather than generated per
+division — partly so the world does not change (generating separately draws from
+the generator in a different order), and partly so the ladder is continuous: the
+worst club in the top flight should still be better than the best in the second.
+
+Only central money is scaled by tier, at 0.2 per step down. A relegated club keeps
+its ground and most of its support, so gate and sponsorship still follow its
+reputation; what falls off a cliff is television, which is why relegation is the
+financial event it is. Tightening that share does **not** bankrupt the lower
+division, which is the opposite of what you would expect — austerity scales wages
+down with income, so a poorer tier settles at a lower level rather than going
+under.
+
+The cup is drawn a round at a time, because who plays in round two depends on who
+survives round one. Ties go to extra time and then penalties, with extra time run
+as the same engine past minute 90 rather than as a fresh little match — restart
+the clock at 1 and it is played by fresh legs with no fatigue and no score-state
+effect, in the thirty minutes where both matter most. Byes go to the bigger clubs
+and only in the first round.
+
+`pnpm sim pyramid` has eight benchmarks and is in `pnpm calibrate`. Across three
+worlds, 29–41% of clubs that change division change straight back the next
+season, and 33–35 of 40 clubs reach the top flight within twenty seasons. Neither
+was tuned for.
+
+**A board** sets a target from squad wage bill within the club's own division —
+reputation moves slowly and describes history, where what a board judges you on is
+the squad it paid for. Judging within the division is what lets a promoted club be
+asked to survive and a relegated giant be asked to walk the tier below. Measured
+over eight careers at each of five standings: a manager at the biggest club is
+sacked in 7 of 8 careers with an average tenure of 8.5 seasons, at a bottom club
+3 of 8 and 12.4 seasons.
+
+### What the cup did not fix
+
+The `topElevenMinuteShare` benchmark carried a note for three milestones saying to
+revisit it once there were cups. There are now, and the note's assumption was
+wrong. A league-only season gives 77.8; with the cup, 78.7 — very slightly worse.
+An earlier build where cup ties *shared* a matchday with league fixtures gave
+75.9.
+
+So what spreads minutes is not how many matches a club plays, it is **congestion**:
+two matches and one week to recover between them. Giving the cup its own matchdays
+removed the congestion and added recovery weeks instead, and a settled eleven
+stayed fit enough to play everything. The lever is a congested calendar, not more
+competitions — and that is a change with a real UI cost, since a club would play
+twice in one "round".
+
 ## Tests and CI
 
-`pnpm test` runs both packages: 164 engine tests and 12 app tests. `pnpm calibrate`
-runs the real harnesses -- match, economy and tactics -- and **exits non-zero if any benchmark has drifted or any setting has become dominant**, so CI
+`pnpm test` runs both packages: 204 engine tests and 12 app tests. `pnpm calibrate`
+runs the real harnesses -- match, economy, tactics and pyramid -- and **exits non-zero if any benchmark has drifted or any setting has become dominant**, so CI
 gates on calibration rather than only on tests — the two catch different things,
 and the economy once failed on its own default seed while the suite stayed green.
 
