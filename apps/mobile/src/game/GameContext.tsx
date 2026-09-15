@@ -5,6 +5,8 @@ import {
   endSeason,
   isSeasonComplete,
   startCareer,
+  startNextSeason,
+  transferWindow,
   type Career,
   type MatchResult,
   type SeasonSummary,
@@ -40,15 +42,40 @@ interface GameContextValue {
   newCareer: (seed: string, managedClubId: string) => void;
   playRound: () => Promise<RoundOutcome | undefined>;
   finishSeason: () => Promise<SeasonSummary | undefined>;
+  /** Closes the transfer window and starts the new season. */
+  beginNextSeason: () => Promise<void>;
+  /** True while the close-season window is open and waiting on you. */
+  windowOpen: boolean;
+  /**
+   * Re-render and save after a screen has mutated the world directly -- the
+   * transfer screen calls engine functions itself rather than going through an
+   * action here, because every one of them is a one-liner.
+   */
+  refresh: () => void;
   abandonCareer: () => void;
   updateSettings: (patch: Partial<Settings>) => void;
 }
 
 const GameContext = createContext<GameContextValue | undefined>(undefined);
 
-/** Lets React paint before a long synchronous block runs. */
+/**
+ * Lets React paint before a long synchronous block runs.
+ *
+ * Raced against a timer on purpose: a backgrounded tab suspends animation frames
+ * entirely, and waiting on one alone means the promise never settles and the
+ * game hangs rather than merely stuttering.
+ */
 function nextFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    requestAnimationFrame(finish);
+    setTimeout(finish, 50);
+  });
 }
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
@@ -131,11 +158,31 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [career, persist]);
 
+  const beginNextSeason = useCallback(async (): Promise<void> => {
+    if (!career || !transferWindow(career)) return;
+
+    setBusy(true);
+    await nextFrame();
+    try {
+      startNextSeason(career);
+      setVersion((v) => v + 1);
+      persist(career);
+    } finally {
+      setBusy(false);
+    }
+  }, [career, persist]);
+
   const abandonCareer = useCallback(() => {
     setCareer(undefined);
     setVersion((v) => v + 1);
     clearCareer(AsyncStorage).catch(() => {});
   }, []);
+
+  const refresh = useCallback(() => {
+    if (!career) return;
+    setVersion((v) => v + 1);
+    persist(career);
+  }, [career, persist]);
 
   const dismissSaveProblem = useCallback(() => setSaveProblem(undefined), []);
 
@@ -150,11 +197,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<GameContextValue>(
     () => ({
       career, version, loading, busy, saveProblem, settings,
-      newCareer, playRound, finishSeason, abandonCareer, dismissSaveProblem, updateSettings,
+      windowOpen: !!career && !!transferWindow(career),
+      newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
+      dismissSaveProblem, updateSettings, refresh,
     }),
     [
       career, version, loading, busy, saveProblem, settings,
-      newCareer, playRound, finishSeason, abandonCareer, dismissSaveProblem, updateSettings,
+      newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
+      dismissSaveProblem, updateSettings, refresh,
     ],
   );
 

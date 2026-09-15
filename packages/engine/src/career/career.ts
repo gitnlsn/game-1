@@ -8,7 +8,15 @@ import {
 } from '../economy/finances.js';
 import { recordExpense, recordIncome } from '../economy/finances.js';
 import { simulateSeason } from '../league/season.js';
-import { processContracts, runTransferWindow, expireFreeAgents } from '../transfers/market.js';
+import {
+  createTransferWindow,
+  expireFreeAgents,
+  generateIncomingOffers,
+  prepareTransferWindow,
+  processContracts,
+  runTransferWindow,
+  shopTransferWindow,
+} from '../transfers/market.js';
 import { TRANSFER_TUNING } from '../transfers/market.js';
 import { coachingQuality, developPlayer, promoteYouth, shouldRetire } from './aging.js';
 import { currentAbility } from '../world/players.js';
@@ -109,7 +117,22 @@ export function simulateCareerSeason(world: World, rng: Rng): SeasonSummary {
  * Everything that happens once the last match is played: prize money, ageing,
  * retirements, contracts, the academy intake and the transfer window.
  */
-export function closeSeason(world: World, rng: Rng, season: SeasonResult): SeasonSummary {
+export interface CloseSeasonOptions {
+  /**
+   * Stop before the AI goes shopping and leave the window open, so a human
+   * manager can act in it. `completeTransferWindow` finishes the job.
+   */
+  deferWindow?: boolean;
+  /** The club the AI must not shop on behalf of. */
+  managedClubId?: string;
+}
+
+export function closeSeason(
+  world: World,
+  rng: Rng,
+  season: SeasonResult,
+  options: CloseSeasonOptions = {},
+): SeasonSummary {
   const clubs = world.league.clubs;
   distributeSeasonIncome(clubs, season.table);
 
@@ -146,9 +169,29 @@ export function closeSeason(world: World, rng: Rng, season: SeasonResult): Seaso
   }
 
   setTransferBudgets(clubs, clubs.length);
-  const transfers = runTransferWindow(rng, world);
 
-  world.season += 1;
+  /*
+   * With no options this is exactly the single call it always was, so the
+   * headless validators cannot move. Deferring instead runs only the
+   * housekeeping half -- clubs trimming squads and selling to cover debts --
+   * which has to happen before a manager looks at the market, or the free-agent
+   * pool is empty and nobody has listed anyone.
+   */
+  let transfers: Transfer[];
+  if (options.deferWindow) {
+    transfers = prepareTransferWindow(rng, world, {
+      ...(options.managedClubId ? { skipClubIds: [options.managedClubId] } : {}),
+    });
+    const window = createTransferWindow(world.season);
+    window.completed.push(...transfers);
+    if (options.managedClubId) {
+      window.incoming = generateIncomingOffers(rng, world, options.managedClubId);
+    }
+    world.transferWindow = window;
+  } else {
+    transfers = runTransferWindow(rng, world);
+    world.season += 1;
+  }
 
   return {
     season: world.season - 1,
@@ -303,4 +346,25 @@ function updateReputations(clubs: readonly Club[], table: readonly TableRow[]): 
       95,
     );
   });
+}
+
+
+/**
+ * Runs the AI half of a deferred window and rolls the world into the new season.
+ * The managed club is skipped: whatever the manager did is already done.
+ */
+export function completeTransferWindow(
+  world: World,
+  rng: Rng,
+  managedClubId?: string,
+): Transfer[] {
+  const transfers = shopTransferWindow(rng, world, {
+    ...(managedClubId ? { skipClubIds: [managedClubId] } : {}),
+  });
+
+  world.transferWindow?.completed.push(...transfers);
+  if (world.transferWindow) world.transferWindow.open = false;
+  world.season += 1;
+
+  return transfers;
 }

@@ -41,10 +41,9 @@ const OUTCOME_COLOR = { W: colors.accent, D: colors.muted, L: colors.danger } as
 
 export function ClubScreen() {
   const navigation = useNavigation<Nav>();
-  const { career, busy, playRound, finishSeason, settings } = useGame();
+  const { career, busy, playRound, finishSeason, windowOpen } = useGame();
   if (!career) return null;
 
-  void settings;
   const club = managedClub(career);
   const table = leagueTable(career);
   const row = table.find((r) => r.clubId === club.id);
@@ -105,7 +104,20 @@ export function ClubScreen() {
         />
       </View>
 
-      {complete ? (
+      {windowOpen ? (
+        <Card style={styles.matchCard}>
+          <SectionTitle>Transfer window</SectionTitle>
+          <Text style={styles.finishedText}>
+            The window is open. Deal with any offers for your players, renew the contracts running
+            down, and sign whoever you can afford.
+          </Text>
+          <Button
+            label="Open the window"
+            onPress={() => navigation.navigate('transfers')}
+            style={styles.playButton}
+          />
+        </Card>
+      ) : complete ? (
         <Card style={styles.matchCard}>
           <SectionTitle>Season over</SectionTitle>
           <Text style={styles.finishedText}>

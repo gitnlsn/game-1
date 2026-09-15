@@ -22,7 +22,7 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 136 tests (engine + app)
+pnpm test                               # 153 tests (engine + app)
 pnpm typecheck
 pnpm calibrate                          # fails if any benchmark has drifted
 ```
@@ -150,6 +150,35 @@ a week's rest gives back a flat amount plus a share of whatever is missing.
 Those two settle an ever-present around 65 condition and a rotated player near
 full fitness, which is what makes squad depth worth paying for. Across a season
 a club uses ~21 players, with its most-used eleven taking ~78% of the minutes.
+
+## The transfer window
+
+The close season used to happen *to* you: `runTransferWindow` ran every club's
+business including yours, and the computer could sell your best player without
+asking. It is now a phase you act in.
+
+`endSeason` stops before the AI goes shopping and leaves the window open;
+`startNextSeason` finishes it and rolls the world forward. In between you can
+browse every buyable player, bid, answer the bids other clubs have made for your
+players, renew contracts that are running down, and release anyone you do not
+want — all through **the same predicates the AI plays by**, so the human has no
+advantage beyond being able to choose.
+
+While the window is open the managed club is insulated: it is skipped for squad
+trimming, for distress sales, and as a *seller* in the AI's shopping. Incoming
+offers are the only route out of your squad, and they need your answer. A club in
+debt is then your problem to solve, which is the point.
+
+Two things learned from using it:
+
+- **Sort by what you can reach, not by ability.** Sorting the market by quality
+  alone fills the top with the league's best, every one out of budget, and buries
+  everything worth considering pages down.
+- **"Is the fee good?" is not the decision.** A selling club always asks a
+  premium, so the fee always beats the valuation and accepting is trivially
+  right. What matters is the hole it leaves, so an offer shows the cover behind
+  the player and how far your rating would drop — 8.7M for a full back whose only
+  deputy is sixteen points worse is a genuinely hard call.
 
 ## Picking the team
 

@@ -6,8 +6,21 @@ import type {
   TableRow,
   TeamSheet,
   TeamSheetIssue,
+  Transfer,
+  TransferOffer,
+  TransferWindowState,
   World,
 } from '../types.js';
+import {
+  makeBid,
+  offerContract,
+  releasePlayer,
+  respondToOffer,
+  transferTargets,
+  type BidOutcome,
+  type BrowseOptions,
+  type MarketListing,
+} from '../transfers/market.js';
 import {
   createSeasonState,
   finaliseSeason,
@@ -30,7 +43,12 @@ import {
   scoutedValue,
 } from '../world/scouting.js';
 import type { PotentialEstimate, Player, ScoutingState } from '../types.js';
-import { beginSeason, closeSeason, type SeasonSummary } from './career.js';
+import {
+  beginSeason,
+  closeSeason,
+  completeTransferWindow,
+  type SeasonSummary,
+} from './career.js';
 
 /**
  * A career being played rather than simulated: the world, the season in
@@ -177,8 +195,9 @@ export function managedResults(career: Career): MatchResult[] {
 }
 
 /**
- * Wraps up the season and starts the next one. Only valid once every round has
- * been played.
+ * Wraps up the season and **opens the transfer window**, leaving it open for the
+ * manager to act in. It no longer starts the next season -- call
+ * `startNextSeason` once you are done trading.
  */
 export function endSeason(career: Career): SeasonSummary {
   if (!isSeasonComplete(career)) {
@@ -191,8 +210,24 @@ export function endSeason(career: Career): SeasonSummary {
   // minutes.
   creditOwnSquad(career.scouting, managedClub(career).squad, career.world.season);
 
-  const summary = closeSeason(career.world, career.rng, result);
+  const summary = closeSeason(career.world, career.rng, result, {
+    deferWindow: true,
+    managedClubId: career.managedClubId,
+  });
   career.history.push(summary);
+
+  return summary;
+}
+
+/**
+ * Closes the window -- the AI does its own business -- and starts the new season.
+ */
+export function startNextSeason(career: Career): Transfer[] {
+  const transfers = completeTransferWindow(career.world, career.rng, career.managedClubId);
+
+  // The summary was written before the AI had traded; fold its business in.
+  const last = career.history[career.history.length - 1];
+  if (last) last.transfers = [...last.transfers, ...transfers];
 
   // Retired and departed players would otherwise accumulate in every save.
   pruneScouting(career.scouting, new Set(career.world.players.keys()));
@@ -203,7 +238,54 @@ export function endSeason(career: Career): SeasonSummary {
     playerState: true,
   });
 
-  return summary;
+  return transfers;
+}
+
+// --- Acting in the window --------------------------------------------------
+
+/** The open window, if there is one. */
+export function transferWindow(career: Career): TransferWindowState | undefined {
+  return career.world.transferWindow?.open ? career.world.transferWindow : undefined;
+}
+
+/** Bids on the table for your players. */
+export function incomingOffers(career: Career): TransferOffer[] {
+  return transferWindow(career)?.incoming.filter((o) => o.status === 'pending') ?? [];
+}
+
+/** Everyone you could sign, priced by the same rules the AI plays by. */
+export function browseTargets(career: Career, options?: BrowseOptions): MarketListing[] {
+  return transferTargets(career.world, career.managedClubId, options);
+}
+
+export function bidFor(
+  career: Career,
+  playerId: string,
+  fee: number,
+  wageOffer?: number,
+): BidOutcome {
+  return makeBid(career.rng, career.world, career.managedClubId, playerId, fee, wageOffer);
+}
+
+export function answerOffer(
+  career: Career,
+  offerId: string,
+  response: 'accept' | 'reject',
+): Transfer | undefined {
+  return respondToOffer(career.world, offerId, response);
+}
+
+export function release(career: Career, playerId: string): boolean {
+  return releasePlayer(career.world, career.managedClubId, playerId);
+}
+
+export function renewContract(
+  career: Career,
+  playerId: string,
+  wage: number,
+  years: number,
+): boolean {
+  return offerContract(career.world, career.managedClubId, playerId, wage, years);
 }
 
 

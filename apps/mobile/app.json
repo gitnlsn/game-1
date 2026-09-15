@@ -19,7 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "br.com.hubxp.game1",
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "favicon": "./assets/favicon.png"

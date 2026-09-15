@@ -12,7 +12,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function SeasonSummaryScreen() {
   const navigation = useNavigation<Nav>();
-  const { career } = useGame();
+  const { career, busy, beginNextSeason } = useGame();
 
   // Read the season just finished out of the career rather than carrying it as a
   // route param: the world mutates in place, so a captured object goes stale.
@@ -97,8 +97,17 @@ export function SeasonSummaryScreen() {
 
         <View style={styles.footer}>
           <Button
-            label={`Start season ${career.world.season}`}
-            onPress={() => navigation.navigate('tabs')}
+            label="Transfer window"
+            onPress={() => navigation.navigate('transfers')}
+            style={styles.secondary}
+          />
+          <Button
+            label={`Start season ${career.world.season + 1}`}
+            loading={busy}
+            onPress={async () => {
+              await beginNextSeason();
+              navigation.navigate('tabs');
+            }}
           />
         </View>
       </View>
@@ -123,6 +132,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   empty: { color: colors.faint, fontSize: 13, fontStyle: 'italic' },
+  secondary: { marginBottom: spacing.sm },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

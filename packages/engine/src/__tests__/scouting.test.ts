@@ -3,6 +3,7 @@ import {
   advanceRound,
   endSeason,
   isSeasonComplete,
+  startNextSeason,
   managedClub,
   scoutReport,
   scoutValuation,
@@ -155,6 +156,7 @@ describe('scouting and the career', () => {
     const career = startCareer({ seed: 'scout-save' });
     playSeason(career);
     endSeason(career);
+    startNextSeason(career);
 
     const loaded = deserializeCareer(serializeCareer(career));
     expect(Object.keys(loaded.scouting.reports).length).toBe(

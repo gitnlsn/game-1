@@ -171,6 +171,8 @@ export interface World {
   freeAgents: Player[];
   /** Seasons played so far. */
   season: number;
+  /** Set while a close-season window is open for a human manager. */
+  transferWindow?: TransferWindowState;
 }
 
 /**
@@ -263,6 +265,31 @@ export interface Transfer {
   wage: number;
   /** A free transfer is a player whose contract expired. */
   free: boolean;
+}
+
+/** A bid on the table, from an AI club for one of your players. */
+export interface TransferOffer {
+  id: string;
+  playerId: string;
+  playerName: string;
+  buyerClubId: string;
+  buyerClubName: string;
+  sellerClubId: string;
+  fee: number;
+  /** What the buyer would pay him weekly. */
+  wage: number;
+  years: number;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
+/** The close-season window, while a human manager is acting in it. */
+export interface TransferWindowState {
+  open: boolean;
+  season: number;
+  /** Bids for the managed club's players, awaiting an answer. */
+  incoming: TransferOffer[];
+  /** Everything that has completed in this window, both halves. */
+  completed: Transfer[];
 }
 
 export interface TableRow {

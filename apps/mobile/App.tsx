@@ -13,6 +13,7 @@ import { TeamSelectionScreen } from './src/screens/TeamSelectionScreen';
 import { MatchScreen } from './src/screens/MatchScreen';
 import { SeasonSummaryScreen } from './src/screens/SeasonSummaryScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { TransfersScreen } from './src/screens/TransfersScreen';
 import { NewCareerScreen } from './src/screens/NewCareerScreen';
 import { SaveProblemScreen } from './src/screens/SaveProblemScreen';
 import type { RootStackParamList } from './src/nav/routes';
@@ -69,6 +70,11 @@ function Game() {
         name="seasonSummary"
         component={SeasonSummaryScreen}
         options={{ title: 'Season review', headerBackVisible: false }}
+      />
+      <Stack.Screen
+        name="transfers"
+        component={TransfersScreen}
+        options={{ title: 'Transfer window' }}
       />
       <Stack.Screen name="settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Stack.Navigator>

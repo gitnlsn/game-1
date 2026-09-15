@@ -10,6 +10,7 @@ export type RootStackParamList = {
   teamSelection: undefined;
   matchResult: { round: number };
   seasonSummary: undefined;
+  transfers: undefined;
   settings: undefined;
 };
 

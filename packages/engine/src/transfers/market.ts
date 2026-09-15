@@ -1,5 +1,13 @@
-import { Rng } from '../rng/index.js';
-import type { Club, Player, Position, Transfer, World } from '../types.js';
+import { Rng, clamp } from '../rng/index.js';
+import type {
+  Club,
+  Player,
+  Position,
+  Transfer,
+  TransferOffer,
+  TransferWindowState,
+  World,
+} from '../types.js';
 import { expectedWage, marketValue, wageBill } from '../economy/valuation.js';
 import { abilityIn, positionFamiliarity } from '../world/positions.js';
 import { bestAbilityAt, depthAt, squadNeeds, targetAbility } from './needs.js';
@@ -55,19 +63,59 @@ interface MarketPlayer {
  * so no club gets a permanent first-pick advantage, and each works down its own
  * list of squad needs.
  */
-export function runTransferWindow(rng: Rng, world: World): Transfer[] {
+export interface ShopOptions {
+  /**
+   * Clubs the AI must not shop on behalf of -- the one the human is managing.
+   * They are still shuffled with everyone else so the RNG sequence is unchanged.
+   */
+  skipClubIds?: readonly string[];
+}
+
+/**
+ * Everything that has to happen before anyone goes shopping: clubs clear out
+ * players they do not need, and clubs in the red sell to balance the books.
+ *
+ * Split out so a human manager can act in the middle of a window. This must run
+ * first either way, or the free-agent pool is empty and distressed clubs have
+ * not listed anyone when the player comes to look.
+ */
+export function prepareTransferWindow(
+  rng: Rng,
+  world: World,
+  options: ShopOptions = {},
+): Transfer[] {
+  const clubs = world.league.clubs;
+  const transfers: Transfer[] = [];
+  const skip = new Set(options.skipClubIds ?? []);
+
+  // A skipped club does none of this automatically: trimming a squad releases
+  // players and raising funds sells them, and a manager should not discover
+  // after the fact that the computer has cashed in their best player.
+  for (const club of clubs) {
+    if (!skip.has(club.id)) trimSquad(world, club);
+  }
+  for (const club of clubs) {
+    if (!skip.has(club.id)) transfers.push(...raiseFunds(rng, world, club));
+  }
+
+  return transfers;
+}
+
+/** The AI half of a window: every club works down its own list of squad needs. */
+export function shopTransferWindow(
+  rng: Rng,
+  world: World,
+  options: ShopOptions = {},
+): Transfer[] {
   const T = TRANSFER_TUNING;
   const transfers: Transfer[] = [];
   const clubs = world.league.clubs;
+  const skip = new Set(options.skipClubIds ?? []);
 
-  // Clubs clear out the players they do not need before shopping. This frees
-  // wage room to sign anyone, and stocks the free-agent market for everyone else.
-  for (const club of clubs) trimSquad(world, club);
-
-  // Clubs in the red sell to balance the books before anyone goes shopping.
-  for (const club of clubs) transfers.push(...raiseFunds(rng, world, club));
-
+  // Shuffled over every club, skipped or not, so the draw sequence does not
+  // depend on who is being skipped.
   for (const club of rng.shuffle(clubs)) {
+    if (skip.has(club.id)) continue;
     let signings = 0;
 
     // Work down the weakest positions. Clubs shop to improve, not only when they
@@ -77,7 +125,7 @@ export function runTransferWindow(rng: Rng, world: World): Transfer[] {
       if (signings >= T.maxSigningsPerWindow) break;
       if (club.squad.length >= T.maxSquadSize) break;
 
-      const candidate = findBestCandidate(rng, world, club, need.position, need.current);
+      const candidate = findBestCandidate(rng, world, club, need.position, need.current, skip);
       if (!candidate) continue;
 
       const transfer = attemptTransfer(rng, world, club, candidate);
@@ -92,6 +140,21 @@ export function runTransferWindow(rng: Rng, world: World): Transfer[] {
 }
 
 /**
+ * A whole window at once. With no options the call sequence is exactly what it
+ * was before the split, so the headless validators cannot move.
+ */
+export function runTransferWindow(
+  rng: Rng,
+  world: World,
+  options: ShopOptions = {},
+): Transfer[] {
+  return [
+    ...prepareTransferWindow(rng, world, options),
+    ...shopTransferWindow(rng, world, options),
+  ];
+}
+
+/**
  * Best realistic target for a position: the highest-ability player the club can
  * afford, who improves them, and who would actually come.
  */
@@ -101,6 +164,7 @@ function findBestCandidate(
   buyer: Club,
   position: Position,
   currentQuality: number,
+  skipSellers: ReadonlySet<string> = new Set(),
 ): MarketPlayer | undefined {
   const T = TRANSFER_TUNING;
   const pool: MarketPlayer[] = world.freeAgents.map((player) => ({ player, club: undefined }));
@@ -115,6 +179,7 @@ function findBestCandidate(
 
   for (const entry of pool) {
     const { player, club: seller } = entry;
+    if (seller && skipSellers.has(seller.id)) continue;
     const ability = abilityIn(player.attributes, position) * positionFamiliarity(player.position, position);
     if (ability < currentQuality + T.improvementThreshold) continue;
 
@@ -398,4 +463,343 @@ export function expireFreeAgents(world: World): Player[] {
   world.freeAgents = [];
   for (const player of leaving) world.players.delete(player.id);
   return leaving;
+}
+
+
+// --- The window as something a manager acts in -----------------------------
+
+export interface MarketListing {
+  player: Player;
+  /** Empty string for a free agent. */
+  sellerClubId: string;
+  sellerClubName: string;
+  /** What the selling club wants. A free agent costs nothing. */
+  askingPrice: number;
+  /** What he would expect to earn at your club. */
+  expectedWage: number;
+  /** Would he actually come? */
+  wouldJoin: boolean;
+  /** Fee within budget and wage within the bill -- the same tests the AI applies. */
+  affordable: boolean;
+}
+
+export interface BrowseOptions {
+  position?: Position;
+  maxFee?: number;
+  maxAge?: number;
+  minAbility?: number;
+  /** Only players the buyer could actually sign. */
+  affordableOnly?: boolean;
+  limit?: number;
+}
+
+/**
+ * Everyone who could be bought, priced and gated by exactly the rules the AI
+ * plays by. A manager sees the same market the computer does, including whether
+ * a player would deign to come.
+ */
+export function transferTargets(
+  world: World,
+  buyerClubId: string,
+  options: BrowseOptions = {},
+): MarketListing[] {
+  const T = TRANSFER_TUNING;
+  const buyer = world.league.clubs.find((c) => c.id === buyerClubId);
+  if (!buyer) return [];
+
+  const listings: MarketListing[] = [];
+
+  const consider = (player: Player, seller: Club | undefined) => {
+    if (options.position && player.position !== options.position) return;
+    if (options.maxAge !== undefined && player.age > options.maxAge) return;
+    if (options.minAbility !== undefined && ability(player.attributes, player.position) < options.minAbility) {
+      return;
+    }
+
+    // A club will not sell its only specialist, nor cut below the squad floor.
+    if (seller && (seller.squad.length <= T.minSquadSize || depthAt(seller, player.position) <= 1)) {
+      return;
+    }
+
+    const price = seller ? askingPrice(seller, player) : 0;
+    if (options.maxFee !== undefined && price > options.maxFee) return;
+
+    const wage = expectedWage(player);
+    const wageRoom =
+      wageBill(buyer.squad) + wage * T.moveWageMax <= buyer.finances.wageBudget * T.wageBudgetCeiling;
+    const affordable = wageRoom && (!seller || buyer.finances.transferBudget >= price);
+    if (options.affordableOnly && !affordable) return;
+
+    listings.push({
+      player,
+      sellerClubId: seller?.id ?? '',
+      sellerClubName: seller?.name ?? 'Free agent',
+      askingPrice: price,
+      expectedWage: wage,
+      wouldJoin: playerWouldJoin(player, seller, buyer),
+      affordable,
+    });
+  };
+
+  for (const player of world.freeAgents) consider(player, undefined);
+  for (const club of world.league.clubs) {
+    if (club.id === buyerClubId) continue;
+    for (const player of club.squad) consider(player, club);
+  }
+
+  /*
+   * Players you could actually sign come first. Sorting by ability alone fills
+   * the top of the list with the league's best, every one of them out of reach,
+   * and buries the ones worth considering pages down.
+   */
+  const reachable = (l: MarketListing) => (l.affordable && l.wouldJoin ? 1 : 0);
+  listings.sort(
+    (a, b) =>
+      reachable(b) - reachable(a) ||
+      ability(b.player.attributes, b.player.position) -
+        ability(a.player.attributes, a.player.position),
+  );
+  return options.limit ? listings.slice(0, options.limit) : listings;
+}
+
+export type BidRejection =
+  | 'below_asking'
+  | 'no_budget'
+  | 'no_wage_room'
+  | 'would_not_join'
+  | 'seller_will_not_sell'
+  | 'buyer_squad_full'
+  | 'unknown_player';
+
+export interface BidOutcome {
+  accepted: boolean;
+  reason?: BidRejection;
+  /** What the seller would actually take, when a bid was simply too low. */
+  counterFee?: number;
+  transfer?: Transfer;
+}
+
+/**
+ * Bids for a player. Resolved immediately and against the same gates the AI
+ * uses, so the human has no advantage beyond being able to choose.
+ */
+export function makeBid(
+  rng: Rng,
+  world: World,
+  buyerClubId: string,
+  playerId: string,
+  fee: number,
+  wageOffer?: number,
+): BidOutcome {
+  const T = TRANSFER_TUNING;
+  const buyer = world.league.clubs.find((c) => c.id === buyerClubId);
+  if (!buyer) return { accepted: false, reason: 'unknown_player' };
+
+  const seller = world.league.clubs.find(
+    (c) => c.id !== buyerClubId && c.squad.some((p) => p.id === playerId),
+  );
+  const player = seller
+    ? seller.squad.find((p) => p.id === playerId)
+    : world.freeAgents.find((p) => p.id === playerId);
+  if (!player) return { accepted: false, reason: 'unknown_player' };
+
+  if (buyer.squad.length >= T.maxSquadSize) return { accepted: false, reason: 'buyer_squad_full' };
+  if (!playerWouldJoin(player, seller, buyer)) return { accepted: false, reason: 'would_not_join' };
+
+  if (seller) {
+    if (seller.squad.length <= T.minSquadSize || depthAt(seller, player.position) <= 1) {
+      return { accepted: false, reason: 'seller_will_not_sell' };
+    }
+    const price = askingPrice(seller, player);
+    if (fee < price) return { accepted: false, reason: 'below_asking', counterFee: price };
+    if (buyer.finances.transferBudget < fee) return { accepted: false, reason: 'no_budget' };
+  }
+
+  const wage = Math.max(
+    Math.round(expectedWage(player) * T.moveWageMin),
+    Math.round(wageOffer ?? expectedWage(player) * T.moveWageMax),
+  );
+  if (wageBill(buyer.squad) + wage > buyer.finances.wageBudget * T.wageBudgetCeiling) {
+    return { accepted: false, reason: 'no_wage_room' };
+  }
+
+  const paid = seller ? fee : 0;
+  if (seller) {
+    seller.squad = seller.squad.filter((p) => p.id !== player.id);
+    seller.finances.balance += paid;
+    seller.finances.season.playerSales += paid;
+  } else {
+    world.freeAgents = world.freeAgents.filter((p) => p.id !== player.id);
+  }
+
+  buyer.finances.balance -= paid;
+  buyer.finances.transferBudget -= paid;
+  buyer.finances.season.playerPurchases += paid;
+
+  player.contract = { wage, yearsRemaining: rng.int(2, 5) };
+  buyer.squad.push(player);
+  world.players.set(player.id, player);
+
+  const transfer: Transfer = {
+    playerId: player.id,
+    playerName: player.displayName,
+    fromClubId: seller?.id ?? '',
+    toClubId: buyer.id,
+    fee: paid,
+    wage,
+    free: seller === undefined,
+  };
+  world.transferWindow?.completed.push(transfer);
+  return { accepted: true, transfer };
+}
+
+/** Lets a player go for nothing. Refused if it would leave the club short. */
+export function releasePlayer(world: World, clubId: string, playerId: string): boolean {
+  const T = TRANSFER_TUNING;
+  const club = world.league.clubs.find((c) => c.id === clubId);
+  const player = club?.squad.find((p) => p.id === playerId);
+  if (!club || !player) return false;
+  if (club.squad.length <= T.minSquadSize) return false;
+  if (depthAt(club, player.position) <= 1) return false;
+
+  club.squad = club.squad.filter((p) => p.id !== playerId);
+  world.freeAgents.push(player);
+  return true;
+}
+
+/** Renews a contract on the terms offered. Refused if the wage bill will not take it. */
+export function offerContract(
+  world: World,
+  clubId: string,
+  playerId: string,
+  wage: number,
+  years: number,
+): boolean {
+  const T = TRANSFER_TUNING;
+  const club = world.league.clubs.find((c) => c.id === clubId);
+  const player = club?.squad.find((p) => p.id === playerId);
+  if (!club || !player) return false;
+
+  // He will not take a pay cut to stay.
+  if (wage < expectedWage(player)) return false;
+
+  const others = wageBill(club.squad) - player.contract.wage;
+  if (others + wage > club.finances.wageBudget * T.wageBudgetCeiling) return false;
+
+  player.contract = { wage: Math.round(wage), yearsRemaining: clamp(Math.round(years), 1, 5) };
+  return true;
+}
+
+let offerCounter = 0;
+
+/**
+ * The bids AI clubs would have made for your players, now needing your answer.
+ *
+ * Without this the window is one-directional: the computer quietly takes your
+ * best player (raiseFunds and findBestCandidate both reach into every squad) and
+ * you find out afterwards.
+ */
+export function generateIncomingOffers(
+  rng: Rng,
+  world: World,
+  managedClubId: string,
+): TransferOffer[] {
+  const T = TRANSFER_TUNING;
+  const managed = world.league.clubs.find((c) => c.id === managedClubId);
+  if (!managed) return [];
+
+  const offers: TransferOffer[] = [];
+
+  for (const buyer of rng.shuffle(world.league.clubs)) {
+    if (buyer.id === managedClubId) continue;
+    if (buyer.squad.length >= T.maxSquadSize) continue;
+
+    let best: Player | undefined;
+    let bestScore = -Infinity;
+
+    for (const need of squadNeeds(buyer).slice(0, T.positionsShoppedPerWindow)) {
+      for (const player of managed.squad) {
+        if (depthAt(managed, player.position) <= 1) continue;
+        const quality =
+          ability(player.attributes, need.position) *
+          positionFamiliarity(player.position, need.position);
+        if (quality < need.current + T.improvementThreshold) continue;
+        if (!playerWouldJoin(player, managed, buyer)) continue;
+        if (!buyerCanAfford(buyer, player, managed)) continue;
+        if (quality > bestScore) {
+          bestScore = quality;
+          best = player;
+        }
+      }
+    }
+
+    if (!best) continue;
+    if (offers.some((o) => o.playerId === best!.id)) continue;
+
+    offers.push({
+      id: `o${++offerCounter}`,
+      playerId: best.id,
+      playerName: best.displayName,
+      buyerClubId: buyer.id,
+      buyerClubName: buyer.name,
+      sellerClubId: managedClubId,
+      fee: askingPrice(managed, best),
+      wage: Math.round(expectedWage(best) * rng.float(T.moveWageMin, T.moveWageMax)),
+      years: rng.int(2, 5),
+      status: 'pending',
+    });
+  }
+
+  return offers;
+}
+
+/** Accepts or rejects a bid for one of your players. */
+export function respondToOffer(
+  world: World,
+  offerId: string,
+  response: 'accept' | 'reject',
+): Transfer | undefined {
+  const window = world.transferWindow;
+  const offer = window?.incoming.find((o) => o.id === offerId);
+  if (!window || !offer || offer.status !== 'pending') return undefined;
+
+  if (response === 'reject') {
+    offer.status = 'rejected';
+    return undefined;
+  }
+
+  const seller = world.league.clubs.find((c) => c.id === offer.sellerClubId);
+  const buyer = world.league.clubs.find((c) => c.id === offer.buyerClubId);
+  const player = seller?.squad.find((p) => p.id === offer.playerId);
+  if (!seller || !buyer || !player) {
+    offer.status = 'rejected';
+    return undefined;
+  }
+
+  seller.squad = seller.squad.filter((p) => p.id !== player.id);
+  seller.finances.balance += offer.fee;
+  seller.finances.season.playerSales += offer.fee;
+  buyer.finances.balance -= offer.fee;
+  buyer.finances.transferBudget -= offer.fee;
+  buyer.finances.season.playerPurchases += offer.fee;
+
+  player.contract = { wage: offer.wage, yearsRemaining: offer.years };
+  buyer.squad.push(player);
+  offer.status = 'accepted';
+
+  const transfer: Transfer = {
+    playerId: player.id,
+    playerName: player.displayName,
+    fromClubId: seller.id,
+    toClubId: buyer.id,
+    fee: offer.fee,
+    wage: offer.wage,
+    free: false,
+  };
+  window.completed.push(transfer);
+  return transfer;
+}
+
+export function createTransferWindow(season: number): TransferWindowState {
+  return { open: true, season, incoming: [], completed: [] };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceRound,
   endSeason,
+  startNextSeason,
   isSeasonComplete,
   leagueTable,
   managedClub,
@@ -66,6 +67,7 @@ describe('career controller', () => {
 
     playWholeSeason(career);
     const summary = endSeason(career);
+    startNextSeason(career);
 
     expect(summary.championName).not.toBe('');
     expect(career.history).toHaveLength(1);
@@ -126,6 +128,7 @@ describe('save and load', () => {
     const career = startCareer({ seed: 'save-season' });
     playWholeSeason(career);
     endSeason(career);
+    startNextSeason(career);
     advanceRound(career);
 
     const loaded = deserializeCareer(serializeCareer(career));
@@ -135,6 +138,7 @@ describe('save and load', () => {
 
     playWholeSeason(loaded);
     expect(() => endSeason(loaded)).not.toThrow();
+    expect(() => startNextSeason(loaded)).not.toThrow();
   });
 
   it('does not mint colliding ids when loaded into a fresh process', () => {
@@ -154,6 +158,7 @@ describe('save and load', () => {
     resetPlayerIds();
     const loaded = deserializeCareer(json);
     endSeason(loaded); // promotes academy players, minting new ids
+    startNextSeason(loaded);
 
     const seen = new Set<string>();
     for (const club of loaded.world.league.clubs) {

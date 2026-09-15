@@ -49,18 +49,28 @@ export function MatchScreen({ route }: Props) {
     if (!replaying) return;
     const started = Date.now();
     let frame = 0;
+    let done = false;
 
     const tick = () => {
-      if (skipped.current) return;
+      if (skipped.current || done) return;
       const progress = (Date.now() - started) / REPLAY_DURATION_MS;
       const minute = Math.min(FULL_TIME, Math.round(progress * FULL_TIME));
       // Only re-render when the displayed minute actually changes.
       setClock((current) => (current === minute ? current : minute));
-      if (minute < FULL_TIME) frame = requestAnimationFrame(tick);
+      if (minute >= FULL_TIME) done = true;
+      else frame = requestAnimationFrame(tick);
     };
 
+    // A timer as well as frames: a backgrounded tab suspends animation, and a
+    // match that never reaches full time cannot be continued from.
+    const backstop = setInterval(tick, 250);
+
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      done = true;
+      cancelAnimationFrame(frame);
+      clearInterval(backstop);
+    };
   }, [replaying]);
 
   if (!career || !result) {

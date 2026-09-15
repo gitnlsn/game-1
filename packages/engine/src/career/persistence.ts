@@ -7,13 +7,14 @@ import type {
   Player,
   ScoutingState,
   TeamSheet,
+  TransferWindowState,
 } from '../types.js';
 import { createSeasonState } from '../league/season.js';
 import { ensurePlayerIdsAbove } from '../world/players.js';
 import type { Career } from './controller.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -44,6 +45,8 @@ export interface SavedCareer {
   league: { id: string; name: string; nationality: string };
   clubs: Club[];
   freeAgents: Player[];
+  /** Added in save version 4: an open close-season window. */
+  transferWindow: TransferWindowState | undefined;
   season: {
     fixtures: Fixture[];
     results: MatchResult[];
@@ -75,6 +78,7 @@ export function toSavedCareer(career: Career): SavedCareer {
     },
     clubs: world.league.clubs,
     freeAgents: world.freeAgents,
+    transferWindow: world.transferWindow,
     season: {
       fixtures: season.fixtures,
       results: trimResults(season.results, career.managedClubId),
@@ -148,6 +152,12 @@ const MIGRATIONS: Record<number, Migration> = {
     const season = (saved.season as Record<string, unknown>) ?? {};
     return { ...saved, version: 3, season: { ...season, teamSheets: [] } };
   },
+  /**
+   * v4 made the transfer window something a manager acts in. A career saved
+   * before this has no window open -- the old flow ran it to completion inside
+   * endSeason, so there was never one to be in.
+   */
+  3: (saved) => ({ ...saved, version: 4, transferWindow: undefined }),
 };
 
 /** Raised when a save cannot be brought up to the current format. */
@@ -209,6 +219,7 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     players,
     freeAgents: saved.freeAgents,
     season: saved.worldSeason,
+    ...(saved.transferWindow ? { transferWindow: saved.transferWindow } : {}),
   };
 
   const rng = new Rng(`${saved.seed}:career`);
