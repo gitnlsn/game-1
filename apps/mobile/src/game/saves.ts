@@ -3,8 +3,15 @@ import {
   serializeCareer,
   UnsupportedSaveError,
   type Career,
-} from '@game1/engine';
+} from '@prancheta/engine';
 
+/*
+ * Deliberately still `game1:`, which the app has not been called since it was
+ * named. These are the addresses of saves already sitting on devices: rename
+ * them and every one of those careers becomes unreachable, with the app
+ * reporting no save rather than a broken one, which is worse. A storage key is
+ * an identifier, not a label.
+ */
 export const SAVE_KEY = 'game1:career:v1';
 export const SETTINGS_KEY = 'game1:settings';
 /** A save we could not read is moved here rather than deleted. */

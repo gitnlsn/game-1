@@ -10,7 +10,7 @@ importers:
 
   apps/mobile:
     dependencies:
-      '@game1/engine':
+      '@prancheta/engine':
         specifier: workspace:*
         version: link:../../packages/engine
       '@react-native-async-storage/async-storage':

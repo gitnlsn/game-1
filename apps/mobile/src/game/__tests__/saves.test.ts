@@ -6,7 +6,7 @@ import {
   serializeCareer,
   startCareer,
   type Career,
-} from '@game1/engine';
+} from '@prancheta/engine';
 import {
   clearCareer,
   DEFAULT_SETTINGS,

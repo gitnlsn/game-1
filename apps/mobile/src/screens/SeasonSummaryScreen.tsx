@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { formatMoney, isSacked, managedLeague } from '@game1/engine';
+import { formatMoney, isSacked, managedLeague } from '@prancheta/engine';
 import { Button, Card, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';

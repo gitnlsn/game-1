@@ -25,7 +25,7 @@ import {
   type Position,
   type TeamSheet,
   type Tactics,
-} from '@game1/engine';
+} from '@prancheta/engine';
 import { Badge, Button, Card, ChipRow, SectionTitle } from '../components/ui';
 import { colors, conditionColor, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';

@@ -11,7 +11,7 @@ import {
   type Career,
   type Player,
   type PotentialEstimate,
-} from '@game1/engine';
+} from '@prancheta/engine';
 import { Badge, Card, SectionTitle } from '../components/ui';
 import { colors, conditionColor, positionColor, radius, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';

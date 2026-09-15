@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "Game1",
-    "slug": "game1",
+    "name": "Prancheta",
+    "slug": "prancheta",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "br.com.hubxp.game1"
+      "bundleIdentifier": "br.com.prancheta"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "br.com.hubxp.game1",
+      "package": "br.com.prancheta",
       "versionCode": 4
     },
     "web": {

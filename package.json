@@ -1,15 +1,15 @@
 {
-  "name": "game1",
+  "name": "prancheta",
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "sim": "pnpm --filter @game1/engine sim",
+    "sim": "pnpm --filter @prancheta/engine sim",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "build:engine": "pnpm --filter @game1/engine build",
-    "mobile": "pnpm build:engine && pnpm --filter @game1/mobile exec expo start",
-    "mobile:web": "pnpm build:engine && pnpm --filter @game1/mobile exec expo start --web",
-    "calibrate": "pnpm --filter @game1/engine exec tsx src/cli.ts validate --seasons 25 && pnpm --filter @game1/engine exec tsx src/cli.ts economy --seasons 25 && pnpm --filter @game1/engine exec tsx src/cli.ts tactics --repeats 12 && pnpm --filter @game1/engine exec tsx src/cli.ts pyramid --seasons 20"
+    "build:engine": "pnpm --filter @prancheta/engine build",
+    "mobile": "pnpm build:engine && pnpm --filter @prancheta/mobile exec expo start",
+    "mobile:web": "pnpm build:engine && pnpm --filter @prancheta/mobile exec expo start --web",
+    "calibrate": "pnpm --filter @prancheta/engine exec tsx src/cli.ts validate --seasons 25 && pnpm --filter @prancheta/engine exec tsx src/cli.ts economy --seasons 25 && pnpm --filter @prancheta/engine exec tsx src/cli.ts tactics --repeats 12 && pnpm --filter @prancheta/engine exec tsx src/cli.ts pyramid --seasons 20"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
