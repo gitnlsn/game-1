@@ -127,6 +127,8 @@ export interface ScoutingReport {
 
 export interface ScoutingState {
   reports: Record<string, ScoutingReport>;
+  /** Scouting assignments spent this season. */
+  capacityUsed: number;
 }
 
 /**

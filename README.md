@@ -232,6 +232,18 @@ by watching: minutes played for your own, and facing a side for theirs. So the
 squad list shows a tight `80–86` against an established 23-year-old and a wide
 `48–66` against an 18-year-old nobody has seen.
 
+Knowledge you cannot get for free you buy with **scouts**. A club gets a handful
+of assignments a season — `3 + reputation/20`, so a big club gets seven and a small
+one four — and spending one on a player narrows the band on him sharply, roughly
+halving the uncertainty about a stranger. The allowance refreshes when the season
+starts. The cap is the whole feature: you cannot watch everyone, so deciding who is
+worth a closer look before you bid is itself the decision.
+
+Scouting spends an abstract capacity rather than money, on purpose. Wiring it to
+`ClubFinances` would put `wageToRevenuePct`, `clubsInDebtPct` and the cash
+benchmarks back in play — a full economy recalibration bought for a feature that
+does not need one.
+
 **The AI deliberately cheats**, and the code says so. Giving nineteen rival clubs
 noisy potential would misprice every under-26 through `marketValue`, moving squad
 values, transfer volume and squad ages — recalibrating the whole economy to buy a
@@ -242,7 +254,7 @@ gap between the two is where a bargain or a mistake lives.
 
 ## Tests and CI
 
-`pnpm test` runs both packages: 124 engine tests and 12 app tests. `pnpm calibrate`
+`pnpm test` runs both packages: 149 engine tests and 12 app tests. `pnpm calibrate`
 runs the real harnesses and **exits non-zero if any benchmark has drifted**, so CI
 gates on calibration rather than only on tests — the two catch different things,
 and the economy once failed on its own default seed while the suite stayed green.

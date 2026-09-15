@@ -39,8 +39,11 @@ import {
   creditOpponent,
   creditOwnSquad,
   pruneScouting,
+  resetScoutingCapacity,
   scoutedPotential,
   scoutedValue,
+  scoutingRemaining,
+  assignScout,
 } from '../world/scouting.js';
 import type { PotentialEstimate, Player, ScoutingState } from '../types.js';
 import {
@@ -149,6 +152,27 @@ export function scoutValuation(career: Career, player: Player): number {
   return scoutedValue(career.world.seed, career.scouting, player);
 }
 
+/** Scouting assignments left this close season. */
+export function scoutsAvailable(career: Career): number {
+  return scoutingRemaining(career.scouting, managedClub(career).reputation);
+}
+
+/**
+ * Sends a scout to watch a player. Returns false when there is no capacity left
+ * -- you cannot look closely at everyone, which is what makes choosing who to
+ * look at a decision.
+ */
+export function scoutPlayer(career: Career, playerId: string): boolean {
+  const player = career.world.players.get(playerId);
+  if (!player) return false;
+  return assignScout(
+    career.scouting,
+    player,
+    managedClub(career).reputation,
+    career.world.season,
+  );
+}
+
 export function isSeasonComplete(career: Career): boolean {
   return seasonComplete(career.season);
 }
@@ -231,6 +255,7 @@ export function startNextSeason(career: Career): Transfer[] {
 
   // Retired and departed players would otherwise accumulate in every save.
   pruneScouting(career.scouting, new Set(career.world.players.keys()));
+  resetScoutingCapacity(career.scouting);
 
   beginSeason(career.world);
   career.season = createSeasonState(career.world, career.rng, {

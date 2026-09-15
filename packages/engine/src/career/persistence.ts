@@ -14,7 +14,7 @@ import { ensurePlayerIdsAbove } from '../world/players.js';
 import type { Career } from './controller.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -158,6 +158,11 @@ const MIGRATIONS: Record<number, Migration> = {
    * endSeason, so there was never one to be in.
    */
   3: (saved) => ({ ...saved, version: 4, transferWindow: undefined }),
+  /** v5 gave scouting a per-season allowance. An existing career starts unspent. */
+  4: (saved) => {
+    const scouting = (saved.scouting as Record<string, unknown>) ?? { reports: {} };
+    return { ...saved, version: 5, scouting: { ...scouting, capacityUsed: 0 } };
+  },
 };
 
 /** Raised when a save cannot be brought up to the current format. */
@@ -243,7 +248,7 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     managedClubId: saved.managedClubId,
     season,
     history: saved.history,
-    scouting: saved.scouting ?? { reports: {} },
+    scouting: saved.scouting ?? { reports: {}, capacityUsed: 0 },
   };
 }
 

@@ -5,12 +5,14 @@ import {
   currentAbility,
   formatMoney,
   marketValue,
+  scoutPlayer,
   scoutReport,
+  scoutsAvailable,
   scoutValuation,
   type AttributeKey,
   type Player,
 } from '@game1/engine';
-import { Badge, Card, Divider, KeyValue, SectionTitle, StatBar } from '../components/ui';
+import { Badge, Button, Card, Divider, KeyValue, SectionTitle, StatBar } from '../components/ui';
 import { colors, conditionColor, formColor, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
@@ -32,7 +34,7 @@ const LABELS: Record<AttributeKey, string> = {
 };
 
 export function PlayerScreen({ route }: Props) {
-  const { career, version } = useGame();
+  const { career, version, refresh } = useGame();
   const { playerId } = route.params;
 
   const player = career?.world.players.get(playerId);
@@ -51,6 +53,7 @@ export function PlayerScreen({ route }: Props) {
 
   const ability = currentAbility(player);
   const report = scoutReport(career, player);
+  const scouts = scoutsAvailable(career);
   const { status } = player;
   const isOwn = club?.id === career.managedClubId;
   // Goalkeeping numbers are noise for an outfielder; show them last and muted.
@@ -102,6 +105,18 @@ export function PlayerScreen({ route }: Props) {
           value={formatMoney(scoutValuation(career, player))}
           tint={scoutValuation(career, player) > marketValue(player) ? colors.accent : colors.muted}
         />
+        {report.confidence < 0.85 ? (
+          <Button
+            label={scouts > 0 ? `Send a scout (${scouts} free)` : 'No scouts free this season'}
+            variant="secondary"
+            disabled={scouts === 0}
+            style={styles.scout}
+            onPress={() => {
+              scoutPlayer(career, player.id);
+              refresh();
+            }}
+          />
+        ) : null}
       </Card>
 
       {isOwn ? (
@@ -203,6 +218,7 @@ const styles = StyleSheet.create({
   ability: { fontSize: 30, fontWeight: '800', fontVariant: ['tabular-nums'] },
   reportHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   reportRange: { color: colors.text, fontSize: 24, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  scout: { marginTop: spacing.md },
   reportNote: { color: colors.muted, fontSize: 12, marginTop: 4, fontStyle: 'italic' },
   conditionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, flexWrap: 'wrap' },
   formBox: { minWidth: 50 },

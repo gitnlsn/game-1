@@ -22,6 +22,16 @@ export const SCOUTING_TUNING = {
   ownSquadBase: 0.5,
   /** Minutes of football worth one full point of knowledge. */
   minutesPerKnowledge: 900,
+  /**
+   * How many players a club can send a scout to watch in a season. Deliberately an
+   * abstract capacity rather than money: wiring scouting to the budget would put
+   * wages-to-revenue, clubs-in-debt and the cash benchmarks in play, which is a
+   * whole recalibration bought for a feature that does not need it.
+   */
+  capacityFloor: 3,
+  capacityPerReputation: 1 / 20,
+  /** Knowledge one assignment buys -- roughly halves the uncertainty on a stranger. */
+  assignmentKnowledge: 5,
   /** Knowledge gained about an opponent's squad member from facing them. */
   facedSquad: 0.1,
   /** Extra for an opponent who actually did something in the match. */
@@ -29,7 +39,42 @@ export const SCOUTING_TUNING = {
 } as const;
 
 export function createScoutingState(): ScoutingState {
-  return { reports: {} };
+  return { reports: {}, capacityUsed: 0 };
+}
+
+/** Assignments a club of this standing can make in one season. */
+export function scoutCapacity(reputation: number): number {
+  const S = SCOUTING_TUNING;
+  return Math.max(1, Math.round(S.capacityFloor + reputation * S.capacityPerReputation));
+}
+
+export function scoutingRemaining(state: ScoutingState, reputation: number): number {
+  return Math.max(0, scoutCapacity(reputation) - state.capacityUsed);
+}
+
+/**
+ * Sends a scout to watch a player, narrowing the band on him.
+ *
+ * Capacity is the whole point: you cannot scout everyone, so deciding who is
+ * worth a closer look is itself the decision. Returns false when there is none
+ * left.
+ */
+export function assignScout(
+  state: ScoutingState,
+  player: Player,
+  reputation: number,
+  season: number,
+): boolean {
+  const S = SCOUTING_TUNING;
+  if (scoutingRemaining(state, reputation) <= 0) return false;
+
+  state.capacityUsed += 1;
+  credit(state, player, S.assignmentKnowledge, season);
+  return true;
+}
+
+export function resetScoutingCapacity(state: ScoutingState): void {
+  state.capacityUsed = 0;
 }
 
 export function knowledgeOf(state: ScoutingState, playerId: string): number {

@@ -13,12 +13,15 @@ import {
   managedClub,
   release,
   renewContract,
+  scoutPlayer,
   scoutReport,
+  scoutsAvailable,
   transferWindow,
   wageBill,
   type BidRejection,
   type MarketListing,
   type Player,
+  type PotentialEstimate,
 } from '@game1/engine';
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -84,6 +87,7 @@ export function TransfersScreen() {
 
   const budget = club.finances.transferBudget;
   const wageRoom = club.finances.wageBudget - wageBill(club.squad);
+  const scouts = scoutsAvailable(career);
 
   const confirmBid = () => {
     if (!pending) return;
@@ -232,6 +236,16 @@ export function TransfersScreen() {
 
         {tab === 'market' ? (
           <>
+            <Card style={styles.scouts}>
+              <Text style={styles.scoutsCount}>
+                {scouts === 0 ? 'No scouts left' : `${scouts} scout${scouts === 1 ? '' : 's'} free`}
+              </Text>
+              <Text style={styles.scoutsNote}>
+                {scouts === 0
+                  ? 'Your staff are stretched until next season. What you already know is what you go on.'
+                  : 'Send one to watch a player and you will get a tighter read on how good he might become.'}
+              </Text>
+            </Card>
             <ChipRow
               style={styles.filter}
               options={[
@@ -249,7 +263,17 @@ export function TransfersScreen() {
                 key={listing.player.id}
                 listing={listing}
                 band={scoutReport(career, listing.player)}
+                canScout={scouts > 0}
                 onOpen={() => navigation.navigate('player', { playerId: listing.player.id })}
+                onScout={() => {
+                  const sent = scoutPlayer(career, listing.player.id);
+                  setMessage(
+                    sent
+                      ? `Your scouts file a report on ${listing.player.displayName}.`
+                      : 'You have no scouts free this season.',
+                  );
+                  refresh();
+                }}
                 onBid={() => setPending(listing)}
               />
             ))}
@@ -322,16 +346,25 @@ function SquadRow({
 function TargetRow({
   listing,
   band,
+  canScout,
   onOpen,
+  onScout,
   onBid,
 }: {
   listing: MarketListing;
-  band: { low: number; high: number };
+  band: PotentialEstimate;
+  canScout: boolean;
   onOpen: () => void;
+  onScout: () => void;
   onBid: () => void;
 }) {
   const { player } = listing;
   const blocked = !listing.wouldJoin || !listing.affordable;
+  /*
+   * Past this point another report buys almost nothing, and saying so is kinder
+   * than letting someone spend their last scout on a player they already know.
+   */
+  const known = band.confidence >= 0.85;
 
   return (
     <Card style={styles.card}>
@@ -348,7 +381,7 @@ function TargetRow({
           </Text>
         </View>
         <Text style={styles.cardMeta}>
-          {player.age} · {listing.sellerClubName} · potential {band.low}–{band.high}
+          {player.age} · {listing.sellerClubName}
         </Text>
       </Pressable>
       <Divider />
@@ -358,15 +391,28 @@ function TargetRow({
         bold
       />
       <KeyValue label="Wages" value={`${formatMoney(listing.expectedWage)}/wk`} />
+      <KeyValue
+        label="Could become"
+        value={`${band.low}–${band.high} · ${band.label}`}
+        tint={band.confidence >= 0.6 ? colors.text : colors.faint}
+      />
       {blocked ? (
         <Badge
           label={!listing.wouldJoin ? 'Would not join you' : 'Beyond your budget'}
           color={colors.warn}
           style={styles.blocked}
         />
-      ) : (
-        <Button label="Make an offer" onPress={onBid} style={styles.bid} />
-      )}
+      ) : null}
+      <View style={styles.actions}>
+        <Button
+          label={known ? 'Nothing more to learn' : 'Send a scout'}
+          variant="secondary"
+          style={styles.action}
+          disabled={!canScout || known}
+          onPress={onScout}
+        />
+        {blocked ? null : <Button label="Make an offer" style={styles.action} onPress={onBid} />}
+      </View>
     </Card>
   );
 }
@@ -406,4 +452,7 @@ const styles = StyleSheet.create({
   bid: { marginTop: spacing.sm },
   blocked: { marginTop: spacing.sm },
   filter: { marginBottom: spacing.md },
+  scouts: { marginBottom: spacing.md, borderColor: colors.border },
+  scoutsCount: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  scoutsNote: { color: colors.faint, fontSize: 12, marginTop: 2 },
 });

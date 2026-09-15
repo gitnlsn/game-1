@@ -5,6 +5,8 @@ import {
   isSeasonComplete,
   startNextSeason,
   managedClub,
+  scoutPlayer,
+  scoutsAvailable,
   scoutReport,
   scoutValuation,
   startCareer,
@@ -15,6 +17,7 @@ import {
   createScoutingState,
   creditOwnSquad,
   knowledgeOf,
+  scoutCapacity,
   scoutedPotential,
   SCOUTING_TUNING,
 } from '../world/scouting.js';
@@ -214,5 +217,117 @@ describe('scoutedValue', () => {
     // Some look like bargains on your reading, some like traps.
     expect(gaps.some((g) => g > 0)).toBe(true);
     expect(gaps.some((g) => g < 0)).toBe(true);
+  });
+});
+
+
+describe('scout assignments', () => {
+  /**
+   * A young player at another club: knowledge starts at zero, and his ceiling is
+   * far enough above what he already does that the band is not pinned against
+   * either end of the scale.
+   */
+  function prospect(career: Career) {
+    for (const club of career.world.league.clubs) {
+      if (club.id === career.managedClubId) continue;
+      const young = club.squad.find((p) => p.age <= 20);
+      if (young) return young;
+    }
+    throw new Error('no prospect in the world');
+  }
+
+  it('narrows the band on a player you send a scout to watch', () => {
+    const career = startCareer({ seed: 'scout-assign', managedClubId: 'c1' });
+    const target = prospect(career);
+
+    const before = scoutReport(career, target);
+    expect(scoutPlayer(career, target.id)).toBe(true);
+    const after = scoutReport(career, target);
+
+    expect(after.high - after.low).toBeLessThan(before.high - before.low);
+    expect(after.confidence).toBeGreaterThan(before.confidence);
+  });
+
+  it('runs out, so who you watch is a decision', () => {
+    const career = startCareer({ seed: 'scout-capacity', managedClubId: 'c1' });
+    const capacity = scoutCapacity(managedClub(career).reputation);
+    expect(scoutsAvailable(career)).toBe(capacity);
+
+    const rival = career.world.league.clubs.find((c) => c.id !== career.managedClubId)!;
+    for (let i = 0; i < capacity; i++) {
+      expect(scoutPlayer(career, rival.squad[i]!.id)).toBe(true);
+    }
+
+    expect(scoutsAvailable(career)).toBe(0);
+    // The one player too many is refused, and costs nothing.
+    const overflow = rival.squad[capacity]!;
+    expect(scoutPlayer(career, overflow.id)).toBe(false);
+    expect(knowledgeOf(career.scouting, overflow.id)).toBe(0);
+  });
+
+  it('gives a bigger club more scouts than a small one', () => {
+    const clubs = createWorld({ seed: 'scout-reputation' }).league.clubs;
+    const weakest = clubs.reduce((a, b) => (a.reputation <= b.reputation ? a : b));
+    const strongest = clubs.reduce((a, b) => (a.reputation >= b.reputation ? a : b));
+    expect(scoutCapacity(strongest.reputation)).toBeGreaterThan(
+      scoutCapacity(weakest.reputation),
+    );
+  });
+
+  it('refuses a player who does not exist rather than spending capacity', () => {
+    const career = startCareer({ seed: 'scout-missing', managedClubId: 'c1' });
+    expect(scoutPlayer(career, 'nobody')).toBe(false);
+    expect(scoutsAvailable(career)).toBe(scoutCapacity(managedClub(career).reputation));
+  });
+
+  it('refreshes the allowance each season', () => {
+    const career = startCareer({ seed: 'scout-refresh', managedClubId: 'c1' });
+    const rival = career.world.league.clubs.find((c) => c.id !== career.managedClubId)!;
+    scoutPlayer(career, rival.squad[0]!.id);
+    expect(scoutsAvailable(career)).toBeLessThan(scoutCapacity(managedClub(career).reputation));
+
+    playSeason(career);
+    endSeason(career);
+    startNextSeason(career);
+
+    expect(scoutsAvailable(career)).toBe(scoutCapacity(managedClub(career).reputation));
+  });
+
+  it('survives a save, spent capacity included', () => {
+    const career = startCareer({ seed: 'scout-save', managedClubId: 'c1' });
+    const target = prospect(career);
+    scoutPlayer(career, target.id);
+
+    const restored = deserializeCareer(serializeCareer(career));
+
+    expect(restored.scouting.capacityUsed).toBe(career.scouting.capacityUsed);
+    expect(scoutsAvailable(restored)).toBe(scoutsAvailable(career));
+    expect(scoutReport(restored, restored.world.players.get(target.id)!)).toEqual(
+      scoutReport(career, target),
+    );
+  });
+
+  it('upgrades a save written before scouts had a budget', () => {
+    const career = startCareer({ seed: 'scout-capacity-migrate', managedClubId: 'c1' });
+    const saved = JSON.parse(serializeCareer(career));
+    delete saved.scouting.capacityUsed;
+    saved.version = 4;
+
+    const loaded = deserializeCareer(JSON.stringify(saved));
+    // A career mid-flight gets a full allowance rather than NaN scouts left.
+    expect(loaded.scouting.capacityUsed).toBe(0);
+    expect(scoutsAvailable(loaded)).toBe(scoutCapacity(managedClub(loaded).reputation));
+  });
+
+  it('never touches the career generator, so scouting cannot change results', () => {
+    const career = startCareer({ seed: 'scout-purity', managedClubId: 'c1' });
+    const rival = career.world.league.clubs.find((c) => c.id !== career.managedClubId)!;
+    const state = career.rng.getState();
+
+    scoutPlayer(career, rival.squad[0]!.id);
+    scoutReport(career, rival.squad[0]!);
+    scoutValuation(career, rival.squad[0]!);
+
+    expect(career.rng.getState()).toEqual(state);
   });
 });
