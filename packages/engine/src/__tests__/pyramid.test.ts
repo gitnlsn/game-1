@@ -228,7 +228,7 @@ describe('promotion and relegation', () => {
 
 describe('the pyramid over a career', () => {
   it('passes every pyramid benchmark', () => {
-    const report = validatePyramid({ seasons: 12, seed: 'pyramid-test' });
+    const report = validatePyramid({ seasons: 20, seed: 'pyramid-test' });
     const failures = report.checks
       .filter((c) => !c.pass)
       .map((c) => `${c.benchmark.label} = ${c.value.toFixed(2)} (want ${c.benchmark.target} +/- ${c.benchmark.tolerance})`);

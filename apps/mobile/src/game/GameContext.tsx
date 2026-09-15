@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   advanceRound,
   endSeason,
+  isSacked,
   isSeasonComplete,
   startCareer,
   startNextSeason,
@@ -46,6 +47,8 @@ interface GameContextValue {
   beginNextSeason: () => Promise<void>;
   /** True while the close-season window is open and waiting on you. */
   windowOpen: boolean;
+  /** True once the board has dismissed you. The career is over. */
+  sacked: boolean;
   /**
    * Re-render and save after a screen has mutated the world directly -- the
    * transfer screen calls engine functions itself rather than going through an
@@ -198,6 +201,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     () => ({
       career, version, loading, busy, saveProblem, settings,
       windowOpen: !!career && !!transferWindow(career),
+      sacked: !!career && isSacked(career),
       newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
       dismissSaveProblem, updateSettings, refresh,
     }),

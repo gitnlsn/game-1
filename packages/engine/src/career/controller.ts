@@ -3,6 +3,7 @@ import type {
   Club,
   Fixture,
   MatchResult,
+  League,
   TableRow,
   TeamSheet,
   TeamSheetIssue,
@@ -32,7 +33,7 @@ import {
 } from '../league/season.js';
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
-import type { CupState } from '../league/cup.js';
+import type { CupState, CupTie } from '../league/cup.js';
 import { resolveTactics, type Tactics } from '../match/tactics.js';
 import {
   boardMood,
@@ -207,7 +208,12 @@ export function isSeasonComplete(career: Career): boolean {
 }
 
 export function leagueTable(career: Career): TableRow[] {
-  return currentTable(career.season);
+  /*
+   * The manager's OWN division, not the top one. Defaulting to tier 1 meant a
+   * second-division manager's club screen read "0/38 played, not started" all
+   * season, because their club was nowhere in the table being consulted.
+   */
+  return currentTable(career.season, managedLeague(career).id);
 }
 
 /** Where the managed club currently sits, 1-based. */
@@ -221,6 +227,9 @@ export interface UpcomingFixture {
   fixture: Fixture;
   opponent: Club;
   home: boolean;
+  /** What the match is: the division's name, or the cup's. */
+  competition: string;
+  isCup: boolean;
 }
 
 /** The managed club's next match, or undefined once the season is over. */
@@ -237,7 +246,81 @@ export function nextFixture(career: Career): UpcomingFixture | undefined {
   const opponent = findClub(career.world, opponentId);
   if (!opponent) return undefined;
 
-  return { fixture, opponent, home };
+  const isCup = fixture.competitionId === career.season.cup?.competitionId;
+  const competition = isCup
+    ? (career.season.cup?.name ?? 'Cup')
+    : (career.world.leagues.find((l) => l.id === fixture.competitionId)?.name ?? '');
+
+  return { fixture, opponent, home, competition, isCup };
+}
+
+/** Every division with its table, top tier first. */
+export function divisionTables(career: Career): { league: League; table: TableRow[] }[] {
+  return career.world.leagues.map((league) => ({
+    league,
+    table: currentTable(career.season, league.id),
+  }));
+}
+
+/** The division the managed club is in. */
+export function managedLeague(career: Career): League {
+  return leagueOf(career.world, career.managedClubId) ?? career.world.leagues[0]!;
+}
+
+/** The knockout in progress, if there is one. */
+export function currentCup(career: Career): CupState | undefined {
+  return career.season.cup;
+}
+
+export interface CupProgress {
+  name: string;
+  /** Ties the managed club has played, earliest first. */
+  ties: CupTie[];
+  /** True while they are still in it. */
+  stillIn: boolean;
+  /** The round they went out in, or won in. */
+  roundsSurvived: number;
+  won: boolean;
+  /** How many clubs are left, for naming the round a screen is showing. */
+  remaining: number;
+}
+
+/** How the managed club's cup run is going. */
+export function cupRun(career: Career): CupProgress | undefined {
+  const cup = career.season.cup;
+  if (!cup) return undefined;
+
+  const ties = cup.ties.filter(
+    (tie) => tie.homeClubId === career.managedClubId || tie.awayClubId === career.managedClubId,
+  );
+  const stillIn = cup.remaining.includes(career.managedClubId);
+
+  return {
+    name: cup.name,
+    ties,
+    stillIn,
+    roundsSurvived: ties.filter((tie) => tie.winnerClubId === career.managedClubId).length,
+    won: cup.winnerClubId === career.managedClubId,
+    remaining: cup.remaining.length,
+  };
+}
+
+/**
+ * What to call a round with this many clubs left. A screen should not have to
+ * work out that four clubs left means the semi-finals.
+ */
+export function cupRoundName(clubsRemaining: number): string {
+  if (clubsRemaining <= 1) return 'Winners';
+  if (clubsRemaining === 2) return 'Final';
+  if (clubsRemaining <= 4) return 'Semi-finals';
+  if (clubsRemaining <= 8) return 'Quarter-finals';
+  /*
+   * "Round of 40" would be wrong: in the first round only the sixteen smallest
+   * clubs play, and the other twenty-four have byes. A round is only "of n" once
+   * everybody left is actually in it, which is to say once n is a power of two.
+   */
+  const isPowerOfTwo = (clubsRemaining & (clubsRemaining - 1)) === 0;
+  return isPowerOfTwo ? `Round of ${clubsRemaining}` : 'First round';
 }
 
 /** Results involving the managed club, most recent first. */

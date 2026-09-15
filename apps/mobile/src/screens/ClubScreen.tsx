@@ -3,6 +3,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
+  boardConfidence,
+  cupRoundName,
+  cupRun,
   findClub,
   describeTactics,
   formatMoney,
@@ -13,6 +16,7 @@ import {
   managedPosition,
   managedResults,
   marketValue,
+  managedLeague,
   nextFixture,
   tactics as currentTactics,
   wageBill,
@@ -45,12 +49,15 @@ const OUTCOME_COLOR = { W: colors.accent, D: colors.muted, L: colors.danger } as
 
 export function ClubScreen() {
   const navigation = useNavigation<Nav>();
-  const { career, busy, playRound, finishSeason, beginNextSeason, windowOpen } = useGame();
+  const { career, busy, playRound, finishSeason, beginNextSeason, windowOpen, sacked } = useGame();
   // Before the guard below: hooks cannot run conditionally.
   const [confirmingSeason, setConfirmingSeason] = useState(false);
   if (!career) return null;
 
   const club = managedClub(career);
+  const board = boardConfidence(career);
+  const run = cupRun(career);
+  const cup = career.season.cup;
   const table = leagueTable(career);
   const row = table.find((r) => r.clubId === club.id);
   const position = managedPosition(career);
@@ -110,7 +117,24 @@ export function ClubScreen() {
         />
       </View>
 
-      {windowOpen ? (
+      {/*
+        * Reached on relaunch as much as on the day it happens: without this a
+        * dismissed manager reopens the app to a perfectly normal club screen.
+        */}
+      {sacked ? (
+        <Card style={styles.sackedCard}>
+          <SectionTitle>Career over</SectionTitle>
+          <Text style={styles.finishedText}>
+            {career.board.sackReason ?? 'The board has decided to make a change.'}
+          </Text>
+          <Button
+            label="See your record"
+            variant="danger"
+            onPress={() => navigation.navigate('sacked')}
+            style={styles.playButton}
+          />
+        </Card>
+      ) : windowOpen ? (
         <Card style={styles.matchCard}>
           <SectionTitle>Transfer window</SectionTitle>
           <Text style={styles.finishedText}>
@@ -155,9 +179,14 @@ export function ClubScreen() {
         </Card>
       ) : upcoming ? (
         <Card style={styles.matchCard}>
-          <SectionTitle right={<Text style={styles.roundLabel}>Round {career.season.nextRound}</Text>}>
-            Next match
+          <SectionTitle
+            right={<Text style={styles.roundLabel}>Round {career.season.nextRound}</Text>}
+          >
+            {upcoming.isCup ? cupRoundName(cup?.remaining.length ?? 0) : 'Next match'}
           </SectionTitle>
+          {upcoming.isCup ? (
+            <Badge label={upcoming.competition.toUpperCase()} color={colors.gold} style={styles.cupBadge} />
+          ) : null}
 
           <View style={styles.fixtureRow}>
             <Badge
@@ -202,7 +231,33 @@ export function ClubScreen() {
             style={styles.quickButton}
           />
         </Card>
-      ) : null}
+      ) : (
+        /*
+         * No fixture this matchday. A club with a cup bye has one of these, and
+         * without this card the screen offers nothing at all -- no next match,
+         * no button, no way to move the season on.
+         */
+        <Card style={styles.matchCard}>
+          <SectionTitle
+            right={<Text style={styles.roundLabel}>Round {career.season.nextRound}</Text>}
+          >
+            No match this week
+          </SectionTitle>
+          <Text style={styles.finishedText}>
+            {run?.stillIn && !run.won
+              ? `You have a bye in the ${run.name}. The rest of the country plays on.`
+              : 'You have no fixture this week. The rest of the country plays on.'}
+          </Text>
+          <Button
+            label="Move on a week"
+            loading={busy}
+            onPress={async () => {
+              await playRound();
+            }}
+            style={styles.playButton}
+          />
+        </Card>
+      )}
 
       <SectionTitle>Form</SectionTitle>
       <Card>
@@ -250,6 +305,47 @@ export function ClubScreen() {
         />
         <KeyValue label="Stadium" value={club.finances.stadiumCapacity.toLocaleString()} />
       </Card>
+
+      <SectionTitle>The board</SectionTitle>
+      <Card>
+        <KeyValue
+          label="Confidence"
+          value={`${board.mood} (${board.confidence})`}
+          bold
+          tint={
+            board.confidence >= 60
+              ? colors.accent
+              : board.confidence >= 35
+                ? colors.warn
+                : colors.danger
+          }
+        />
+        <KeyValue
+          label="Expected finish"
+          value={`${ordinal(board.expectation)} in the ${managedLeague(career).name}`}
+        />
+      </Card>
+
+      {run ? (
+        <>
+          <SectionTitle>{run.name}</SectionTitle>
+          <Card>
+            <KeyValue
+              label="Status"
+              value={
+                run.won
+                  ? 'Winners'
+                  : run.stillIn
+                    ? cupRoundName(run.remaining)
+                    : `Out — ${run.ties.length} tie${run.ties.length === 1 ? '' : 's'} played`
+              }
+              bold
+              tint={run.won ? colors.gold : run.stillIn ? colors.accent : colors.muted}
+            />
+            <KeyValue label="Ties won" value={`${run.roundsSurvived}`} />
+          </Card>
+        </>
+      ) : null}
 
       <HistoryCard career={career} />
 
@@ -326,6 +422,8 @@ const styles = StyleSheet.create({
   fixtureRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   opponentName: { color: colors.text, fontSize: 18, fontWeight: '700', flex: 1 },
   opponentMeta: { color: colors.muted, fontSize: 12, marginTop: 4 },
+  sackedCard: { marginTop: spacing.md, borderColor: colors.danger, borderWidth: 1 },
+  cupBadge: { alignSelf: 'flex-start', marginTop: spacing.xs },
   setup: {
     color: colors.faint, fontSize: 12, marginTop: spacing.sm, fontStyle: 'italic',
   },

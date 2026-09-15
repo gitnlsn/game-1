@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { leagueOf, finaliseSeason, leagueTable } from '@game1/engine';
-import { Card, SectionTitle } from '../components/ui';
+import { divisionTables, finaliseSeason, managedLeague } from '@game1/engine';
+import { Card, ChipRow, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
@@ -14,9 +14,16 @@ export function TableScreen() {
   const navigation = useNavigation<Nav>();
   const { career, version } = useGame();
 
+  const divisions = useMemo(() => (career ? divisionTables(career) : []), [career, version]);
+  const [tier, setTier] = useState<string | undefined>();
+
   // finaliseSeason rebuilds the scorer map from every result in the season, so
   // it must not run on every render.
-  const table = useMemo(() => (career ? leagueTable(career) : []), [career, version]);
+  const shown =
+    divisions.find((d) => d.league.id === tier) ??
+    divisions.find((d) => career && d.league.id === managedLeague(career).id) ??
+    divisions[0];
+  const table = shown?.table ?? [];
   const scorers = useMemo(
     () => (career ? finaliseSeason(career.season).scorers.slice(0, 10) : []),
     [career, version],
@@ -30,7 +37,15 @@ export function TableScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <SectionTitle>{leagueOf(career.world, career.managedClubId)?.name ?? ''}</SectionTitle>
+      {divisions.length > 1 ? (
+        <ChipRow
+          style={styles.divisions}
+          options={divisions.map((d) => ({ value: d.league.id, label: `Tier ${d.league.tier}` }))}
+          value={shown?.league.id ?? ''}
+          onChange={setTier}
+        />
+      ) : null}
+      <SectionTitle>{shown?.league.name ?? ''}</SectionTitle>
       <Card style={styles.tableCard}>
         <View style={[styles.row, styles.headerRow]}>
           <Text style={[styles.pos, styles.headerText]}>#</Text>
@@ -45,14 +60,28 @@ export function TableScreen() {
 
         {table.map((row, index) => {
           const own = row.clubId === career.managedClubId;
-          const zone =
-            index === 0 ? colors.gold : index >= table.length - 3 ? colors.danger : 'transparent';
+          const tierNumber = shown?.league.tier ?? 1;
+          const lastTier = tierNumber >= divisions.length;
+          /*
+           * Which end of the table matters depends on where you are. There is
+           * nothing below the bottom division to go down to, and nothing above
+           * the top one to go up to, so neither gets a zone it cannot enter.
+           */
+          const promotion = tierNumber > 1 && index < 3;
+          const relegation = !lastTier && index >= table.length - 3;
+          const zone = index === 0
+            ? colors.gold
+            : promotion
+              ? colors.accent
+              : relegation
+                ? colors.danger
+                : 'transparent';
 
           return (
             <View
               key={row.clubId}
               accessibilityLabel={`${index + 1}. ${row.clubName}, played ${row.played}, ${row.points} points${
-                index === 0 ? ', league leaders' : index >= table.length - 3 ? ', relegation zone' : ''
+                index === 0 ? ', league leaders' : promotion ? ', promotion place' : relegation ? ', relegation zone' : ''
               }`}
               style={[styles.row, own ? styles.ownRow : null, { borderLeftColor: zone }]}
             >
@@ -108,6 +137,7 @@ export function TableScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  divisions: { marginBottom: spacing.sm },
   tableCard: { padding: 0, overflow: 'hidden', marginBottom: spacing.lg },
   row: {
     flexDirection: 'row',

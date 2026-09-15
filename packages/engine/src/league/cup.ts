@@ -13,8 +13,15 @@ import { effectiveness } from '../match/ratings.js';
  */
 
 export const CUP_TUNING = {
-  /** Matchdays the cup rounds are played on, earliest first. */
-  rounds: [4, 10, 17, 24, 31, 36],
+  /**
+   * Matchdays the cup rounds are played on, in the combined calendar.
+   *
+   * League fixtures are pushed around these rather than sharing them: a cup day
+   * that doubled as a league day meant a club in the cup played twice on the
+   * same matchday, and a screen showing "the next match" could only show one of
+   * them. A season with a cup is 44 matchdays, not 38.
+   */
+  rounds: [5, 12, 20, 28, 36, 42],
   /**
    * Extra time is played at reduced intensity: tired legs, and sides that have
    * already decided they would rather take their chances from the spot.

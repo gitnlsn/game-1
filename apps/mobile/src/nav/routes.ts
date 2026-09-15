@@ -12,6 +12,7 @@ export type RootStackParamList = {
   seasonSummary: undefined;
   transfers: undefined;
   settings: undefined;
+  sacked: undefined;
 };
 
 declare global {

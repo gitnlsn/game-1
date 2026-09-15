@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
+  CAREER_DEFAULTS,
   allClubs,
   clubStrength,
   createWorld,
@@ -29,10 +30,23 @@ export function NewCareerScreen() {
   const { newCareer } = useGame();
   const [seed, setSeed] = useState(randomSeed);
 
-  // Built from the same seed the career will use, so what you pick is what you get.
-  const world = useMemo(() => createWorld({ seed }), [seed]);
+  /*
+   * Built with the same seed AND the same shape the career will use. The seed
+   * alone is not enough: generating one division draws a different set of clubs
+   * from the generator than generating two, so a preview that skipped the
+   * divisions gave you a different club from the one you picked.
+   */
+  const world = useMemo(
+    () => createWorld({ seed, divisions: CAREER_DEFAULTS.divisions }),
+    [seed],
+  );
   const clubs = useMemo(
-    () => [...allClubs(world)].sort((a, b) => b.reputation - a.reputation),
+    () =>
+      world.leagues.flatMap((league) =>
+        [...league.clubs]
+          .sort((a, b) => b.reputation - a.reputation)
+          .map((club) => ({ club, league })),
+      ),
     [world],
   );
 
@@ -44,7 +58,7 @@ export function NewCareerScreen() {
     >
       <Text style={textStyles.title}>Take charge</Text>
       <Text style={[textStyles.subtitle, styles.intro]}>
-        {world.leagues[0]!.name} — {clubs.length} clubs, all fictional. Pick a job: a big club expects
+        {world.leagues.map((l) => l.name).join(' and ')} — {clubs.length} clubs, all fictional. Pick a job: a big club expects
         trophies, a small one expects you to survive.
       </Text>
 
@@ -58,14 +72,27 @@ export function NewCareerScreen() {
         Choose a club
       </SectionTitle>
 
-      {clubs.map((club) => (
-        <ClubOption key={club.id} club={club} onPick={() => newCareer(seed, club.id)} />
+      {clubs.map(({ club, league }) => (
+        <ClubOption
+          key={club.id}
+          club={club}
+          {...(world.leagues.length > 1 ? { division: league.name } : {})}
+          onPick={() => newCareer(seed, club.id)}
+        />
       ))}
     </ScrollView>
   );
 }
 
-function ClubOption({ club, onPick }: { club: Club; onPick: () => void }) {
+function ClubOption({
+  club,
+  division,
+  onPick,
+}: {
+  club: Club;
+  division?: string;
+  onPick: () => void;
+}) {
   const ambition = ambitionLabel(club.reputation);
   const squadValue = club.squad.reduce((sum, player) => sum + marketValue(player), 0);
   const strength = clubStrength(club);
@@ -79,7 +106,10 @@ function ClubOption({ club, onPick }: { club: Club; onPick: () => void }) {
               <Text style={styles.clubName} numberOfLines={1}>
                 {club.name}
               </Text>
-              <Text style={styles.clubCity}>{club.city}</Text>
+              <Text style={styles.clubCity}>
+                {club.city}
+                {division ? ` · ${division}` : ''}
+              </Text>
             </View>
             <Badge label={ambition.label} color={ambition.color} />
           </View>

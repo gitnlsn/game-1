@@ -8,6 +8,7 @@ import {
   resolveShootout,
 } from '../league/cup.js';
 import { createSeasonState, currentTable, playRound } from '../league/season.js';
+import { cupRoundName } from '../career/controller.js';
 import { allClubs, createWorld } from '../world/index.js';
 import type { SeasonState } from '../league/season.js';
 
@@ -143,5 +144,22 @@ describe('the cup alongside the league', () => {
     const with_ = runSeason('cup-load', true);
     expect(with_.results.length).toBeGreaterThan(without.results.length);
     expect(with_.results.length - without.results.length).toBe(39);
+  });
+});
+
+describe('naming a round', () => {
+  it('names the late rounds properly', () => {
+    expect(cupRoundName(2)).toBe('Final');
+    expect(cupRoundName(4)).toBe('Semi-finals');
+    expect(cupRoundName(8)).toBe('Quarter-finals');
+    expect(cupRoundName(16)).toBe('Round of 16');
+    expect(cupRoundName(1)).toBe('Winners');
+  });
+
+  it('does not call the first round "of" a number nobody is playing', () => {
+    // 40 clubs are left but only 16 play; the other 24 have byes.
+    expect(cupRoundName(40)).toBe('First round');
+    expect(cupRoundName(20)).toBe('First round');
+    expect(cupRoundName(32)).toBe('Round of 32');
   });
 });

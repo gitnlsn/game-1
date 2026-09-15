@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { formatMoney } from '@game1/engine';
+import { formatMoney, isSacked, managedLeague } from '@game1/engine';
 import { Button, Card, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -19,9 +19,19 @@ export function SeasonSummaryScreen() {
   const summary = career?.history[career.history.length - 1];
   if (!career || !summary) return null;
 
-  const position = summary.table.findIndex((row) => row.clubId === career.managedClubId) + 1;
-  const own = summary.table[position - 1];
+  /*
+   * The manager's own division, not the top one. `summary.table` is tier 1, so
+   * reading a position out of it puts every second-tier manager nowhere at all.
+   */
+  const table =
+    summary.tables.find((rows) => rows.some((row) => row.clubId === career.managedClubId)) ??
+    summary.table;
+  const position = table.findIndex((row) => row.clubId === career.managedClubId) + 1;
+  const own = table[position - 1];
   const won = position === 1;
+  const verdict = summary.verdict;
+  const moved = summary.promotions.find((p) => p.clubId === career.managedClubId);
+  const sacked = isSacked(career);
 
   const spend = summary.transfers.reduce((sum, transfer) => sum + transfer.fee, 0);
   const incoming = summary.transfers.filter((t) => t.toClubId === career.managedClubId);
@@ -32,10 +42,53 @@ export function SeasonSummaryScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Text style={styles.heading}>Season {summary.season} review</Text>
 
+          {moved ? (
+            <Card
+              style={[
+                styles.moved,
+                { borderColor: moved.to < moved.from ? colors.accent : colors.danger },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.movedText,
+                  { color: moved.to < moved.from ? colors.accent : colors.danger },
+                ]}
+              >
+                {moved.to < moved.from ? 'PROMOTED' : 'RELEGATED'}
+              </Text>
+              <Text style={styles.movedNote}>
+                You will play next season in {managedLeague(career).name}.
+              </Text>
+            </Card>
+          ) : null}
+
+          {verdict ? (
+            <Card
+              style={[
+                styles.verdict,
+                { borderColor: verdict.sacked ? colors.danger : colors.border },
+              ]}
+            >
+              <SectionTitle>The board</SectionTitle>
+              <Text style={styles.verdictText}>{verdict.message}</Text>
+              <Divider />
+              <KeyValue
+                label="Confidence"
+                value={`${Math.round(verdict.confidenceBefore)} → ${Math.round(verdict.confidenceAfter)}`}
+                bold
+                tint={
+                  verdict.confidenceAfter >= verdict.confidenceBefore ? colors.accent : colors.warn
+                }
+              />
+            </Card>
+          ) : null}
+
           <Card style={styles.headline}>
             <Text style={[styles.finish, won ? { color: colors.gold } : null]}>
               {won ? 'CHAMPIONS' : `Finished ${position}${position === 2 ? 'nd' : position === 3 ? 'rd' : 'th'}`}
             </Text>
+            <Text style={styles.division}>{managedLeague(career).name}</Text>
             <Text style={styles.record}>
               {own ? `${own.won}W ${own.drawn}D ${own.lost}L · ${own.points} points` : ''}
             </Text>
@@ -95,21 +148,31 @@ export function SeasonSummaryScreen() {
           </Card>
         </ScrollView>
 
-        <View style={styles.footer}>
-          <Button
-            label="Transfer window"
-            onPress={() => navigation.navigate('transfers')}
-            style={styles.secondary}
-          />
-          <Button
-            label={`Start season ${career.world.season + 1}`}
-            loading={busy}
-            onPress={async () => {
-              await beginNextSeason();
-              navigation.navigate('tabs');
-            }}
-          />
-        </View>
+        {sacked ? (
+          <View style={styles.footer}>
+            <Button
+              label="See the board's decision"
+              variant="danger"
+              onPress={() => navigation.replace('sacked')}
+            />
+          </View>
+        ) : (
+          <View style={styles.footer}>
+            <Button
+              label="Transfer window"
+              onPress={() => navigation.navigate('transfers')}
+              style={styles.secondary}
+            />
+            <Button
+              label={`Start season ${career.world.season + 1}`}
+              loading={busy}
+              onPress={async () => {
+                await beginNextSeason();
+                navigation.navigate('tabs');
+              }}
+            />
+          </View>
+        )}
       </View>
   );
 }
@@ -122,6 +185,12 @@ const styles = StyleSheet.create({
   finish: { color: colors.text, fontSize: 26, fontWeight: '800' },
   record: { color: colors.muted, fontSize: 13, marginTop: 4, fontVariant: ['tabular-nums'] },
   champion: { color: colors.faint, fontSize: 12, marginTop: spacing.sm },
+  division: { color: colors.faint, fontSize: 12, marginTop: 2 },
+  moved: { marginTop: spacing.sm, alignItems: 'center', paddingVertical: spacing.md, borderWidth: 1 },
+  movedText: { fontSize: 18, fontWeight: '800', letterSpacing: 1 },
+  movedNote: { color: colors.muted, fontSize: 12, marginTop: 4 },
+  verdict: { marginBottom: spacing.lg },
+  verdictText: { color: colors.text, fontSize: 13, lineHeight: 19 },
   transferRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
   arrow: { fontSize: 10, fontWeight: '800', width: 30 },
   transferName: { color: colors.text, fontSize: 13, flex: 1 },

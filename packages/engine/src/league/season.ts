@@ -7,6 +7,7 @@ import { allClubs } from '../world/index.js';
 import {
   advanceCupRound,
   createCupState,
+  CUP_TUNING,
   cupComplete,
   cupRoundMatchday,
   currentTies,
@@ -93,12 +94,20 @@ export function createSeasonState(
    * matchdays, which is what lets a single `nextRound` drive the whole pyramid
    * -- and later lets a cup round slot in among them.
    */
-  const fixtures =
+  const leagueFixtures =
     options.fixtures ??
     world.leagues.flatMap((league) =>
       generateFixtures(league.clubs.map((c) => c.id), rng, league.id),
     );
-  const totalRounds = fixtures.reduce((max, fixture) => Math.max(max, fixture.round), 0);
+  // With a cup, league rounds are spread across the matchdays the cup does not
+  // use, so nobody is asked to play twice in a day.
+  const fixtures =
+    options.cup && !options.fixtures ? spreadAroundCup(leagueFixtures) : leagueFixtures;
+
+  const leagueRounds = fixtures.reduce((max, fixture) => Math.max(max, fixture.round), 0);
+  const totalRounds = options.cup
+    ? Math.max(leagueRounds, CUP_TUNING.rounds[CUP_TUNING.rounds.length - 1] ?? 0)
+    : leagueRounds;
 
   const state: SeasonState = {
     world,
@@ -126,6 +135,27 @@ export function createSeasonState(
   }
 
   return state;
+}
+
+/**
+ * Moves league rounds off the matchdays the cup has claimed.
+ *
+ * Round 1 goes to the first free matchday, round 2 to the second, and so on, so
+ * the league still runs in order and every club still plays at most once a day.
+ */
+function spreadAroundCup(fixtures: readonly Fixture[]): Fixture[] {
+  const reserved = new Set<number>(CUP_TUNING.rounds);
+  const rounds = [...new Set(fixtures.map((f) => f.round))].sort((a, b) => a - b);
+
+  const mapping = new Map<number, number>();
+  let matchday = 0;
+  for (const round of rounds) {
+    do matchday++;
+    while (reserved.has(matchday));
+    mapping.set(round, matchday);
+  }
+
+  return fixtures.map((fixture) => ({ ...fixture, round: mapping.get(fixture.round) ?? fixture.round }));
 }
 
 /**

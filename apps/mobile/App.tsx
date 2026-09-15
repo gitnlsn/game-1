@@ -16,6 +16,7 @@ import { SettingsScreen } from './src/screens/SettingsScreen';
 import { TransfersScreen } from './src/screens/TransfersScreen';
 import { NewCareerScreen } from './src/screens/NewCareerScreen';
 import { SaveProblemScreen } from './src/screens/SaveProblemScreen';
+import { SackedScreen } from './src/screens/SackedScreen';
 import type { RootStackParamList } from './src/nav/routes';
 import { colors } from './src/theme';
 
@@ -77,6 +78,12 @@ function Game() {
         options={{ title: 'Transfer window' }}
       />
       <Stack.Screen name="settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+      {/* No way back: the career is over, and the only move is to start another. */}
+      <Stack.Screen
+        name="sacked"
+        component={SackedScreen}
+        options={{ title: 'Dismissed', headerBackVisible: false, gestureEnabled: false }}
+      />
     </Stack.Navigator>
   );
 }
