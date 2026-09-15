@@ -87,6 +87,9 @@ export interface Career {
   board: BoardState;
 }
 
+/** What a career plays, as opposed to what the harnesses measure. */
+export const CAREER_DEFAULTS = { divisions: 2, cup: true } as const;
+
 export interface StartCareerOptions {
   seed: number | string;
   /** Club the player takes charge of. Defaults to the first club. */
@@ -94,15 +97,21 @@ export interface StartCareerOptions {
   clubCount?: number;
   leagueName?: string;
   nationality?: string;
-  /** Divisions in the pyramid. */
+  /**
+   * Divisions in the pyramid. A career plays a two-division pyramid with a cup
+   * by default; the headless harnesses build their own single-division worlds,
+   * because what they measure is the shape of one division.
+   */
   divisions?: number;
+  /** Play a knockout cup alongside the league. On by default for a career. */
+  cup?: boolean;
 }
 
 export function startCareer(options: StartCareerOptions): Career {
   const world = createWorld({
     seed: options.seed,
     ...(options.clubCount !== undefined ? { clubCount: options.clubCount } : {}),
-    ...(options.divisions !== undefined ? { divisions: options.divisions } : {}),
+    divisions: options.divisions ?? CAREER_DEFAULTS.divisions,
     ...(options.leagueName !== undefined ? { leagueName: options.leagueName } : {}),
     ...(options.nationality !== undefined ? { nationality: options.nationality } : {}),
   });
@@ -111,7 +120,11 @@ export function startCareer(options: StartCareerOptions): Career {
   const managedClubId = options.managedClubId ?? allClubs(world)[0]!.id;
 
   beginSeason(world);
-  const season = createSeasonState(world, rng, { economy: true, playerState: true });
+  const season = createSeasonState(world, rng, {
+    economy: true,
+    playerState: true,
+    cup: options.cup ?? CAREER_DEFAULTS.cup,
+  });
 
   const career: Career = {
     world,
@@ -333,6 +346,7 @@ export function startNextSeason(career: Career): Transfer[] {
   career.season = createSeasonState(career.world, career.rng, {
     economy: true,
     playerState: true,
+    cup: career.season.options.cup ?? CAREER_DEFAULTS.cup,
   });
 
   return transfers;

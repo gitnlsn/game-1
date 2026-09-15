@@ -21,7 +21,9 @@ import { expectedWage, marketValue, wageBill } from '../economy/valuation.js';
 import { TRANSFER_TUNING } from '../transfers/market.js';
 
 function toWindow(seed: string): Career {
-  const career = startCareer({ seed });
+  // One division, no cup: this suite is about the transfer window, and the
+  // fixture and result counts it asserts are a single division's.
+  const career = startCareer({ seed, divisions: 1, cup: false });
   let guard = 0;
   while (!isSeasonComplete(career) && guard++ < 60) advanceRound(career);
   endSeason(career);

@@ -6,7 +6,14 @@ import {
   leagueOf,
   topLeague,
 } from '../world/index.js';
-import { startCareer, advanceRound, isSeasonComplete, leagueTable } from '../career/controller.js';
+import {
+  startCareer,
+  advanceRound,
+  endSeason,
+  isSeasonComplete,
+  leagueTable,
+  startNextSeason,
+} from '../career/controller.js';
 import { deserializeCareer, serializeCareer } from '../career/persistence.js';
 import { createSeasonState, currentTable, currentTables, finaliseSeason, playRound } from '../league/season.js';
 import { closeSeason } from '../career/career.js';
@@ -108,7 +115,7 @@ describe('a world with divisions', () => {
 
 describe('saves written before the pyramid', () => {
   it('resume as a one-division world with a readable table', () => {
-    const career = startCareer({ seed: 'pyramid-migrate' });
+    const career = startCareer({ seed: 'pyramid-migrate', divisions: 1, cup: false });
     for (let i = 0; i < 5; i++) advanceRound(career);
 
     const saved = JSON.parse(serializeCareer(career)) as Record<string, any>;
@@ -226,5 +233,52 @@ describe('the pyramid over a career', () => {
       .filter((c) => !c.pass)
       .map((c) => `${c.benchmark.label} = ${c.value.toFixed(2)} (want ${c.benchmark.target} +/- ${c.benchmark.tolerance})`);
     expect(failures).toEqual([]);
+  });
+});
+
+describe('what a career plays by default', () => {
+  it('is a two-division pyramid with a cup', () => {
+    const career = startCareer({ seed: 'defaults' });
+    expect(career.world.leagues).toHaveLength(2);
+    expect(allClubs(career.world)).toHaveLength(40);
+    expect(career.season.cup).toBeDefined();
+  });
+
+  it('keeps the cup it was playing across a save, without re-drawing it', () => {
+    const career = startCareer({ seed: 'cup-save' });
+    // Far enough in for the first two cup rounds to have been drawn and played.
+    for (let i = 0; i < 12; i++) advanceRound(career);
+
+    const before = career.season.cup!;
+    const restored = deserializeCareer(serializeCareer(career));
+
+    expect(restored.season.cup!.ties).toEqual(before.ties);
+    expect(restored.season.cup!.remaining).toEqual(before.remaining);
+    expect(restored.season.cup!.roundIndex).toBe(before.roundIndex);
+
+    /*
+     * And the generator is where it was. Re-drawing the bracket on load would
+     * consume shuffles the uninterrupted career never made, so every match after
+     * the save would play out differently -- which is exactly what happened.
+     */
+    expect(restored.rng.getState()).toBe(career.rng.getState());
+
+    const a = advanceRound(career);
+    const b = advanceRound(restored);
+    expect(b.map((r) => [r.homeClubId, r.home.goals, r.away.goals])).toEqual(
+      a.map((r) => [r.homeClubId, r.home.goals, r.away.goals]),
+    );
+  });
+
+  it('gives the next season a new cup', () => {
+    const career = startCareer({ seed: 'cup-next' });
+    let guard = 0;
+    while (!isSeasonComplete(career) && guard++ < 100) advanceRound(career);
+    endSeason(career);
+    startNextSeason(career);
+
+    expect(career.season.cup).toBeDefined();
+    expect(career.season.cup!.ties).toEqual([]);
+    expect(career.season.cup!.remaining).toHaveLength(40);
   });
 });

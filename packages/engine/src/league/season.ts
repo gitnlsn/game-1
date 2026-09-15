@@ -46,6 +46,14 @@ export interface SimulateSeasonOptions {
    * harness keeps measuring exactly what it measured before.
    */
   cup?: boolean;
+  /**
+   * A knockout already in progress, restored from a save.
+   *
+   * Given this, the bracket is NOT drawn: drawing one consumes shuffles from the
+   * generator that the uninterrupted career never made, so a resumed season
+   * played out differently from one that was never saved.
+   */
+  restoreCup?: CupState;
 }
 
 /**
@@ -105,7 +113,9 @@ export function createSeasonState(
     teamSheets: new Map(options.teamSheets ?? []),
   };
 
-  if (options.cup) {
+  if (options.restoreCup) {
+    state.cup = options.restoreCup;
+  } else if (options.cup) {
     // Weakest first: `createCupState` gives the byes to the other end.
     state.cup = createCupState(
       rng,

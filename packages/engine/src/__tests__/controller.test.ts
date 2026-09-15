@@ -25,7 +25,7 @@ function playWholeSeason(career: ReturnType<typeof startCareer>): void {
 
 describe('career controller', () => {
   it('plays a season one round at a time', () => {
-    const career = startCareer({ seed: 'controller' });
+    const career = startCareer({ seed: 'controller', divisions: 1, cup: false });
     expect(career.season.totalRounds).toBe(38);
     expect(isSeasonComplete(career)).toBe(false);
 
@@ -44,7 +44,7 @@ describe('career controller', () => {
   });
 
   it('tracks the managed club through the season', () => {
-    const career = startCareer({ seed: 'managed', managedClubId: 'c5' });
+    const career = startCareer({ seed: 'managed', managedClubId: 'c5', divisions: 1, cup: false });
     expect(managedClub(career).id).toBe('c5');
 
     const upcoming = nextFixture(career);
@@ -62,7 +62,7 @@ describe('career controller', () => {
   });
 
   it('rolls into the next season and keeps the world coherent', () => {
-    const career = startCareer({ seed: 'rollover' });
+    const career = startCareer({ seed: 'rollover', divisions: 1, cup: false });
     expect(() => endSeason(career)).toThrow(/rounds left/);
 
     playWholeSeason(career);
@@ -86,8 +86,8 @@ describe('career controller', () => {
 
 describe('save and load', () => {
   it('resumes exactly where an uninterrupted career would have gone', () => {
-    const direct = startCareer({ seed: 'save-test', managedClubId: 'c3' });
-    const viaSave = startCareer({ seed: 'save-test', managedClubId: 'c3' });
+    const direct = startCareer({ seed: 'save-test', managedClubId: 'c3', divisions: 1, cup: false });
+    const viaSave = startCareer({ seed: 'save-test', managedClubId: 'c3', divisions: 1, cup: false });
 
     for (let i = 0; i < 6; i++) {
       advanceRound(direct);
@@ -110,7 +110,7 @@ describe('save and load', () => {
   });
 
   it('keeps squad players and the lookup table pointing at the same objects', () => {
-    const career = startCareer({ seed: 'identity' });
+    const career = startCareer({ seed: 'identity', divisions: 1, cup: false });
     advanceRound(career);
     const loaded = deserializeCareer(serializeCareer(career));
 
@@ -125,7 +125,7 @@ describe('save and load', () => {
   });
 
   it('survives a full season boundary', () => {
-    const career = startCareer({ seed: 'save-season' });
+    const career = startCareer({ seed: 'save-season', divisions: 1, cup: false });
     playWholeSeason(career);
     endSeason(career);
     startNextSeason(career);
@@ -151,7 +151,7 @@ describe('save and load', () => {
      * other persistence test runs where the counter is already high and is
      * structurally blind to this.
      */
-    const career = startCareer({ seed: 'fresh-process' });
+    const career = startCareer({ seed: 'fresh-process', divisions: 1, cup: false });
     playWholeSeason(career);
     const json = serializeCareer(career);
 
@@ -172,7 +172,7 @@ describe('save and load', () => {
   });
 
   it('distinguishes a save from a newer build, so the app can explain it', () => {
-    const career = startCareer({ seed: 'version' });
+    const career = startCareer({ seed: 'version', divisions: 1, cup: false });
     const saved = JSON.parse(serializeCareer(career));
     saved.version = 999;
 
@@ -189,7 +189,7 @@ describe('save and load', () => {
   });
 
   it('reports an un-upgradable old save as such', () => {
-    const career = startCareer({ seed: 'version-old' });
+    const career = startCareer({ seed: 'version-old', divisions: 1, cup: false });
     const saved = JSON.parse(serializeCareer(career));
     saved.version = 0;
 

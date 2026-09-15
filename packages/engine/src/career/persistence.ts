@@ -12,12 +12,13 @@ import type {
 } from '../types.js';
 import { createSeasonState } from '../league/season.js';
 import { ensurePlayerIdsAbove } from '../world/players.js';
+import type { CupState } from '../league/cup.js';
 import type { Career } from './controller.js';
 import type { BoardState } from './board.js';
 import { BOARD_TUNING, createBoardState, refreshExpectation } from './board.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -65,6 +66,8 @@ export interface SavedCareer {
     played: [string, number][];
     /** Added in save version 3. */
     teamSheets: [string, TeamSheet][];
+    /** Added in save version 8: the knockout in progress, if there is one. */
+    cup: CupState | undefined;
   };
   history: SeasonSummary[];
   /** Added in save version 2. */
@@ -100,6 +103,7 @@ export function toSavedCareer(career: Career): SavedCareer {
       points: [...season.points.entries()],
       played: [...season.played.entries()],
       teamSheets: [...season.teamSheets.entries()],
+      cup: season.cup,
     },
     history: career.history,
     scouting: career.scouting,
@@ -229,6 +233,16 @@ const MIGRATIONS: Record<number, Migration> = {
       seasonsInCharge: ((saved.history as unknown[]) ?? []).length,
     },
   }),
+  /**
+   * v8 stores the cup in progress. A career saved before it simply has none for
+   * the rest of the season; inventing a bracket mid-season would put clubs into
+   * a competition they had not been playing.
+   */
+  7: (saved) => ({
+    ...saved,
+    version: 8,
+    season: { ...((saved.season as Record<string, unknown>) ?? {}), cup: undefined },
+  }),
 };
 
 /** Raised when a save cannot be brought up to the current format. */
@@ -309,6 +323,11 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     economy: true,
     playerState: true,
     fixtures: saved.season.fixtures,
+    // Kept true so the NEXT season still gets a cup, while `restoreCup` stops
+    // this one's bracket being re-drawn.
+    cup: saved.season.cup !== undefined,
+    ...(saved.season.cup ? { restoreCup: saved.season.cup } : {}),
+
   });
   season.results = saved.season.results;
   season.nextRound = saved.season.nextRound;
