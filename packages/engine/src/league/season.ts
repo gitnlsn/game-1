@@ -4,6 +4,16 @@ import { simulateMatch } from '../match/engine.js';
 import { generateFixtures } from './fixtures.js';
 import { buildTable } from './table.js';
 import { allClubs } from '../world/index.js';
+import {
+  advanceCupRound,
+  createCupState,
+  cupComplete,
+  cupRoundMatchday,
+  currentTies,
+  drawCupRound,
+  resolveCupTie,
+  type CupState,
+} from './cup.js';
 import { advancePlayerWeek } from '../world/status.js';
 import {
   applyMatchdayIncome,
@@ -31,6 +41,11 @@ export interface SimulateSeasonOptions {
    * the headless path -- where nobody supplies one -- is untouched.
    */
   teamSheets?: Iterable<readonly [string, TeamSheet]>;
+  /**
+   * Run a knockout cup alongside the league. Off by default, so every headless
+   * harness keeps measuring exactly what it measured before.
+   */
+  cup?: boolean;
 }
 
 /**
@@ -56,6 +71,8 @@ export interface SeasonState {
    * A Map also serialises trivially, where a callback would not.
    */
   teamSheets: Map<string, TeamSheet>;
+  /** The knockout, when one is being played. */
+  cup?: CupState;
 }
 
 export function createSeasonState(
@@ -75,7 +92,7 @@ export function createSeasonState(
     );
   const totalRounds = fixtures.reduce((max, fixture) => Math.max(max, fixture.round), 0);
 
-  return {
+  const state: SeasonState = {
     world,
     rng,
     fixtures,
@@ -87,6 +104,31 @@ export function createSeasonState(
     played: new Map(),
     teamSheets: new Map(options.teamSheets ?? []),
   };
+
+  if (options.cup) {
+    // Weakest first: `createCupState` gives the byes to the other end.
+    state.cup = createCupState(
+      rng,
+      [...allClubs(world)]
+        .sort((a, b) => a.reputation - b.reputation)
+        .map((club) => club.id),
+    );
+  }
+
+  return state;
+}
+
+/**
+ * Ties for the cup round due on this matchday, drawn now because who is in them
+ * depends on who survived the last one.
+ */
+function drawCupIfDue(state: SeasonState): void {
+  const cup = state.cup;
+  if (!cup || cupComplete(cup)) return;
+  if (cupRoundMatchday(cup) !== state.nextRound) return;
+  if (currentTies(cup).length > 0) return;
+
+  state.fixtures.push(...drawCupRound(cup));
 }
 
 export function seasonComplete(state: SeasonState): boolean {
@@ -124,7 +166,12 @@ export function playRound(state: SeasonState): MatchResult[] {
     }
   }
 
+  drawCupIfDue(state);
+
   const roundResults: MatchResult[] = [];
+  const cupTies = state.cup ? new Map(currentTies(state.cup).map((tie) => [
+    `${tie.homeClubId}>${tie.awayClubId}`, tie,
+  ])) : undefined;
 
   for (const fixture of state.fixtures) {
     if (fixture.round !== state.nextRound) continue;
@@ -143,13 +190,26 @@ export function playRound(state: SeasonState): MatchResult[] {
 
     const homeSheet = state.teamSheets.get(home.id);
     const awaySheet = state.teamSheets.get(away.id);
-    const result = simulateMatch(rng, home, away, {
+    const matchOptions = {
       ...(options.playerState ? { updatePlayerState: true } : {}),
       ...(homeSheet ? { homeSheet } : {}),
       ...(awaySheet ? { awaySheet } : {}),
-    });
+    };
+
+    const tie = cupTies?.get(`${home.id}>${away.id}`);
+    const played = tie
+      ? resolveCupTie(rng, tie, home, away, matchOptions)
+      : simulateMatch(rng, home, away, matchOptions);
+    const result: MatchResult = { ...played, competitionId: fixture.competitionId };
+
     state.results.push(result);
     roundResults.push(result);
+    options.onMatch?.(result, fixture);
+
+    // A cup tie earns no league points, and the table is built from league
+    // fixtures anyway -- but skipping here keeps the running points honest,
+    // which is what gate receipts are priced off.
+    if (tie) continue;
 
     const homePoints =
       result.home.goals > result.away.goals ? 3 : result.home.goals === result.away.goals ? 1 : 0;
@@ -158,8 +218,10 @@ export function playRound(state: SeasonState): MatchResult[] {
     state.points.set(away.id, (state.points.get(away.id) ?? 0) + awayPoints);
     state.played.set(home.id, (state.played.get(home.id) ?? 0) + 1);
     state.played.set(away.id, (state.played.get(away.id) ?? 0) + 1);
+  }
 
-    options.onMatch?.(result, fixture);
+  if (state.cup && cupRoundMatchday(state.cup) === state.nextRound) {
+    advanceCupRound(state.cup);
   }
 
   state.nextRound += 1;
@@ -167,11 +229,8 @@ export function playRound(state: SeasonState): MatchResult[] {
 }
 
 /**
- * The table of one division as it stands, mid-season or at the end.
- *
- * Only that division's own results count towards it -- results carry no
- * competition of their own, so they are matched by who played, which also keeps
- * cup ties out of the league table.
+ * The table of one division as it stands, mid-season or at the end. Only results
+ * played in that division count, which is what keeps cup ties out of it.
  */
 export function currentTable(state: SeasonState, leagueId?: string): TableRow[] {
   const league = leagueId
@@ -179,31 +238,15 @@ export function currentTable(state: SeasonState, leagueId?: string): TableRow[] 
     : state.world.leagues[0];
   if (!league) return [];
 
-  const members = new Set(league.clubs.map((club) => club.id));
-  const leagueFixtures = new Set(
-    state.fixtures
-      .filter((fixture) => fixture.competitionId === league.id)
-      .map((fixture) => fixtureKey(fixture.homeClubId, fixture.awayClubId)),
-  );
-
   return buildTable(
     league.clubs,
-    state.results.filter(
-      (result) =>
-        members.has(result.homeClubId) &&
-        members.has(result.awayClubId) &&
-        leagueFixtures.has(fixtureKey(result.homeClubId, result.awayClubId)),
-    ),
+    state.results.filter((result) => result.competitionId === league.id),
   );
 }
 
 /** Every division's table, top tier first. */
 export function currentTables(state: SeasonState): TableRow[][] {
   return state.world.leagues.map((league) => currentTable(state, league.id));
-}
-
-function fixtureKey(homeClubId: string, awayClubId: string): string {
-  return `${homeClubId}>${awayClubId}`;
 }
 
 export function finaliseSeason(state: SeasonState): SeasonResult {

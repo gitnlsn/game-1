@@ -280,6 +280,14 @@ export interface TeamMatchStats {
 export interface MatchResult {
   homeClubId: string;
   awayClubId: string;
+  /**
+   * Which competition this was played in. Set by the season, not the match
+   * engine, which does not know or care. Matching results to a league by who
+   * played is not enough: two clubs from the same division drawn together in
+   * the cup produce a result whose pairing the league fixture list also
+   * contains, and it lands in the table.
+   */
+  competitionId?: string;
   home: TeamMatchStats;
   away: TeamMatchStats;
   events: MatchEvent[];

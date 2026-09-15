@@ -183,10 +183,12 @@ const MIGRATIONS: Record<number, Migration> = {
     const clubs = (saved.clubs as { id: string }[]) ?? [];
     const id = league.id ?? 'l1';
     const season = (saved.season as Record<string, unknown>) ?? {};
-    const fixtures = ((season.fixtures as Record<string, unknown>[]) ?? []).map((fixture) => ({
-      ...fixture,
-      competitionId: fixture.competitionId ?? id,
-    }));
+    const stamp = (rows: Record<string, unknown>[] | undefined) =>
+      (rows ?? []).map((row) => ({ ...row, competitionId: row.competitionId ?? id }));
+    const fixtures = stamp(season.fixtures as Record<string, unknown>[]);
+    // Results need it as much as fixtures do: the table is filtered on it, so an
+    // unstamped result counts towards nothing and the league reads as unplayed.
+    const results = stamp(season.results as Record<string, unknown>[]);
 
     const next = {
       ...saved,
@@ -200,7 +202,7 @@ const MIGRATIONS: Record<number, Migration> = {
           clubIds: clubs.map((club) => club.id),
         },
       ],
-      season: { ...season, fixtures },
+      season: { ...season, fixtures, results },
     };
     delete (next as Record<string, unknown>).league;
     return next;

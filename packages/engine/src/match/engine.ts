@@ -156,6 +156,23 @@ export interface SimulateMatchOptions {
    * simulation can be run without mutating the world.
    */
   updatePlayerState?: boolean;
+  /**
+   * Length of the period in minutes. Defaults to ninety plus stoppage.
+   *
+   * Extra time is the same engine run for thirty more, so form, instructions and
+   * a sending off all still apply rather than a knockout being decided by a coin
+   * dressed up as football.
+   */
+  minutes?: number;
+  /**
+   * Clock reading at kick-off. Extra time passes 90, so the fatigue curve, the
+   * score-state effect and the minute on every event all read the real time in
+   * the tie rather than restarting -- run as its own little match from minute 1,
+   * extra time would be played by fresh legs, which is precisely wrong.
+   */
+  startMinute?: number;
+  /** Overrides the chance a minute contains an attacking sequence. */
+  attackRate?: number;
 }
 
 interface TeamState {
@@ -208,15 +225,17 @@ export function simulateMatch(
   const home = createTeamState(homeClub, options.homeSheet, venueBoost * homeForm);
   const away = createTeamState(awayClub, options.awaySheet, awayForm);
 
+  const attackRate = options.attackRate ?? T.attackRate;
   const events: MatchEvent[] = [];
   // Possession is accumulated minute by minute rather than fixed at kickoff, so
   // a sending off or a substitution actually changes who has the ball.
   let possessionSum = 0;
   let possessionMinutes = 0;
+  const startMinute = options.startMinute ?? 0;
   const stoppage = rng.int(1, 5);
-  const finalMinute = 90 + stoppage;
+  const finalMinute = startMinute + (options.minutes ?? 90) + stoppage;
 
-  for (let minute = 1; minute <= finalMinute; minute++) {
+  for (let minute = startMinute + 1; minute <= finalMinute; minute++) {
     resolveDiscipline(rng, home, away, minute, events);
     resolveInjuries(rng, home, away, minute, events);
     considerSubstitutions(rng, home, minute, events);
@@ -226,7 +245,7 @@ export function simulateMatch(
     possessionSum += homePossession;
     possessionMinutes++;
 
-    if (!rng.chance(T.attackRate)) continue;
+    if (!rng.chance(attackRate)) continue;
 
     const homeAttacking = rng.chance(homePossession);
     const attacker = homeAttacking ? home : away;
