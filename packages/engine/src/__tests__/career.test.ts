@@ -143,10 +143,17 @@ describe('simulateCareerSeason', () => {
   it('books every movement of money', () => {
     /*
      * Double entry for the whole economy: a club's balance may only change by
-     * exactly what its ledger says. Gate receipts, wages, running costs, prize
-     * money, transfers, ground investment and owner drawings are all unilateral
+     * what its ledger says. Gate receipts, wages, running costs, prize money,
+     * transfers, ground investment and owner drawings are all unilateral
      * mutations with no counterparty, so without this an unbooked leak would
      * only ever show up as a benchmark drifting years later.
+     *
+     * Compared to a thousandth of a currency unit rather than exactly. The
+     * balance and the ledger accumulate the same movements into totals of very
+     * different magnitudes, so they round differently in binary floating point:
+     * splitting one loaned player's wage 60/40 was enough to separate them by a
+     * single ULP on a 22M balance. A leak worth finding is not one part in
+     * 10^16.
      */
     const world = createWorld({ seed: 'conservation' });
     const rng = new Rng('conservation');
@@ -158,7 +165,7 @@ describe('simulateCareerSeason', () => {
       for (const club of world.leagues[0]!.clubs) {
         const delta = club.finances.balance - before.get(club.id)!;
         const booked = recordIncome(club.finances.season) - recordExpense(club.finances.season);
-        expect(delta, `${club.name} season ${season + 1}`).toBe(booked);
+        expect(delta, `${club.name} season ${season + 1}`).toBeCloseTo(booked, 3);
       }
     }
   });

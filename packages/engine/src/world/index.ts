@@ -54,6 +54,7 @@ export function createWorld(options: CreateWorldOptions): World {
   return {
     seed: options.seed,
     freeAgents: [],
+    loans: [],
     season: 1,
     leagues,
     players,
@@ -89,3 +90,4 @@ export * from './players.js';
 export * from './positions.js';
 export * from './status.js';
 export * from './scouting.js';
+export * from './squads.js';

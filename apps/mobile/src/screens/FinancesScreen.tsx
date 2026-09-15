@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
+  effectiveWageBill,
   leagueOf,
   ECONOMY_TUNING,
   expectedAnnualRevenue,
@@ -26,7 +27,8 @@ export function FinancesScreen() {
   const expense = recordExpense(season);
   const net = income - expense;
 
-  const annualWages = wageBill(club.squad) * ECONOMY_TUNING.wageWeeksPerSeason;
+  const weeklyWages = effectiveWageBill(career.world, club);
+  const annualWages = weeklyWages * ECONOMY_TUNING.wageWeeksPerSeason;
   const projectedRevenue = expectedAnnualRevenue(club.reputation, (leagueOf(career.world, club.id)?.clubs.length ?? 20));
   const wageRatio = projectedRevenue > 0 ? (annualWages / projectedRevenue) * 100 : 0;
 
@@ -79,7 +81,7 @@ export function FinancesScreen() {
 
       <SectionTitle>Budgets</SectionTitle>
       <Card>
-        <KeyValue label="Wage bill" value={`${formatMoney(wageBill(club.squad))}/wk`} />
+        <KeyValue label="Wage bill" value={`${formatMoney(weeklyWages)}/wk`} />
         <KeyValue label="Wage budget" value={`${formatMoney(finances.wageBudget)}/wk`} />
         <KeyValue label="Transfer budget" value={formatMoney(finances.transferBudget)} />
         <Divider />

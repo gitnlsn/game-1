@@ -6,6 +6,7 @@ import {
   currentAbility,
   formatMoney,
   marketValue,
+  loanStatus,
   scoutPlayer,
   scoutReport,
   scoutsAvailable,
@@ -55,6 +56,7 @@ export function PlayerScreen({ route }: Props) {
   const ability = currentAbility(player);
   const report = scoutReport(career, player);
   const scouts = scoutsAvailable(career);
+  const loan = loanStatus(career, player.id);
   const { status } = player;
   const isOwn = club?.id === career.managedClubId;
   // Goalkeeping numbers are noise for an outfielder; show them last and muted.
@@ -80,6 +82,16 @@ export function PlayerScreen({ route }: Props) {
           <Text style={[styles.ability, { color: ratingColor(ability) }]}>{ability.toFixed(0)}</Text>
         </View>
       </Card>
+
+      {loan ? (
+        <Card style={styles.loanCard}>
+          <Text style={styles.loanText}>
+            {loan.kind === 'out'
+              ? `On loan at ${loan.otherClub?.name ?? 'another club'} until the end of the season.`
+              : `On loan from ${loan.otherClub?.name ?? 'another club'}. He is not yours to sell.`}
+          </Text>
+        </Card>
+      ) : null}
 
       <SectionTitle>Scouting report</SectionTitle>
       <Card>
@@ -220,6 +232,8 @@ const styles = StyleSheet.create({
   reportHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   reportRange: { color: colors.text, fontSize: 24, fontWeight: '800', fontVariant: ['tabular-nums'] },
   scout: { marginTop: spacing.md },
+  loanCard: { marginTop: spacing.sm, borderColor: colors.info },
+  loanText: { color: colors.text, fontSize: 13 },
   reportNote: { color: colors.muted, fontSize: 12, marginTop: 4, fontStyle: 'italic' },
   conditionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, flexWrap: 'wrap' },
   formBox: { minWidth: 50 },

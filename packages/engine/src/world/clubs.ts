@@ -167,6 +167,10 @@ export function generateClubs(rng: Rng, options: GenerateClubsOptions): Club[] {
       finances: createClubFinances(reputation, squad, count, rng),
     };
 
+    // The squad was generated before the club existed, so nobody knows whose
+    // they are yet.
+    for (const player of club.squad) player.clubId = club.id;
+
     fitWagesToBudget(club);
     clubs.push(club);
   }

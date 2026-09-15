@@ -282,3 +282,31 @@ describe('what a career plays by default', () => {
     expect(career.season.cup!.remaining).toHaveLength(40);
   });
 });
+
+describe('the table of a season that has ended', () => {
+  it('still counts the clubs that have since gone up or down', () => {
+    /*
+     * A save taken while the transfer window is open came back reading "32
+     * played" for a 38-game season. The close season had already swapped three
+     * clubs each way, and the table was built from whoever is in the division
+     * NOW -- so every result against the six who had moved silently vanished.
+     */
+    const career = startCareer({ seed: 'table-after-promotion' });
+    let guard = 0;
+    while (!isSeasonComplete(career) && guard++ < 100) advanceRound(career);
+
+    const before = leagueTable(career).find((r) => r.clubId === career.managedClubId)!;
+    const summary = endSeason(career);
+    expect(summary.promotions.length).toBeGreaterThan(0);
+
+    const after = leagueTable(career).find((r) => r.clubId === career.managedClubId)!;
+    expect(after.played).toBe(before.played);
+    expect(after.points).toBe(before.points);
+
+    // And it survives the round trip a real save makes.
+    const restored = deserializeCareer(serializeCareer(career));
+    const loaded = leagueTable(restored).find((r) => r.clubId === restored.managedClubId)!;
+    expect(loaded.played).toBe(before.played);
+    expect(loaded.points).toBe(before.points);
+  });
+});

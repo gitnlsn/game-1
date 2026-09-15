@@ -165,6 +165,7 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player
     position: options.position,
     attributes,
     hiddenPotential,
+    clubId: undefined,
     // Contract terms follow from ability, so they are set after attributes.
     contract: {
       wage: expectedWage({ attributes, position: options.position, age }),

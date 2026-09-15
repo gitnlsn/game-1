@@ -1,5 +1,6 @@
 import { Rng, clamp } from '../rng/index.js';
 import { allClubs, findClub } from '../world/index.js';
+import { joinSquad, leaveSquad, setSquad } from '../world/squads.js';
 import type {
   Club,
   Player,
@@ -234,7 +235,7 @@ function raiseFunds(rng: Rng, world: World, seller: Club): Transfer[] {
       const buyer = findBuyer(world, seller, player, price);
       if (!buyer) continue;
 
-      seller.squad = seller.squad.filter((p) => p.id !== player.id);
+      leaveSquad(seller, player.id);
       seller.finances.balance += price;
       seller.finances.season.playerSales += price;
       buyer.finances.balance -= price;
@@ -243,7 +244,7 @@ function raiseFunds(rng: Rng, world: World, seller: Club): Transfer[] {
 
       const wage = Math.round(expectedWage(player) * rng.float(T.moveWageMin, T.moveWageMax));
       player.contract = { wage, yearsRemaining: rng.int(2, 5) };
-      buyer.squad.push(player);
+      joinSquad(buyer, player);
 
       sales.push({
         playerId: player.id,
@@ -269,7 +270,7 @@ function raiseFunds(rng: Rng, world: World, seller: Club): Transfer[] {
       const release = releasable[0];
       if (!release) break;
 
-      seller.squad = seller.squad.filter((p) => p.id !== release.id);
+      leaveSquad(seller, release.id);
       world.freeAgents.push(release);
       releases++;
       if (releases >= T.maxDistressReleases) break;
@@ -322,7 +323,7 @@ function trimSquad(world: World, club: Club): void {
     if (player.age <= 21) continue;
     if (depthAt(club, player.position) <= 1) continue;
 
-    club.squad = club.squad.filter((p) => p.id !== player.id);
+    leaveSquad(club, player.id);
     world.freeAgents.push(player);
   }
 }
@@ -379,7 +380,7 @@ function attemptTransfer(
     fee = Math.round(price);
 
     // Money moves.
-    seller.squad = seller.squad.filter((p) => p.id !== player.id);
+    leaveSquad(seller, player.id);
     seller.finances.balance += fee;
     seller.finances.season.playerSales += fee;
     buyer.finances.balance -= fee;
@@ -391,7 +392,7 @@ function attemptTransfer(
 
   const wage = Math.round(expectedWage(player) * rng.float(T.moveWageMin, T.moveWageMax));
   player.contract = { wage, yearsRemaining: rng.int(2, 5) };
-  buyer.squad.push(player);
+  joinSquad(buyer, player);
 
   return {
     playerId: player.id,
@@ -451,7 +452,7 @@ export function processContracts(rng: Rng, world: World): { renewed: number; rel
       }
     }
 
-    club.squad = keeping;
+    setSquad(club, keeping);
   }
 
   world.freeAgents.push(...released);
@@ -626,7 +627,7 @@ export function makeBid(
 
   const paid = seller ? fee : 0;
   if (seller) {
-    seller.squad = seller.squad.filter((p) => p.id !== player.id);
+    leaveSquad(seller, player.id);
     seller.finances.balance += paid;
     seller.finances.season.playerSales += paid;
   } else {
@@ -638,7 +639,7 @@ export function makeBid(
   buyer.finances.season.playerPurchases += paid;
 
   player.contract = { wage, yearsRemaining: rng.int(2, 5) };
-  buyer.squad.push(player);
+  joinSquad(buyer, player);
   world.players.set(player.id, player);
 
   const transfer: Transfer = {
@@ -663,7 +664,7 @@ export function releasePlayer(world: World, clubId: string, playerId: string): b
   if (club.squad.length <= T.minSquadSize) return false;
   if (depthAt(club, player.position) <= 1) return false;
 
-  club.squad = club.squad.filter((p) => p.id !== playerId);
+  leaveSquad(club, playerId);
   world.freeAgents.push(player);
   return true;
 }
@@ -777,7 +778,7 @@ export function respondToOffer(
     return undefined;
   }
 
-  seller.squad = seller.squad.filter((p) => p.id !== player.id);
+  leaveSquad(seller, player.id);
   seller.finances.balance += offer.fee;
   seller.finances.season.playerSales += offer.fee;
   buyer.finances.balance -= offer.fee;
@@ -785,7 +786,7 @@ export function respondToOffer(
   buyer.finances.season.playerPurchases += offer.fee;
 
   player.contract = { wage: offer.wage, yearsRemaining: offer.years };
-  buyer.squad.push(player);
+  joinSquad(buyer, player);
   offer.status = 'accepted';
 
   const transfer: Transfer = {

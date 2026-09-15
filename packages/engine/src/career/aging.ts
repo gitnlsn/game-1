@@ -1,3 +1,4 @@
+import { joinSquad } from '../world/squads.js';
 import { Rng, clamp } from '../rng/index.js';
 import type { AttributeKey, Club, Player } from '../types.js';
 import { expectedWage } from '../economy/valuation.js';
@@ -210,6 +211,6 @@ export function promoteYouth(
     counts.set(neediest, (counts.get(neediest) ?? 0) + 1);
   }
 
-  club.squad.push(...promoted);
+  for (const player of promoted) joinSquad(club, player);
   return promoted;
 }

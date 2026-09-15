@@ -1,6 +1,8 @@
 import { Rng, clamp } from '../rng/index.js';
 import type { BoardVerdict } from './board.js';
 import { allClubs } from '../world/index.js';
+import { setSquad } from '../world/squads.js';
+import { recallLoans, runLoanWindow } from '../transfers/loans.js';
 import type { Club, Player, SeasonResult, TableRow, Transfer, World } from '../types.js';
 import {
   applyCloseSeasonSpending,
@@ -88,6 +90,8 @@ export interface SeasonSummary {
   youthPromoted: number;
   development: DevelopmentStats;
   finances: ClubSeasonFinance[];
+  /** Players who came back from a loan spell. */
+  returningFromLoan: number;
   /** What the board made of it. Set by the career controller, not by closeSeason. */
   verdict?: BoardVerdict;
 }
@@ -169,6 +173,13 @@ export function closeSeason(
    * empty and nobody could ever be signed from it.
    */
   expireFreeAgents(world);
+  /*
+   * Everyone comes home before anything else happens to them. Age, contracts,
+   * transfers and the next round of loans all have to see a squad that is
+   * actually there -- recall afterwards and a club could sell a player it did
+   * not currently hold, or renew a contract for someone playing elsewhere.
+   */
+  const returningFromLoan = recallLoans(world);
 
   const retirements = ageAndRetire(world, rng, seasonMatches, development);
   updateReputations(world, season.tables ?? [season.table]);
@@ -217,8 +228,10 @@ export function closeSeason(
       window.incoming = generateIncomingOffers(rng, world, options.managedClubId);
     }
     world.transferWindow = window;
+    // Loans wait for the manager, the same as the rest of the window.
   } else {
     transfers = runTransferWindow(rng, world);
+    runLoanWindow(world);
     world.season += 1;
   }
 
@@ -236,6 +249,7 @@ export function closeSeason(
     youthPromoted,
     development: finaliseDevelopmentStats(development),
     finances,
+    returningFromLoan: returningFromLoan.length,
   };
 }
 
@@ -339,7 +353,7 @@ function ageAndRetire(
         staying.push(player);
       }
     }
-    club.squad = staying;
+    setSquad(club, staying);
   }
 
   // Free agents age too, with no club to coach them, and drop out if they retire.
@@ -450,9 +464,16 @@ export function completeTransferWindow(
   rng: Rng,
   managedClubId?: string,
 ): Transfer[] {
+  const skip = managedClubId ? new Set([managedClubId]) : undefined;
   const transfers = shopTransferWindow(rng, world, {
     ...(managedClubId ? { skipClubIds: [managedClubId] } : {}),
   });
+  /*
+   * After the trading, so a club lends out whoever it still has no room for once
+   * it has finished buying. Lend first and it would send away a player it was
+   * about to need.
+   */
+  runLoanWindow(world, skip);
 
   world.transferWindow?.completed.push(...transfers);
   if (world.transferWindow) world.transferWindow.open = false;

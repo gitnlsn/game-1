@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
+  effectiveWageBill,
   answerOffer,
   bidFor,
   browseTargets,
@@ -10,7 +11,11 @@ import {
   expectedWage,
   formatMoney,
   incomingOffers,
+  loanableSquad,
+  loanSuitors,
   managedClub,
+  playersOnLoan,
+  sendOnLoan,
   release,
   renewContract,
   scoutPlayer,
@@ -20,6 +25,7 @@ import {
   wageBill,
   type BidRejection,
   type MarketListing,
+  type Club,
   type Player,
   type PotentialEstimate,
 } from '@game1/engine';
@@ -54,6 +60,7 @@ export function TransfersScreen() {
   const [tab, setTab] = useState<Tab>('offers');
   const [position, setPosition] = useState<string>('any');
   const [pending, setPending] = useState<MarketListing | undefined>();
+  const [loaning, setLoaning] = useState<{ player: Player; suitor: Club } | undefined>();
   const [message, setMessage] = useState<string | undefined>();
 
   const club = career ? managedClub(career) : undefined;
@@ -86,8 +93,12 @@ export function TransfersScreen() {
   }
 
   const budget = club.finances.transferBudget;
-  const wageRoom = club.finances.wageBudget - wageBill(club.squad);
+  // Not `wageBill(club.squad)`: a player sent out on loan leaves the squad but
+  // his club still pays a share of him, and room you do not have is not room.
+  const wageRoom = club.finances.wageBudget - effectiveWageBill(career.world, club);
   const scouts = scoutsAvailable(career);
+  const loanable = loanableSquad(career);
+  const onLoan = playersOnLoan(career);
 
   const confirmBid = () => {
     if (!pending) return;
@@ -231,6 +242,88 @@ export function TransfersScreen() {
                 <Text style={styles.empty}>Nobody is out of contract.</Text>
               </Card>
             ) : null}
+
+            <SectionTitle>Out on loan</SectionTitle>
+            {onLoan.length === 0 ? (
+              <Card>
+                <Text style={styles.empty}>Nobody is out on loan.</Text>
+              </Card>
+            ) : (
+              onLoan.map(({ player, otherClub, loan }) => (
+                <Card key={player.id} style={styles.card}>
+                  <Text style={styles.cardTitle}>{player.displayName}</Text>
+                  <Text style={styles.cardMeta}>
+                    {player.position} · {player.age} · at {otherClub?.name ?? 'another club'}
+                  </Text>
+                  <Divider />
+                  <KeyValue
+                    label="They pay"
+                    value={`${formatMoney(player.contract.wage * loan.wageShare)}/wk`}
+                  />
+                  <KeyValue
+                    label="You still pay"
+                    value={`${formatMoney(player.contract.wage * (1 - loan.wageShare))}/wk`}
+                  />
+                  <Text style={styles.loanNote}>He comes back at the end of the season.</Text>
+                </Card>
+              ))
+            )}
+
+            <SectionTitle>Send out for games</SectionTitle>
+            {loanable.length === 0 ? (
+              <Card>
+                <Text style={styles.empty}>
+                  Nobody young enough is far enough from your side to need a loan.
+                </Text>
+              </Card>
+            ) : (
+              loanable.map((player) => {
+                const suitors = loanSuitors(career, player.id);
+                const band = scoutReport(career, player);
+                return (
+                  <Card key={player.id} style={styles.card}>
+                    <Pressable
+                      onPress={() => navigation.navigate('player', { playerId: player.id })}
+                      accessibilityRole="button"
+                      accessibilityLabel={player.displayName}
+                    >
+                      <View style={styles.rowTop}>
+                        <Text style={[styles.pos, { color: positionColor(player.position) }]}>
+                          {player.position}
+                        </Text>
+                        <Text style={styles.cardTitle}>{player.displayName}</Text>
+                        <Text style={[styles.rating, { color: ratingColor(currentAbility(player)) }]}>
+                          {currentAbility(player).toFixed(0)}
+                        </Text>
+                      </View>
+                      <Text style={styles.cardMeta}>
+                        {player.age} · could become {band.low}–{band.high}
+                      </Text>
+                    </Pressable>
+                    <Divider />
+                    <Text style={styles.loanNote}>
+                      {/*
+                        * Minutes are what develop a young player, so saying who
+                        * would play him is the whole basis of the decision.
+                        */}
+                      {suitors.length === 0
+                        ? 'No club would take him right now.'
+                        : `${suitors.length} club${suitors.length === 1 ? '' : 's'} would play him.`}
+                    </Text>
+                    {suitors.length > 0 ? (
+                      <Button
+                        label={`Loan to ${suitors[suitors.length - 1]!.name}`}
+                        variant="secondary"
+                        style={styles.bid}
+                        onPress={() =>
+                          setLoaning({ player, suitor: suitors[suitors.length - 1]! })
+                        }
+                      />
+                    ) : null}
+                  </Card>
+                );
+              })
+            )}
           </>
         ) : null}
 
@@ -280,6 +373,31 @@ export function TransfersScreen() {
           </>
         ) : null}
       </ScrollView>
+
+      <ConfirmDialog
+        visible={!!loaning}
+        title={loaning ? `Loan out ${loaning.player.displayName}?` : ''}
+        message={
+          loaning
+            ? `${loaning.suitor.name} will play him and pay ` +
+              `${formatMoney(loaning.player.contract.wage * 0.6)} a week of his wages. ` +
+              'He comes back at the end of the season.'
+            : ''
+        }
+        confirmLabel="Agree the loan"
+        onConfirm={() => {
+          if (!loaning) return;
+          const outcome = sendOnLoan(career, loaning.player.id, loaning.suitor.id);
+          setMessage(
+            outcome.agreed
+              ? `${loaning.player.displayName} joins ${loaning.suitor.name} on loan.`
+              : 'They have changed their mind.',
+          );
+          setLoaning(undefined);
+          refresh();
+        }}
+        onCancel={() => setLoaning(undefined)}
+      />
 
       <ConfirmDialog
         visible={!!pending}
@@ -453,6 +571,7 @@ const styles = StyleSheet.create({
   blocked: { marginTop: spacing.sm },
   filter: { marginBottom: spacing.md },
   scouts: { marginBottom: spacing.md, borderColor: colors.border },
+  loanNote: { color: colors.faint, fontSize: 12, marginTop: spacing.sm, fontStyle: 'italic' },
   scoutsCount: { color: colors.text, fontSize: 13, fontWeight: '700' },
   scoutsNote: { color: colors.faint, fontSize: 12, marginTop: 2 },
 });

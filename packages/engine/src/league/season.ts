@@ -3,7 +3,8 @@ import type { Fixture, MatchResult, SeasonResult, TableRow, TeamSheet, World } f
 import { simulateMatch } from '../match/engine.js';
 import { generateFixtures } from './fixtures.js';
 import { buildTable } from './table.js';
-import { allClubs } from '../world/index.js';
+import { allClubs, findClub } from '../world/index.js';
+import { effectiveWageBill } from '../transfers/loans.js';
 import {
   advanceCupRound,
   createCupState,
@@ -219,7 +220,7 @@ export function playRound(state: SeasonState): MatchResult[] {
     for (const league of world.leagues) {
       for (const club of league.clubs) {
         payWeeklySponsorship(club);
-        payWeeklyWages(club);
+        payWeeklyWages(club, effectiveWageBill(world, club));
         payWeeklyOperatingCosts(club, league.clubs.length, league.tier);
       }
     }
@@ -304,8 +305,31 @@ export function currentTable(state: SeasonState, leagueId?: string): TableRow[] 
     : state.world.leagues[0];
   if (!league) return [];
 
+  /*
+   * Built from the clubs that PLAYED in the competition, not from whoever is in
+   * the division now. Once the close season has moved three clubs each way, six
+   * of the finished season's participants are somewhere else -- and a table
+   * built on current membership silently dropped every result involving them, so
+   * a save taken during the open window came back reading "32 played" for a
+   * 38-game season.
+   */
+  const played = new Set<string>();
+  for (const fixture of state.fixtures) {
+    if (fixture.competitionId !== league.id) continue;
+    played.add(fixture.homeClubId);
+    played.add(fixture.awayClubId);
+  }
+
+  const clubs =
+    played.size === 0
+      ? league.clubs
+      : [...played].flatMap((id) => {
+          const club = findClub(state.world, id);
+          return club ? [club] : [];
+        });
+
   return buildTable(
-    league.clubs,
+    clubs,
     state.results.filter((result) => result.competitionId === league.id),
   );
 }

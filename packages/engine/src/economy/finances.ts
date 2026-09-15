@@ -202,8 +202,12 @@ export function applyMatchdayIncome(home: Club, away: Club, homePointsPerGame: n
 }
 
 /** One week's wages. Called once per league round. */
-export function payWeeklyWages(club: Club): number {
-  const bill = wageBill(club.squad);
+/**
+ * `bill` is passed in rather than read off the squad so a loan can split it: the
+ * borrowing club pays its agreed share and the parent keeps paying the rest.
+ * Omitted, it is the squad's own wages, which is what it always was.
+ */
+export function payWeeklyWages(club: Club, bill = wageBill(club.squad)): number {
   club.finances.balance -= bill;
   club.finances.season.wages += bill;
   return bill;

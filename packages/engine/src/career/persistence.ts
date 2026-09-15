@@ -1,6 +1,7 @@
 import { Rng } from '../rng/index.js';
 import { allClubs } from '../world/index.js';
 import type {
+  Loan,
   Club,
   Fixture,
   MatchEvent,
@@ -55,6 +56,8 @@ export interface SavedCareer {
   leagues: { id: string; name: string; nationality: string; tier: number; clubIds: string[] }[];
   clubs: Club[];
   freeAgents: Player[];
+  /** Added in save version 9. */
+  loans: Loan[];
   /** Added in save version 4: an open close-season window. */
   transferWindow: TransferWindowState | undefined;
   season: {
@@ -94,6 +97,7 @@ export function toSavedCareer(career: Career): SavedCareer {
     })),
     clubs: allClubs(world),
     freeAgents: world.freeAgents,
+    loans: world.loans,
     transferWindow: world.transferWindow,
     season: {
       fixtures: season.fixtures,
@@ -312,6 +316,7 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     })),
     players,
     freeAgents: saved.freeAgents,
+    loans: saved.loans ?? [],
     season: saved.worldSeason,
     ...(saved.transferWindow ? { transferWindow: saved.transferWindow } : {}),
   };

@@ -84,6 +84,15 @@ export interface Player {
   hiddenPotential: number;
   contract: Contract;
   status: PlayerStatus;
+  /**
+   * The club whose squad he is in, or undefined for a free agent.
+   *
+   * Maintained alongside squad membership rather than replacing it: squads stay
+   * arrays because order matters for selection, but "which club is this player
+   * at" is now O(1) instead of a scan of every squad in the world -- and a loan
+   * needs somewhere to say that where he plays is not who owns him.
+   */
+  clubId: string | undefined;
 }
 
 /**
@@ -183,6 +192,19 @@ export interface Competition {
   tier?: number;
 }
 
+/** A player at one club while another still owns him. */
+export interface Loan {
+  playerId: string;
+  /** Who owns him and takes him back. */
+  parentClubId: string;
+  /** Who he is playing for. */
+  clubId: string;
+  /** Season the loan was agreed in; it ends at that season's close. */
+  season: number;
+  /** Share of his wage the borrowing club pays, 0 to 1. */
+  wageShare: number;
+}
+
 export interface World {
   seed: number | string;
   /** The divisions of the pyramid, top tier first. */
@@ -191,6 +213,8 @@ export interface World {
   players: Map<string, Player>;
   /** Players whose contracts expired and who no club has signed yet. */
   freeAgents: Player[];
+  /** Players playing somewhere other than the club that owns them. */
+  loans: Loan[];
   /** Seasons played so far. */
   season: number;
   /** Set while a close-season window is open for a human manager. */

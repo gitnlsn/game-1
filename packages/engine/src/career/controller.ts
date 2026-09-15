@@ -4,6 +4,7 @@ import type {
   Fixture,
   MatchResult,
   League,
+  Loan,
   TableRow,
   TeamSheet,
   TeamSheetIssue,
@@ -34,6 +35,14 @@ import {
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
 import type { CupState, CupTie } from '../league/cup.js';
+import {
+  loanCandidates,
+  loanOf,
+  loanOut,
+  loansFor,
+  wouldTake,
+  type LoanOutcome,
+} from '../transfers/loans.js';
 import { resolveTactics, type Tactics } from '../match/tactics.js';
 import {
   boardMood,
@@ -436,6 +445,67 @@ export function startNextSeason(career: Career): Transfer[] {
 }
 
 // --- Acting in the window --------------------------------------------------
+
+/** Players the manager could send out to get football. */
+export function loanableSquad(career: Career): Player[] {
+  return loanCandidates(career.world, career.managedClubId);
+}
+
+/** Clubs that would take this player, best-fitting first. */
+export function loanSuitors(career: Career, playerId: string): Club[] {
+  const player = career.world.players.get(playerId);
+  if (!player) return [];
+
+  return allClubs(career.world)
+    .filter((club) => club.id !== career.managedClubId && wouldTake(club, player))
+    .sort((a, b) => b.reputation - a.reputation);
+}
+
+/** Sends a player out on loan. */
+export function sendOnLoan(career: Career, playerId: string, toClubId: string): LoanOutcome {
+  return loanOut(career.world, career.managedClubId, toClubId, playerId);
+}
+
+export interface LoanRecord {
+  loan: Loan;
+  player: Player;
+  otherClub: Club | undefined;
+}
+
+/** Players the managed club has sent out. */
+export function playersOnLoan(career: Career): LoanRecord[] {
+  return loansFor(career.world, career.managedClubId).flatMap((loan) => {
+    const player = career.world.players.get(loan.playerId);
+    return player
+      ? [{ loan, player, otherClub: findClub(career.world, loan.clubId) }]
+      : [];
+  });
+}
+
+/** Players in the managed squad who belong to somebody else. */
+export function playersBorrowed(career: Career): LoanRecord[] {
+  return career.world.loans
+    .filter((loan) => loan.clubId === career.managedClubId)
+    .flatMap((loan) => {
+      const player = career.world.players.get(loan.playerId);
+      return player
+        ? [{ loan, player, otherClub: findClub(career.world, loan.parentClubId) }]
+        : [];
+    });
+}
+
+/** Where a player actually is, for a screen that has one to describe. */
+export function loanStatus(
+  career: Career,
+  playerId: string,
+): { kind: 'out' | 'in'; otherClub: Club | undefined } | undefined {
+  const loan = loanOf(career.world, playerId);
+  if (!loan) return undefined;
+
+  return loan.parentClubId === career.managedClubId
+    ? { kind: 'out', otherClub: findClub(career.world, loan.clubId) }
+    : { kind: 'in', otherClub: findClub(career.world, loan.parentClubId) };
+}
 
 /** The open window, if there is one. */
 export function transferWindow(career: Career): TransferWindowState | undefined {

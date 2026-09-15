@@ -331,6 +331,28 @@ over eight careers at each of five standings: a manager at the biggest club is
 sacked in 7 of 8 careers with an average tenure of 8.5 seasons, at a bottom club
 3 of 8 and 12.4 seasons.
 
+### Loans
+
+`Player.clubId` now says where a player is, alongside the squad arrays that used
+to be the only record. That is a second thing which can go stale, so every squad
+mutation goes through `world/squads.ts` and `squadsAreConsistent` exists to prove
+they still agree — asserted after every season of a simulated career, which
+exercises transfers, releases, retirements, the academy, promotion and loans.
+
+Loans exist for one reason: a player develops from minutes, and a good young
+player at a good club does not get any. Without somewhere to send him the only
+options are to stunt him or sell him, and neither is the decision a manager
+wants to make. The borrowing club pays 60% of his wage and no fee; he comes back
+at the close season, before anything else happens, so a club can never sell or
+renew a player it is not currently holding.
+
+Loans go **down** the pyramid and smallest club first. Before that constraint two
+thirds went sideways or upward, which is the same problem he is being sent away
+from with a different badge on it. There is a cap of three per club: without one,
+every club lent out every fringe youngster it had — 139 of them across forty
+clubs, a third of the world's under-23s moving at once, which is churn rather
+than a decision.
+
 ### What the cup did not fix
 
 The `topElevenMinuteShare` benchmark carried a note for three milestones saying to

@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
+  effectiveWageBill,
   boardConfidence,
   cupRoundName,
   cupRun,
@@ -295,7 +296,7 @@ export function ClubScreen() {
         <KeyValue label="Balance" value={formatMoney(club.finances.balance)} bold
           tint={club.finances.balance >= 0 ? colors.accent : colors.danger} />
         <KeyValue label="Squad value" value={formatMoney(squadValue)} />
-        <KeyValue label="Wage bill" value={`${formatMoney(wageBill(club.squad))}/wk`} />
+        <KeyValue label="Wage bill" value={`${formatMoney(effectiveWageBill(career.world, club))}/wk`} />
         <Divider />
         <KeyValue label="Squad size" value={`${club.squad.length}`} />
         <KeyValue
