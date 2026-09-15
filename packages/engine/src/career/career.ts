@@ -30,6 +30,8 @@ export const CAREER_TUNING = {
    * over several seasons instead of the hierarchy being fixed forever.
    */
   reputationDrift: 0.15,
+  /** Clubs going up and down between each pair of divisions. */
+  promotionPlaces: 3,
   reputationTop: 88,
   reputationBottom: 45,
 } as const;
@@ -63,9 +65,21 @@ export interface DevelopmentStats {
   breakthrough: { playerName: string; clubName: string; age: number; gain: number } | undefined;
 }
 
+/** A club changing division. */
+export interface PromotionChange {
+  clubId: string;
+  clubName: string;
+  from: number;
+  to: number;
+}
+
 export interface SeasonSummary {
   season: number;
   table: TableRow[];
+  /** Every division's table, top tier first. */
+  tables: TableRow[][];
+  /** Who went up and who went down. */
+  promotions: PromotionChange[];
   championName: string;
   topScorer: { playerName: string; goals: number } | undefined;
   transfers: Transfer[];
@@ -105,7 +119,9 @@ export function simulateCareer(
 export function beginSeason(world: World): void {
   const clubs = allClubs(world);
   for (const club of clubs) resetSeasonRecord(club);
-  setTransferBudgets(clubs, clubs.length);
+  for (const league of world.leagues) {
+    setTransferBudgets(league.clubs, league.clubs.length, league.tier);
+  }
 }
 
 export function simulateCareerSeason(world: World, rng: Rng): SeasonSummary {
@@ -135,12 +151,13 @@ export function closeSeason(
   options: CloseSeasonOptions = {},
 ): SeasonSummary {
   const clubs = allClubs(world);
-  distributeSeasonIncome(clubs, season.table);
+  distributeSeasonIncome(clubs, season.tables ?? [season.table]);
 
   const finances = clubs.map((club) => toClubSeasonFinance(club));
 
   // Close season: age, retire, renew, promote, then trade.
-  const seasonMatches = (clubs.length - 1) * 2;
+  // A club plays its own division, so depth and minutes are sized off that.
+  const seasonMatches = (world.leagues[0]?.clubs.length ?? clubs.length) * 2 - 2;
   const development = createDevelopmentStats();
   /*
    * Last summer's unsigned free agents drop out of the game now, at the *start*
@@ -151,8 +168,14 @@ export function closeSeason(
   expireFreeAgents(world);
 
   const retirements = ageAndRetire(world, rng, seasonMatches, development);
-  updateReputations(clubs, season.table);
-  for (const club of clubs) applyCloseSeasonSpending(club, clubs.length);
+  updateReputations(world, season.tables ?? [season.table]);
+  const promotions = applyPromotionAndRelegation(world, season.tables ?? [season.table]);
+  // After the swap, so a promoted club spends like a top-flight club.
+  for (const league of world.leagues) {
+    for (const club of league.clubs) {
+      applyCloseSeasonSpending(club, league.clubs.length, league.tier);
+    }
+  }
   processContracts(rng, world);
 
   // One registry for the whole division, so an academy intake cannot reuse a
@@ -169,7 +192,9 @@ export function closeSeason(
     for (const player of club.squad) world.players.set(player.id, player);
   }
 
-  setTransferBudgets(clubs, clubs.length);
+  for (const league of world.leagues) {
+    setTransferBudgets(league.clubs, league.clubs.length, league.tier);
+  }
 
   /*
    * With no options this is exactly the single call it always was, so the
@@ -197,6 +222,8 @@ export function closeSeason(
   return {
     season: world.season - 1,
     table: season.table,
+    tables: season.tables ?? [season.table],
+    promotions,
     championName: season.table[0]?.clubName ?? '',
     topScorer: season.scorers[0]
       ? { playerName: season.scorers[0].playerName, goals: season.scorers[0].goals }
@@ -331,22 +358,83 @@ function ageAndRetire(
  * Reputation follows league position, slowly. A club that finishes top climbs
  * toward elite status over several seasons; one that keeps finishing bottom
  * slides. Without this the pecking order set at world generation never changes.
+ *
+ * Position is read across the whole pyramid, not within a division: winning the
+ * second tier has to be worth less than winning the first, or a club could
+ * bounce between divisions and ratchet its reputation up every time it went
+ * down and won promotion again.
  */
-function updateReputations(clubs: readonly Club[], table: readonly TableRow[]): void {
+function updateReputations(world: World, tables: readonly (readonly TableRow[])[]): void {
   const C = CAREER_TUNING;
-  const clubById = new Map(clubs.map((club) => [club.id, club]));
+  const clubById = new Map(allClubs(world).map((club) => [club.id, club]));
+  const totalPlaces = tables.reduce((sum, table) => sum + table.length, 0);
 
-  table.forEach((row, index) => {
-    const club = clubById.get(row.clubId);
-    if (!club) return;
-    const t = table.length <= 1 ? 0 : index / (table.length - 1);
-    const deserved = C.reputationTop - (C.reputationTop - C.reputationBottom) * t;
-    club.reputation = clamp(
-      Math.round(club.reputation + (deserved - club.reputation) * C.reputationDrift),
-      25,
-      95,
-    );
-  });
+  let placesAbove = 0;
+  for (const table of tables) {
+    table.forEach((row, index) => {
+      const club = clubById.get(row.clubId);
+      if (!club) return;
+      const overall = placesAbove + index;
+      const t = totalPlaces <= 1 ? 0 : overall / (totalPlaces - 1);
+      const deserved = C.reputationTop - (C.reputationTop - C.reputationBottom) * t;
+      club.reputation = clamp(
+        Math.round(club.reputation + (deserved - club.reputation) * C.reputationDrift),
+        25,
+        95,
+      );
+    });
+    placesAbove += table.length;
+  }
+}
+
+/**
+ * Swaps the bottom of each division with the top of the one below.
+ *
+ * Done after reputations are updated and before budgets are set, so a promoted
+ * club goes into the window with its new division's money and a relegated one
+ * with the drop already priced in -- which is the point of the whole exercise.
+ */
+export function applyPromotionAndRelegation(
+  world: World,
+  tables: readonly (readonly TableRow[])[],
+): PromotionChange[] {
+  const C = CAREER_TUNING;
+  const changes: PromotionChange[] = [];
+  const clubById = new Map(allClubs(world).map((club) => [club.id, club]));
+
+  for (let i = 0; i + 1 < world.leagues.length; i++) {
+    const upper = world.leagues[i]!;
+    const lower = world.leagues[i + 1]!;
+    const upperTable = tables[i];
+    const lowerTable = tables[i + 1];
+    if (!upperTable || !lowerTable) continue;
+
+    const count = Math.min(C.promotionPlaces, upperTable.length, lowerTable.length);
+    if (count === 0) continue;
+
+    const relegated = upperTable.slice(-count).map((row) => row.clubId);
+    const promoted = lowerTable.slice(0, count).map((row) => row.clubId);
+
+    const relegatedSet = new Set(relegated);
+    const promotedSet = new Set(promoted);
+    upper.clubs = upper.clubs.filter((club) => !relegatedSet.has(club.id));
+    lower.clubs = lower.clubs.filter((club) => !promotedSet.has(club.id));
+
+    for (const id of promoted) {
+      const club = clubById.get(id);
+      if (!club) continue;
+      upper.clubs.push(club);
+      changes.push({ clubId: id, clubName: club.name, from: lower.tier, to: upper.tier });
+    }
+    for (const id of relegated) {
+      const club = clubById.get(id);
+      if (!club) continue;
+      lower.clubs.push(club);
+      changes.push({ clubId: id, clubName: club.name, from: upper.tier, to: lower.tier });
+    }
+  }
+
+  return changes;
 }
 
 

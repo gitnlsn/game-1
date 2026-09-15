@@ -16,6 +16,7 @@ import { clubStrength, computeTeamRating, selectLineup } from './match/ratings.j
 import { simulateMatch } from './match/engine.js';
 import { allClubs, createWorld, currentAbility } from './world/index.js';
 import { validateEconomy } from './analysis/economy.js';
+import { validatePyramid, PYRAMID_BENCHMARKS } from './analysis/pyramid.js';
 import {
   formatTacticsReport,
   TACTIC_DOMINANCE,
@@ -294,6 +295,35 @@ function commandCareer(): void {
   }
 }
 
+/** Promotion, relegation and the cup, measured over a long career. */
+function commandPyramid(): void {
+  const seasons = num('seasons', 20);
+  const report = validatePyramid({
+    seasons,
+    seed: flag('seed', 'pyramid'),
+    divisions: num('divisions', 2),
+  });
+
+  if (has('json')) {
+    console.log(JSON.stringify(report.metrics, null, 2));
+    return;
+  }
+
+  console.log(`Simulating ${seasons} seasons of a pyramid...\n`);
+  console.log(pad('Metric', 38) + padLeft('Value', 8) + padLeft('Target', 16) + '   Status');
+  console.log('-'.repeat(70));
+  for (const check of report.checks) {
+    console.log(
+      pad(check.benchmark.label, 38) +
+      padLeft(check.value.toFixed(check.benchmark.decimals ?? 1), 8) +
+      padLeft(`${check.benchmark.target} +/- ${check.benchmark.tolerance}`, 16) +
+      (check.pass ? '   ok' : '   OFF'),
+    );
+  }
+  console.log(`\n${report.checks.filter((c) => c.pass).length}/${PYRAMID_BENCHMARKS.length} benchmarks in range.`);
+  if (!report.passed) process.exitCode = 1;
+}
+
 /**
  * The non-dominance check. Tactics are only a decision if no setting is simply
  * correct, so this exits non-zero when one is -- the same gate `validate` and
@@ -341,6 +371,7 @@ const commands: Record<string, () => void> = {
   career: commandCareer,
   validate: commandValidate,
   tactics: commandTactics,
+  pyramid: commandPyramid,
   match: commandMatch,
   squad: commandSquad,
 };

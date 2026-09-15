@@ -19,6 +19,13 @@ export const ECONOMY_TUNING = {
   sponsorshipScale: 70_000_000,
   /** Broadcast money split equally between every club in the division. */
   tvEqualShare: 12_000_000,
+  /**
+   * What each division down is worth relative to the one above, for central
+   * money only. Real second-tier clubs live on a small fraction of top-flight
+   * television income, and that gap is the entire reason relegation is feared
+   * and promotion chased.
+   */
+  tierDecay: 0.2,
   /** Merit payment for finishing first; last place gets `meritFloor`. */
   meritTop: 25_000_000,
   meritFloor: 2_000_000,
@@ -114,13 +121,31 @@ export function sponsorshipIncome(reputation: number): number {
   return Math.round(E.sponsorshipFloor + Math.pow(reputation / 100, 3) * E.sponsorshipScale);
 }
 
+/**
+ * What a division is worth, relative to the top flight.
+ *
+ * Only the central money is scaled. A relegated club still has its ground and
+ * most of its support, so gate receipts and sponsorship keep following its
+ * reputation -- what actually falls off a cliff is the television deal, which is
+ * why relegation is the financial event it is.
+ */
+export function tierShare(tier: number): number {
+  const E = ECONOMY_TUNING;
+  return Math.pow(E.tierDecay, Math.max(0, tier - 1));
+}
+
 /** Rough annual revenue, used to size budgets before a season is played. */
-export function expectedAnnualRevenue(reputation: number, clubCount: number): number {
+export function expectedAnnualRevenue(
+  reputation: number,
+  clubCount: number,
+  tier = 1,
+): number {
   const E = ECONOMY_TUNING;
   const homeMatches = clubCount - 1;
   const averageGate = stadiumCapacity(reputation) * 0.78 * ticketPrice(reputation);
   const midTableMerit = (E.meritTop + E.meritFloor) / 2;
-  return averageGate * homeMatches + sponsorshipIncome(reputation) + E.tvEqualShare + midTableMerit;
+  const central = (E.tvEqualShare + midTableMerit) * tierShare(tier);
+  return averageGate * homeMatches + sponsorshipIncome(reputation) + central;
 }
 
 export function createClubFinances(
@@ -198,9 +223,9 @@ export function payWeeklySponsorship(club: Club): number {
 }
 
 /** One week's share of the club's non-wage running costs. */
-export function payWeeklyOperatingCosts(club: Club, clubCount: number): number {
+export function payWeeklyOperatingCosts(club: Club, clubCount: number, tier = 1): number {
   const E = ECONOMY_TUNING;
-  const revenue = expectedAnnualRevenue(club.reputation, clubCount);
+  const revenue = expectedAnnualRevenue(club.reputation, clubCount, tier);
   // A club in the red cuts its cloth: austerity is what stops a bad season
   // turning into a permanent debt spiral.
   const austerity = club.finances.balance < 0 ? E.austerityFactor : 1;
@@ -211,36 +236,44 @@ export function payWeeklyOperatingCosts(club: Club, clubCount: number): number {
 }
 
 /** Merit payment plus the equal broadcast share, paid at the end of a season. */
-export function prizeMoney(position: number, clubCount: number): number {
+export function prizeMoney(position: number, clubCount: number, tier = 1): number {
   const E = ECONOMY_TUNING;
   const t = clubCount <= 1 ? 0 : (position - 1) / (clubCount - 1);
   const merit = E.meritTop - (E.meritTop - E.meritFloor) * t;
-  return Math.round(merit + E.tvEqualShare);
+  return Math.round((merit + E.tvEqualShare) * tierShare(tier));
 }
 
-/** Prize money, paid once the season is decided. Sponsorship arrives weekly. */
-export function distributeSeasonIncome(clubs: readonly Club[], table: readonly TableRow[]): void {
+/**
+ * Prize money, paid once the season is decided. Sponsorship arrives weekly.
+ *
+ * Takes one table per division, so the second tier is paid second-tier money.
+ */
+export function distributeSeasonIncome(
+  clubs: readonly Club[],
+  tables: readonly (readonly TableRow[])[],
+): void {
   const clubById = new Map(clubs.map((club) => [club.id, club]));
 
-  table.forEach((row, index) => {
-    const club = clubById.get(row.clubId);
-    if (!club) return;
-    const prize = prizeMoney(index + 1, table.length);
-    club.finances.balance += prize;
-    club.finances.season.prizeMoney += prize;
+  tables.forEach((table, tierIndex) => {
+    table.forEach((row, index) => {
+      const club = clubById.get(row.clubId);
+      if (!club) return;
+      const prize = prizeMoney(index + 1, table.length, tierIndex + 1);
+      club.finances.balance += prize;
+      club.finances.season.prizeMoney += prize;
+    });
   });
-
 }
 
 /**
  * Sets the budgets a club takes into the transfer window. A club in debt gets
  * nothing to spend, which is the main brake on runaway squads.
  */
-export function setTransferBudgets(clubs: readonly Club[], clubCount: number): void {
+export function setTransferBudgets(clubs: readonly Club[], clubCount: number, tier = 1): void {
   const E = ECONOMY_TUNING;
 
   for (const club of clubs) {
-    const revenue = expectedAnnualRevenue(club.reputation, clubCount);
+    const revenue = expectedAnnualRevenue(club.reputation, clubCount, tier);
     const freeCash = Math.max(0, club.finances.balance);
 
     club.finances.transferBudget = Math.round(freeCash * E.transferBudgetShare);
@@ -253,9 +286,9 @@ export function setTransferBudgets(clubs: readonly Club[], clubCount: number): v
  * expands it, which raises future gate income -- the reward for running a club
  * well. Anything left far above the reserve target is drawn out by the owners.
  */
-export function applyCloseSeasonSpending(club: Club, clubCount: number): void {
+export function applyCloseSeasonSpending(club: Club, clubCount: number, tier = 1): void {
   const E = ECONOMY_TUNING;
-  const revenue = expectedAnnualRevenue(club.reputation, clubCount);
+  const revenue = expectedAnnualRevenue(club.reputation, clubCount, tier);
   const reserveTarget = revenue * E.cashReserveShare;
 
   const homeMatches = Math.max(1, clubCount - 1);

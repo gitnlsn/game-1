@@ -8,7 +8,10 @@ import {
 } from '../world/index.js';
 import { startCareer, advanceRound, isSeasonComplete, leagueTable } from '../career/controller.js';
 import { deserializeCareer, serializeCareer } from '../career/persistence.js';
-import { createSeasonState, currentTable, currentTables, playRound } from '../league/season.js';
+import { createSeasonState, currentTable, currentTables, finaliseSeason, playRound } from '../league/season.js';
+import { closeSeason } from '../career/career.js';
+import { expectedAnnualRevenue, prizeMoney, tierShare } from '../economy/finances.js';
+import { validatePyramid } from '../analysis/pyramid.js';
 import { Rng } from '../rng/index.js';
 import type { Career } from '../career/controller.js';
 
@@ -133,5 +136,95 @@ describe('saves written before the pyramid', () => {
     const table = leagueTable(loaded);
     expect(table).toHaveLength(20);
     expect(table.reduce((sum, row) => sum + row.played, 0)).toBe(5 * 20);
+  });
+});
+
+describe('promotion and relegation', () => {
+  it('swaps the bottom of a division with the top of the one below', () => {
+    const world = createWorld({ seed: 'promotion', divisions: 2 });
+    const rng = new Rng('promotion');
+    const state = createSeasonState(world, rng, { economy: true, playerState: true });
+    while (state.nextRound <= state.totalRounds) playRound(state);
+
+    const before = finaliseSeason(state);
+    const goingDown = before.tables[0]!.slice(-3).map((r) => r.clubId);
+    const goingUp = before.tables[1]!.slice(0, 3).map((r) => r.clubId);
+
+    const summary = closeSeason(world, rng, before);
+
+    const top = new Set(world.leagues[0]!.clubs.map((c) => c.id));
+    const second = new Set(world.leagues[1]!.clubs.map((c) => c.id));
+
+    for (const id of goingUp) expect(top.has(id), `${id} up`).toBe(true);
+    for (const id of goingDown) expect(second.has(id), `${id} down`).toBe(true);
+
+    // Divisions stay the same size, and nobody ends up in two of them.
+    expect(world.leagues[0]!.clubs).toHaveLength(20);
+    expect(world.leagues[1]!.clubs).toHaveLength(20);
+    expect(new Set(allClubs(world).map((c) => c.id)).size).toBe(40);
+
+    expect(summary.promotions).toHaveLength(6);
+    expect(summary.promotions.filter((p) => p.to === 1)).toHaveLength(3);
+    expect(summary.promotions.filter((p) => p.to === 2)).toHaveLength(3);
+  });
+
+  it('does nothing at all in a world with one division', () => {
+    const world = createWorld({ seed: 'promotion-single' });
+    const rng = new Rng('promotion-single');
+    const state = createSeasonState(world, rng, { economy: true, playerState: true });
+    while (state.nextRound <= state.totalRounds) playRound(state);
+
+    const summary = closeSeason(world, rng, finaliseSeason(state));
+    expect(summary.promotions).toEqual([]);
+    expect(world.leagues).toHaveLength(1);
+  });
+
+  it('pays the divisions differently, which is what makes the drop matter', () => {
+    expect(tierShare(1)).toBe(1);
+    expect(tierShare(2)).toBeLessThan(1);
+    expect(tierShare(3)).toBeLessThan(tierShare(2));
+
+    // Same club, same standing, one division apart.
+    expect(prizeMoney(1, 20, 2)).toBeLessThan(prizeMoney(1, 20, 1));
+    expect(expectedAnnualRevenue(70, 20, 2)).toBeLessThan(expectedAnnualRevenue(70, 20, 1));
+    // But not to nothing: gate and sponsorship still follow the club itself.
+    expect(expectedAnnualRevenue(70, 20, 2)).toBeGreaterThan(
+      expectedAnnualRevenue(70, 20, 1) * 0.4,
+    );
+  });
+
+  it('ranks reputation across the pyramid, not within a division', () => {
+    /*
+     * Winning the second tier must be worth less than winning the first, or a
+     * club could ratchet its standing up by going down and winning promotion
+     * again, over and over.
+     */
+    const world = createWorld({ seed: 'reputation-tiers', divisions: 2 });
+    const rng = new Rng('reputation-tiers');
+    const secondTierChampion = world.leagues[1]!.clubs[0]!;
+    const before = secondTierChampion.reputation;
+
+    const state = createSeasonState(world, rng, { economy: true, playerState: true });
+    while (state.nextRound <= state.totalRounds) playRound(state);
+    const result = finaliseSeason(state);
+
+    const topOfSecond = result.tables[1]![0]!.clubId;
+    const topOfFirst = result.tables[0]![0]!.clubId;
+    closeSeason(world, rng, result);
+
+    const secondWinner = findClub(world, topOfSecond)!;
+    const firstWinner = findClub(world, topOfFirst)!;
+    expect(secondWinner.reputation).toBeLessThan(firstWinner.reputation);
+    void before;
+  });
+});
+
+describe('the pyramid over a career', () => {
+  it('passes every pyramid benchmark', () => {
+    const report = validatePyramid({ seasons: 12, seed: 'pyramid-test' });
+    const failures = report.checks
+      .filter((c) => !c.pass)
+      .map((c) => `${c.benchmark.label} = ${c.value.toFixed(2)} (want ${c.benchmark.target} +/- ${c.benchmark.tolerance})`);
+    expect(failures).toEqual([]);
   });
 });

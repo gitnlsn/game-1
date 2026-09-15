@@ -152,10 +152,19 @@ export function playRound(state: SeasonState): MatchResult[] {
   const clubById = new Map(clubs.map((club) => [club.id, club]));
 
   if (options.economy) {
-    for (const club of clubs) {
-      payWeeklySponsorship(club);
-      payWeeklyWages(club);
-      payWeeklyOperatingCosts(club, clubs.length);
+    /*
+     * Per division, not across the pyramid. Operating costs are a share of what
+     * a club is expected to earn, and that expectation is priced off how many
+     * home matches it plays -- hand it the whole world's club count and every
+     * side is run as though it played twice the football it does, which
+     * bankrupted the entire second division in twenty seasons.
+     */
+    for (const league of world.leagues) {
+      for (const club of league.clubs) {
+        payWeeklySponsorship(club);
+        payWeeklyWages(club);
+        payWeeklyOperatingCosts(club, league.clubs.length, league.tier);
+      }
     }
   }
 
@@ -250,8 +259,10 @@ export function currentTables(state: SeasonState): TableRow[][] {
 }
 
 export function finaliseSeason(state: SeasonState): SeasonResult {
+  const tables = currentTables(state);
   return {
-    table: currentTable(state),
+    table: tables[0] ?? [],
+    tables,
     results: state.results,
     scorers: buildScorers(state.world, state.results),
   };

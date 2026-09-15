@@ -11,3 +11,4 @@ export * from './career/index.js';
 export * from './analysis/validate.js';
 export * from './analysis/economy.js';
 export * from './analysis/tactics.js';
+export * from './analysis/pyramid.js';

@@ -344,7 +344,10 @@ export interface TableRow {
 }
 
 export interface SeasonResult {
+  /** The top division's table. Shorthand for `tables[0]`. */
   table: TableRow[];
+  /** Every division's table, top tier first. */
+  tables: TableRow[][];
   results: MatchResult[];
   /** Goals scored per player id, descending. */
   scorers: { playerId: string; playerName: string; clubName: string; goals: number }[];
