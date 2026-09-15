@@ -1,4 +1,5 @@
 import { Rng } from '../rng/index.js';
+import { allClubs } from '../world/index.js';
 import type {
   Club,
   Fixture,
@@ -14,7 +15,7 @@ import { ensurePlayerIdsAbove } from '../world/players.js';
 import type { Career } from './controller.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -42,7 +43,13 @@ export interface SavedCareer {
   rngState: number;
   managedClubId: string;
   worldSeason: number;
-  league: { id: string; name: string; nationality: string };
+  /**
+   * Division metadata and membership. Clubs themselves stay in one flat list so
+   * that every squad holds the same Player objects as the lookup table -- split
+   * them per league and a transfer moves one copy while the map points at
+   * another.
+   */
+  leagues: { id: string; name: string; nationality: string; tier: number; clubIds: string[] }[];
   clubs: Club[];
   freeAgents: Player[];
   /** Added in save version 4: an open close-season window. */
@@ -71,12 +78,14 @@ export function toSavedCareer(career: Career): SavedCareer {
     rngState: career.rng.getState(),
     managedClubId: career.managedClubId,
     worldSeason: world.season,
-    league: {
-      id: world.league.id,
-      name: world.league.name,
-      nationality: world.league.nationality,
-    },
-    clubs: world.league.clubs,
+    leagues: world.leagues.map((league) => ({
+      id: league.id,
+      name: league.name,
+      nationality: league.nationality,
+      tier: league.tier,
+      clubIds: league.clubs.map((club) => club.id),
+    })),
+    clubs: allClubs(world),
     freeAgents: world.freeAgents,
     transferWindow: world.transferWindow,
     season: {
@@ -163,6 +172,39 @@ const MIGRATIONS: Record<number, Migration> = {
     const scouting = (saved.scouting as Record<string, unknown>) ?? { reports: {} };
     return { ...saved, version: 5, scouting: { ...scouting, capacityUsed: 0 } };
   },
+  /**
+   * v6 made the world a pyramid. A save from before it has exactly one division
+   * holding every club, and its fixtures all belong to that division -- without
+   * naming them, the table would find no fixtures to match results against and
+   * every career would resume showing an empty league.
+   */
+  5: (saved) => {
+    const league = (saved.league as { id?: string; name?: string; nationality?: string }) ?? {};
+    const clubs = (saved.clubs as { id: string }[]) ?? [];
+    const id = league.id ?? 'l1';
+    const season = (saved.season as Record<string, unknown>) ?? {};
+    const fixtures = ((season.fixtures as Record<string, unknown>[]) ?? []).map((fixture) => ({
+      ...fixture,
+      competitionId: fixture.competitionId ?? id,
+    }));
+
+    const next = {
+      ...saved,
+      version: 6,
+      leagues: [
+        {
+          id,
+          name: league.name ?? 'Liga Nacional',
+          nationality: league.nationality ?? 'BRA',
+          tier: 1,
+          clubIds: clubs.map((club) => club.id),
+        },
+      ],
+      season: { ...season, fixtures },
+    };
+    delete (next as Record<string, unknown>).league;
+    return next;
+  },
 };
 
 /** Raised when a save cannot be brought up to the current format. */
@@ -218,9 +260,18 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
   // that are already taken and silently overwrites existing players.
   ensurePlayerIdsAbove(players.values());
 
+  const clubById = new Map(saved.clubs.map((club) => [club.id, club]));
   const world = {
     seed: saved.seed,
-    league: { ...saved.league, clubs: saved.clubs },
+    leagues: saved.leagues.map((league) => ({
+      id: league.id,
+      name: league.name,
+      nationality: league.nationality,
+      tier: league.tier,
+      clubs: league.clubIds
+        .map((id) => clubById.get(id))
+        .filter((club): club is Club => club !== undefined),
+    })),
     players,
     freeAgents: saved.freeAgents,
     season: saved.worldSeason,

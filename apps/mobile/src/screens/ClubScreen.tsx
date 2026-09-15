@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
+  findClub,
   describeTactics,
   formatMoney,
   isAvailable,
@@ -211,7 +212,7 @@ export function ClubScreen() {
           recent.map((result, index) => {
             const home = result.homeClubId === club.id;
             const opponentId = home ? result.awayClubId : result.homeClubId;
-            const opponent = career.world.league.clubs.find((c) => c.id === opponentId);
+            const opponent = findClub(career.world, opponentId);
             const outcome = outcomeFor(result, club.id);
             return (
               <View key={`${result.homeClubId}-${result.awayClubId}-${index}`}>

@@ -53,8 +53,8 @@ describe('createWorld', () => {
   it('is deterministic for a given seed', () => {
     const a = createWorld({ seed: 'world-test' });
     const b = createWorld({ seed: 'world-test' });
-    expect(a.league.clubs.map((c) => c.name)).toEqual(b.league.clubs.map((c) => c.name));
-    expect(a.league.clubs[0]!.squad[0]!.attributes).toEqual(b.league.clubs[0]!.squad[0]!.attributes);
+    expect(a.leagues[0]!.clubs.map((c) => c.name)).toEqual(b.leagues[0]!.clubs.map((c) => c.name));
+    expect(a.leagues[0]!.clubs[0]!.squad[0]!.attributes).toEqual(b.leagues[0]!.clubs[0]!.squad[0]!.attributes);
   });
 
   it('gives every club a full, uniquely named squad', () => {
@@ -62,12 +62,12 @@ describe('createWorld', () => {
     const expectedSize = Object.values(SQUAD_SHAPE).reduce((a, b) => a + b, 0);
     const names = new Set<string>();
 
-    for (const club of world.league.clubs) {
+    for (const club of world.leagues[0]!.clubs) {
       expect(club.squad).toHaveLength(expectedSize);
       expect(club.squad.filter((p) => p.position === 'GK').length).toBeGreaterThanOrEqual(2);
       names.add(club.name);
     }
-    expect(names.size).toBe(world.league.clubs.length);
+    expect(names.size).toBe(world.leagues[0]!.clubs.length);
   });
 
   it('never repeats a display name anywhere in the league', () => {
@@ -94,7 +94,7 @@ describe('createWorld', () => {
 describe('selectLineup', () => {
   it('fields 11 distinct players with a keeper in goal', () => {
     const world = createWorld({ seed: 'lineup' });
-    for (const club of world.league.clubs) {
+    for (const club of world.leagues[0]!.clubs) {
       const lineup = selectLineup(club);
       expect(lineup.slots).toHaveLength(11);
       expect(new Set(lineup.slots.map((s) => s.player.id)).size).toBe(11);

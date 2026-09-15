@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
+  allClubs,
   clubStrength,
   createWorld,
   formatMoney,
@@ -31,7 +32,7 @@ export function NewCareerScreen() {
   // Built from the same seed the career will use, so what you pick is what you get.
   const world = useMemo(() => createWorld({ seed }), [seed]);
   const clubs = useMemo(
-    () => [...world.league.clubs].sort((a, b) => b.reputation - a.reputation),
+    () => [...allClubs(world)].sort((a, b) => b.reputation - a.reputation),
     [world],
   );
 
@@ -43,7 +44,7 @@ export function NewCareerScreen() {
     >
       <Text style={textStyles.title}>Take charge</Text>
       <Text style={[textStyles.subtitle, styles.intro]}>
-        {world.league.name} — {clubs.length} clubs, all fictional. Pick a job: a big club expects
+        {world.leagues[0]!.name} — {clubs.length} clubs, all fictional. Pick a job: a big club expects
         trophies, a small one expects you to survive.
       </Text>
 

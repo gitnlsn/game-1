@@ -26,7 +26,7 @@ import {
   tactics as readTactics,
 } from '../career/controller.js';
 import { deserializeCareer, serializeCareer } from '../career/persistence.js';
-import type { TeamSheet } from '../types.js';
+import type { Club, TeamSheet } from '../types.js';
 
 function sheet(clubId: string, t?: Tactics): TeamSheet {
   return {
@@ -105,7 +105,7 @@ describe('tactics', () => {
 
   it('changes nothing at all when nobody has set any', () => {
     const world = createWorld({ seed: 'tactics-noop' });
-    const [home, away] = world.league.clubs as [typeof world.league.clubs[0], typeof world.league.clubs[0]];
+    const [home, away] = world.leagues[0]!.clubs as [Club, Club];
 
     for (const seed of ['m1', 'm2', 'm3', 'm4', 'm5', 'm6']) {
       const without = simulateMatch(new Rng(seed), home, away);
@@ -132,7 +132,7 @@ describe('tactics', () => {
      * why no AI club is given instructions.
      */
     const world = createWorld({ seed: 'tactics-state' });
-    const [home, away] = world.league.clubs as [typeof world.league.clubs[0], typeof world.league.clubs[0]];
+    const [home, away] = world.leagues[0]!.clubs as [Club, Club];
 
     for (const seed of ['a', 'b', 'c', 'd', 'e']) {
       const bare = new Rng(seed);
@@ -150,7 +150,7 @@ describe('tactics', () => {
 
   it('actually changes how a side plays', () => {
     const world = createWorld({ seed: 'tactics-effect' });
-    const [home, away] = world.league.clubs as [typeof world.league.clubs[0], typeof world.league.clubs[0]];
+    const [home, away] = world.leagues[0]!.clubs as [Club, Club];
 
     let balancedPossession = 0;
     let pressingPossession = 0;

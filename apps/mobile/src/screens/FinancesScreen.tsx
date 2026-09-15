@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
+  leagueOf,
   ECONOMY_TUNING,
   expectedAnnualRevenue,
   formatMoney,
@@ -26,7 +27,7 @@ export function FinancesScreen() {
   const net = income - expense;
 
   const annualWages = wageBill(club.squad) * ECONOMY_TUNING.wageWeeksPerSeason;
-  const projectedRevenue = expectedAnnualRevenue(club.reputation, career.world.league.clubs.length);
+  const projectedRevenue = expectedAnnualRevenue(club.reputation, (leagueOf(career.world, club.id)?.clubs.length ?? 20));
   const wageRatio = projectedRevenue > 0 ? (annualWages / projectedRevenue) * 100 : 0;
 
   return (

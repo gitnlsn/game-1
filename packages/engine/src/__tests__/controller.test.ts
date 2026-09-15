@@ -78,7 +78,7 @@ describe('career controller', () => {
     expect(nextFixture(career)).toBeDefined();
 
     // Everyone starts the new season with their season counters cleared.
-    for (const club of career.world.league.clubs) {
+    for (const club of career.world.leagues[0]!.clubs) {
       for (const player of club.squad) expect(player.status.minutes).toBe(0);
     }
   });
@@ -114,7 +114,7 @@ describe('save and load', () => {
     advanceRound(career);
     const loaded = deserializeCareer(serializeCareer(career));
 
-    for (const club of loaded.world.league.clubs) {
+    for (const club of loaded.world.leagues[0]!.clubs) {
       for (const player of club.squad) {
         // Identity, not just equality: a transfer mutates one object and both
         // views have to see it.
@@ -161,7 +161,7 @@ describe('save and load', () => {
     startNextSeason(loaded);
 
     const seen = new Set<string>();
-    for (const club of loaded.world.league.clubs) {
+    for (const club of loaded.world.leagues[0]!.clubs) {
       for (const player of club.squad) {
         expect(seen.has(player.id), `duplicate id ${player.id} (${player.displayName})`).toBe(false);
         seen.add(player.id);

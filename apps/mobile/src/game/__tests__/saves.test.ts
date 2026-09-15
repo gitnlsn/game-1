@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  allClubs,
   advanceRound,
   isSeasonComplete,
   serializeCareer,
@@ -125,7 +126,7 @@ describe('loadCareer', () => {
     expect(result.career.scouting.reports).toEqual({});
     expect(result.career.season.teamSheets.size).toBe(0);
     // And nothing is left holding an undefined potential.
-    for (const club of result.career.world.league.clubs) {
+    for (const club of allClubs(result.career.world)) {
       for (const player of club.squad) {
         expect(Number.isFinite(player.hiddenPotential)).toBe(true);
       }

@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { managedClub, type MatchEvent } from '@game1/engine';
+import { allClubs, managedClub, type MatchEvent } from '@game1/engine';
 import { Badge, Button, Card, Divider, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -83,7 +83,7 @@ export function MatchScreen({ route }: Props) {
 
   const club = managedClub(career);
   const home = result.homeClubId === club.id;
-  const opponent = career.world.league.clubs.find(
+  const opponent = allClubs(career.world).find(
     (c) => c.id === (home ? result.awayClubId : result.homeClubId),
   );
 

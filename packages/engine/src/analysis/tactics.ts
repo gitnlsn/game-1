@@ -3,7 +3,7 @@ import type { Club, TeamSheet, World } from '../types.js';
 import { simulateMatch } from '../match/engine.js';
 import { BALANCED, TACTIC_AXES, type Tactics } from '../match/tactics.js';
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
-import { createWorld } from '../world/index.js';
+import { allClubs, createWorld } from '../world/index.js';
 
 /**
  * Tactics are only a decision if no setting is simply correct. This harness is
@@ -130,7 +130,7 @@ function programme(
   const tally: Tally = { points: 0, played: 0, goalsFor: 0, goalsAgainst: 0 };
 
   for (let r = 0; r < repeats; r++) {
-    for (const opponent of world.league.clubs) {
+    for (const opponent of allClubs(world)) {
       if (opponent.id === club.id) continue;
 
       const home = simulateMatch(new Rng(`${seed}:${r}:${opponent.id}:h`), club, opponent, {
@@ -164,7 +164,7 @@ export function validateTactics(options: TacticsOptions = {}): TacticsReport {
    * property under test is that different squads want different instructions, so
    * choosing the squads to make that come out true would prove nothing.
    */
-  const ranked = [...world.league.clubs].sort((a, b) => b.reputation - a.reputation);
+  const ranked = [...allClubs(world)].sort((a, b) => b.reputation - a.reputation);
   const step = Math.max(1, Math.floor(ranked.length / squadCount));
   const squads = Array.from({ length: squadCount }, (_, i) => ranked[i * step]!);
 

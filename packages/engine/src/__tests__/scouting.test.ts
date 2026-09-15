@@ -32,7 +32,7 @@ function playSeason(career: Career): void {
 
 describe('scoutedPotential', () => {
   const world = createWorld({ seed: 'scout' });
-  const player = world.league.clubs[0]!.squad[0]!;
+  const player = world.leagues[0]!.clubs[0]!.squad[0]!;
 
   it('never reveals the true number, but brackets it sensibly', () => {
     const state = createScoutingState();
@@ -93,7 +93,7 @@ describe('scoutedPotential', () => {
 
   it('gives different players different blind spots', () => {
     const state = createScoutingState();
-    const errors = world.league.clubs[0]!.squad.map((p) => {
+    const errors = world.leagues[0]!.clubs[0]!.squad.map((p) => {
       const r = scoutedPotential(world.seed, state, p);
       return r.estimate - p.hiddenPotential;
     });
@@ -194,7 +194,7 @@ describe('scouting and the career', () => {
     const loaded = deserializeCareer(JSON.stringify(saved));
     expect(loaded.scouting.reports).toEqual({});
 
-    for (const club of loaded.world.league.clubs) {
+    for (const club of loaded.world.leagues[0]!.clubs) {
       for (const player of club.squad) {
         expect(player.hiddenPotential, player.displayName).toBeGreaterThan(0);
         // The number the whole economy is priced off must survive the upgrade.
@@ -228,7 +228,7 @@ describe('scout assignments', () => {
    * either end of the scale.
    */
   function prospect(career: Career) {
-    for (const club of career.world.league.clubs) {
+    for (const club of career.world.leagues[0]!.clubs) {
       if (club.id === career.managedClubId) continue;
       const young = club.squad.find((p) => p.age <= 20);
       if (young) return young;
@@ -253,7 +253,7 @@ describe('scout assignments', () => {
     const capacity = scoutCapacity(managedClub(career).reputation);
     expect(scoutsAvailable(career)).toBe(capacity);
 
-    const rival = career.world.league.clubs.find((c) => c.id !== career.managedClubId)!;
+    const rival = career.world.leagues[0]!.clubs.find((c) => c.id !== career.managedClubId)!;
     for (let i = 0; i < capacity; i++) {
       expect(scoutPlayer(career, rival.squad[i]!.id)).toBe(true);
     }
@@ -266,7 +266,7 @@ describe('scout assignments', () => {
   });
 
   it('gives a bigger club more scouts than a small one', () => {
-    const clubs = createWorld({ seed: 'scout-reputation' }).league.clubs;
+    const clubs = createWorld({ seed: 'scout-reputation' }).leagues[0]!.clubs;
     const weakest = clubs.reduce((a, b) => (a.reputation <= b.reputation ? a : b));
     const strongest = clubs.reduce((a, b) => (a.reputation >= b.reputation ? a : b));
     expect(scoutCapacity(strongest.reputation)).toBeGreaterThan(
@@ -282,7 +282,7 @@ describe('scout assignments', () => {
 
   it('refreshes the allowance each season', () => {
     const career = startCareer({ seed: 'scout-refresh', managedClubId: 'c1' });
-    const rival = career.world.league.clubs.find((c) => c.id !== career.managedClubId)!;
+    const rival = career.world.leagues[0]!.clubs.find((c) => c.id !== career.managedClubId)!;
     scoutPlayer(career, rival.squad[0]!.id);
     expect(scoutsAvailable(career)).toBeLessThan(scoutCapacity(managedClub(career).reputation));
 
@@ -321,7 +321,7 @@ describe('scout assignments', () => {
 
   it('never touches the career generator, so scouting cannot change results', () => {
     const career = startCareer({ seed: 'scout-purity', managedClubId: 'c1' });
-    const rival = career.world.league.clubs.find((c) => c.id !== career.managedClubId)!;
+    const rival = career.world.leagues[0]!.clubs.find((c) => c.id !== career.managedClubId)!;
     const state = career.rng.getState();
 
     scoutPlayer(career, rival.squad[0]!.id);

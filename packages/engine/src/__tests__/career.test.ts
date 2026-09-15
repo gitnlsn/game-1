@@ -14,7 +14,7 @@ function assertWorldIsCoherent(world: World): void {
   const seen = new Map<string, string>();
   const names = new Set<string>();
 
-  for (const club of world.league.clubs) {
+  for (const club of world.leagues[0]!.clubs) {
     expect(club.squad.length, `${club.name} squad size`).toBeGreaterThanOrEqual(
       TRANSFER_TUNING.minSquadSize - TRANSFER_TUNING.maxDistressReleases,
     );
@@ -111,17 +111,17 @@ describe('simulateCareerSeason', () => {
   it('conserves money across every transfer', () => {
     const world = createWorld({ seed: 'career-money' });
     const rng = new Rng('career-money');
-    const clubById = new Map(world.league.clubs.map((c) => [c.id, c]));
+    const clubById = new Map(world.leagues[0]!.clubs.map((c) => [c.id, c]));
 
     for (let season = 0; season < 8; season++) {
-      const before = new Map(world.league.clubs.map((c) => [c.id, c.finances.balance]));
+      const before = new Map(world.leagues[0]!.clubs.map((c) => [c.id, c.finances.balance]));
       const summary = simulateCareerSeason(world, rng);
 
       // Fees must net to zero across the league: every unit a buyer pays is a
       // unit a seller receives.
       const paid = summary.transfers.reduce((sum, t) => sum + t.fee, 0);
-      const purchases = world.league.clubs.reduce((s, c) => s + c.finances.season.playerPurchases, 0);
-      const sales = world.league.clubs.reduce((s, c) => s + c.finances.season.playerSales, 0);
+      const purchases = world.leagues[0]!.clubs.reduce((s, c) => s + c.finances.season.playerPurchases, 0);
+      const sales = world.leagues[0]!.clubs.reduce((s, c) => s + c.finances.season.playerSales, 0);
 
       expect(purchases).toBe(sales);
       expect(purchases).toBe(paid);
@@ -136,7 +136,7 @@ describe('simulateCareerSeason', () => {
         expect(clubById.has(transfer.toClubId)).toBe(true);
         expect(transfer.wage).toBeGreaterThan(0);
       }
-      expect(before.size).toBe(world.league.clubs.length);
+      expect(before.size).toBe(world.leagues[0]!.clubs.length);
     }
   });
 
@@ -152,10 +152,10 @@ describe('simulateCareerSeason', () => {
     const rng = new Rng('conservation');
 
     for (let season = 0; season < 4; season++) {
-      const before = new Map(world.league.clubs.map((c) => [c.id, c.finances.balance]));
+      const before = new Map(world.leagues[0]!.clubs.map((c) => [c.id, c.finances.balance]));
       simulateCareerSeason(world, rng);
 
-      for (const club of world.league.clubs) {
+      for (const club of world.leagues[0]!.clubs) {
         const delta = club.finances.balance - before.get(club.id)!;
         const booked = recordIncome(club.finances.season) - recordExpense(club.finances.season);
         expect(delta, `${club.name} season ${season + 1}`).toBe(booked);

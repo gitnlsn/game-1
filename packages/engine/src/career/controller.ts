@@ -33,7 +33,7 @@ import {
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
 import { resolveTactics, type Tactics } from '../match/tactics.js';
-import { createWorld } from '../world/index.js';
+import { allClubs, createWorld, findClub } from '../world/index.js';
 import {
   createScoutingState,
   creditInheritedSquad,
@@ -83,18 +83,21 @@ export interface StartCareerOptions {
   clubCount?: number;
   leagueName?: string;
   nationality?: string;
+  /** Divisions in the pyramid. */
+  divisions?: number;
 }
 
 export function startCareer(options: StartCareerOptions): Career {
   const world = createWorld({
     seed: options.seed,
     ...(options.clubCount !== undefined ? { clubCount: options.clubCount } : {}),
+    ...(options.divisions !== undefined ? { divisions: options.divisions } : {}),
     ...(options.leagueName !== undefined ? { leagueName: options.leagueName } : {}),
     ...(options.nationality !== undefined ? { nationality: options.nationality } : {}),
   });
 
   const rng = new Rng(`${options.seed}:career`);
-  const managedClubId = options.managedClubId ?? world.league.clubs[0]!.id;
+  const managedClubId = options.managedClubId ?? allClubs(world)[0]!.id;
 
   beginSeason(world);
   const season = createSeasonState(world, rng, { economy: true, playerState: true });
@@ -115,7 +118,7 @@ export function startCareer(options: StartCareerOptions): Career {
 }
 
 export function managedClub(career: Career): Club {
-  const club = career.world.league.clubs.find((c) => c.id === career.managedClubId);
+  const club = allClubs(career.world).find((c) => c.id === career.managedClubId);
   if (!club) throw new Error(`managedClub: no club ${career.managedClubId}`);
   return club;
 }
@@ -131,7 +134,7 @@ export function advanceRound(career: Career): MatchResult[] {
   );
   if (own) {
     const opponentId = own.homeClubId === career.managedClubId ? own.awayClubId : own.homeClubId;
-    const opponent = career.world.league.clubs.find((c) => c.id === opponentId);
+    const opponent = findClub(career.world, opponentId);
     if (opponent) {
       const active = new Set(
         own.events.filter((e) => e.clubId === opponentId).map((e) => e.playerId),
@@ -206,7 +209,7 @@ export function nextFixture(career: Career): UpcomingFixture | undefined {
 
   const home = fixture.homeClubId === career.managedClubId;
   const opponentId = home ? fixture.awayClubId : fixture.homeClubId;
-  const opponent = career.world.league.clubs.find((c) => c.id === opponentId);
+  const opponent = findClub(career.world, opponentId);
   if (!opponent) return undefined;
 
   return { fixture, opponent, home };

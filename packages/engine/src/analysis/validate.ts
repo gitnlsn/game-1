@@ -2,7 +2,7 @@ import { Rng } from '../rng/index.js';
 import type { MatchResult } from '../types.js';
 import { simulateSeason } from '../league/season.js';
 import { clubStrength } from '../match/ratings.js';
-import { createWorld } from '../world/index.js';
+import { allClubs, createWorld } from '../world/index.js';
 
 /**
  * Benchmarks drawn from recent top-five-European-league seasons. The engine is
@@ -89,7 +89,7 @@ export function validateEngine(options: ValidateOptions = {}): ValidationReport 
     const world = createWorld({ seed: `${baseSeed}:${s}`, clubCount });
     const rng = new Rng(`${baseSeed}:season:${s}`);
 
-    const strengthByClub = new Map(world.league.clubs.map((c) => [c.id, clubStrength(c)]));
+    const strengthByClub = new Map(allClubs(world).map((c) => [c.id, clubStrength(c)]));
     const season = simulateSeason(world, rng, { playerState: true });
 
     for (const result of season.results) {
@@ -118,7 +118,7 @@ export function validateEngine(options: ValidateOptions = {}): ValidationReport 
 
     // Rotation: how many players a club actually used, and how concentrated
     // minutes were in its most-used eleven.
-    for (const club of world.league.clubs) {
+    for (const club of allClubs(world)) {
       clubSeasons++;
       const minutes = club.squad
         .map((player) => player.status.minutes)

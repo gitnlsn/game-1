@@ -14,7 +14,7 @@ import { validateEngine } from './analysis/validate.js';
 import { simulateSeason } from './league/season.js';
 import { clubStrength, computeTeamRating, selectLineup } from './match/ratings.js';
 import { simulateMatch } from './match/engine.js';
-import { createWorld, currentAbility } from './world/index.js';
+import { allClubs, createWorld, currentAbility } from './world/index.js';
 import { validateEconomy } from './analysis/economy.js';
 import {
   formatTacticsReport,
@@ -51,7 +51,7 @@ function buildWorld(): World {
 }
 
 function printTable(world: World, seasonResult: ReturnType<typeof simulateSeason>): void {
-  console.log(`\n${world.league.name}  -  final table\n`);
+  console.log(`\n${world.leagues[0]!.name}  -  final table\n`);
   console.log(
     pad('#', 4) + pad('Club', 22) + padLeft('P', 4) + padLeft('W', 4) +
     padLeft('D', 4) + padLeft('L', 4) + padLeft('GF', 5) + padLeft('GA', 5) +
@@ -128,7 +128,7 @@ function commandValidate(): void {
 
 function commandMatch(): void {
   const world = buildWorld();
-  const clubs = world.league.clubs;
+  const clubs = allClubs(world);
   const home = clubs[num('home', 1) - 1] ?? clubs[0]!;
   const away = clubs[num('away', 2) - 1] ?? clubs[1]!;
   const rng = new Rng(flag('seed', 'default') + ':match');
@@ -155,7 +155,7 @@ function commandMatch(): void {
 
 function commandSquad(): void {
   const world = buildWorld();
-  const club: Club = world.league.clubs[num('club', 1) - 1] ?? world.league.clubs[0]!;
+  const club: Club = allClubs(world)[num('club', 1) - 1] ?? allClubs(world)[0]!;
   const lineup = selectLineup(club);
   const rating = computeTeamRating(lineup);
   const starters = new Set(lineup.slots.map((s) => s.player.id));
@@ -275,7 +275,7 @@ function commandCareer(): void {
   });
 
   console.log('\nBiggest squads by value now\n');
-  const ranked = [...world.league.clubs]
+  const ranked = [...allClubs(world)]
     .map((club) => ({
       club,
       value: club.squad.reduce((sum, p) => sum + marketValue(p), 0),
@@ -289,7 +289,7 @@ function commandCareer(): void {
       pad(club.name, 22) + padLeft(club.reputation, 5) + padLeft(formatMoney(value), 13) +
       padLeft(formatMoney(wageBill(club.squad)), 11) +
       padLeft(formatMoney(club.finances.balance), 11) +
-      padLeft(formatMoney(expectedAnnualRevenue(club.reputation, world.league.clubs.length)), 11),
+      padLeft(formatMoney(expectedAnnualRevenue(club.reputation, allClubs(world).length)), 11),
     );
   }
 }

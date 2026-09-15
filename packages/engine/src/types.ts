@@ -163,12 +163,30 @@ export interface League {
   id: string;
   name: string;
   nationality: string;
+  /** 1 is the top division. Clubs are promoted into lower numbers. */
+  tier: number;
   clubs: Club[];
+}
+
+export type CompetitionKind = 'league' | 'cup';
+
+/**
+ * Anything that produces fixtures. Leagues are competitions too, so a fixture
+ * can always name what it belongs to -- without that a cup result would land in
+ * the league table, which is the reason `Fixture` carries an id at all.
+ */
+export interface Competition {
+  id: string;
+  name: string;
+  kind: CompetitionKind;
+  /** Set for leagues only. */
+  tier?: number;
 }
 
 export interface World {
   seed: number | string;
-  league: League;
+  /** The divisions of the pyramid, top tier first. */
+  leagues: League[];
   /** Every player in the world, indexed by id, for O(1) lookup during a match. */
   players: Map<string, Player>;
   /** Players whose contracts expired and who no club has signed yet. */
@@ -222,9 +240,12 @@ export interface TeamSheetIssue {
 }
 
 export interface Fixture {
+  /** Matchday within the season, 1-based, shared across every competition. */
   round: number;
   homeClubId: string;
   awayClubId: string;
+  /** Which competition this belongs to. */
+  competitionId: string;
 }
 
 export type MatchEventType =

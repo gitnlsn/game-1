@@ -90,7 +90,7 @@ describe('club finances', () => {
 
   it('never sells more tickets than the ground holds', () => {
     const world = createWorld({ seed: 'gate' });
-    const [home, away] = world.league.clubs;
+    const [home, away] = world.leagues[0]!.clubs;
 
     for (const form of [0, 1.3, 3]) {
       const { attendance, revenue } = matchdayIncome(home!, away!, form);
@@ -102,7 +102,7 @@ describe('club finances', () => {
 
   it('draws a bigger crowd when the season is going well', () => {
     const world = createWorld({ seed: 'gate-form' });
-    const [home, away] = world.league.clubs;
+    const [home, away] = world.leagues[0]!.clubs;
     const poor = matchdayIncome(home!, away!, 0.5).attendance;
     const strong = matchdayIncome(home!, away!, 2.5).attendance;
     expect(strong).toBeGreaterThan(poor);
@@ -110,7 +110,7 @@ describe('club finances', () => {
 
   it('gives every club a wage bill it can plausibly carry', () => {
     const world = createWorld({ seed: 'wages' });
-    for (const club of world.league.clubs) {
+    for (const club of world.leagues[0]!.clubs) {
       const annual = wageBill(club.squad) * ECONOMY_TUNING.wageWeeksPerSeason;
       expect(annual).toBeGreaterThan(0);
       // Nobody should start the game already ruined.
@@ -122,7 +122,7 @@ describe('club finances', () => {
     // Squads and budgets are generated independently, so without an explicit fit
     // a third of clubs begin the game over budget and a few above their revenue.
     for (const seed of ['fit-a', 'fit-b', 'fit-c']) {
-      for (const club of createWorld({ seed }).league.clubs) {
+      for (const club of createWorld({ seed }).leagues[0]!.clubs) {
         expect(wageBill(club.squad), `${club.name} wage bill`).toBeLessThanOrEqual(
           club.finances.wageBudget,
         );
@@ -132,7 +132,7 @@ describe('club finances', () => {
 
   it('pays better players more', () => {
     const world = createWorld({ seed: 'wage-order' });
-    const squad = [...world.league.clubs[0]!.squad].sort((a, b) => currentAbility(b) - currentAbility(a));
+    const squad = [...world.leagues[0]!.clubs[0]!.squad].sort((a, b) => currentAbility(b) - currentAbility(a));
     const best = squad[0]!;
     const worst = squad[squad.length - 1]!;
     expect(best.contract.wage).toBeGreaterThan(worst.contract.wage);

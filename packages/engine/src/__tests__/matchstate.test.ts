@@ -84,7 +84,7 @@ describe('effectiveness', () => {
 describe('selectLineup availability', () => {
   it('never picks an injured or suspended player when alternatives exist', () => {
     const world = createWorld({ seed: 'lineup-avail' });
-    const club = world.league.clubs[0]!;
+    const club = world.leagues[0]!.clubs[0]!;
 
     // Rule out the five best players.
     const ranked = [...club.squad].sort((a, b) => currentAbility(b) - currentAbility(a));
@@ -98,7 +98,7 @@ describe('selectLineup availability', () => {
 
   it('still fields a team when almost everyone is unavailable', () => {
     const world = createWorld({ seed: 'lineup-crisis' });
-    const club = world.league.clubs[0]!;
+    const club = world.leagues[0]!.clubs[0]!;
     for (const player of club.squad.slice(0, 20)) player.status.injuryMatches = 2;
 
     const lineup = selectLineup(club);
@@ -110,7 +110,7 @@ describe('selectLineup availability', () => {
 describe('simulateMatch player state', () => {
   it('leaves players untouched unless asked to update them', () => {
     const world = createWorld({ seed: 'no-mutate' });
-    const [home, away] = world.league.clubs;
+    const [home, away] = world.leagues[0]!.clubs;
     const before = home!.squad.map((p) => ({ ...p.status }));
 
     simulateMatch(new Rng('no-mutate'), home!, away!);
@@ -123,7 +123,7 @@ describe('simulateMatch player state', () => {
 
   it('records minutes and drains condition for a real fixture', () => {
     const world = createWorld({ seed: 'mutate' });
-    const [home, away] = world.league.clubs;
+    const [home, away] = world.leagues[0]!.clubs;
 
     simulateMatch(new Rng('mutate'), home!, away!, { updatePlayerState: true });
 
@@ -142,7 +142,7 @@ describe('simulateMatch player state', () => {
   it('never makes more substitutions than the rules allow', () => {
     const world = createWorld({ seed: 'subs' });
     const rng = new Rng('subs');
-    const [home, away] = world.league.clubs;
+    const [home, away] = world.leagues[0]!.clubs;
 
     for (let i = 0; i < 40; i++) {
       const result = simulateMatch(rng, home!, away!);
@@ -160,7 +160,7 @@ describe('season player state', () => {
     const world = createWorld({ seed: 'season-state' });
     simulateSeason(world, new Rng('season-state'), { playerState: true });
 
-    for (const club of world.league.clubs) {
+    for (const club of world.leagues[0]!.clubs) {
       const used = club.squad.filter((p) => p.status.minutes > 0);
       expect(used.length, `${club.name} players used`).toBeGreaterThan(11);
 

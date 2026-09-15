@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  allClubs,
   currentAbility,
   formatMoney,
   marketValue,
@@ -39,7 +40,7 @@ export function PlayerScreen({ route }: Props) {
 
   const player = career?.world.players.get(playerId);
   const club = useMemo(
-    () => career?.world.league.clubs.find((c) => c.squad.some((p) => p.id === playerId)),
+    () => career ? allClubs(career.world).find((c) => c.squad.some((p) => p.id === playerId)) : undefined,
     [career, playerId, version],
   );
 

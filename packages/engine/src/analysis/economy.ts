@@ -5,7 +5,7 @@ import { marketValue } from '../economy/valuation.js';
 import { expectedAnnualRevenue } from '../economy/finances.js';
 import { ECONOMY_TUNING } from '../economy/finances.js';
 import { currentAbility } from '../world/players.js';
-import { createWorld } from '../world/index.js';
+import { allClubs, createWorld } from '../world/index.js';
 import type { Benchmark } from './validate.js';
 
 /**
@@ -100,14 +100,14 @@ export function validateEconomy(options: ValidateEconomyOptions = {}): EconomyRe
 
   const world = createWorld({ seed, clubCount });
   const rng = new Rng(`${seed}:career`);
-  const startingTalent = averageFirstTeamAbility(world.league.clubs);
+  const startingTalent = averageFirstTeamAbility(allClubs(world));
   // Cash as a share of revenue, sampled at the end of every season.
   const cashHistory: number[] = [];
 
   const summaries = simulateCareer(world, rng, {
     seasons,
     onSeason: () => {
-      cashHistory.push((totalBalance(world.league.clubs) / leagueRevenue(world.league.clubs)) * 100);
+      cashHistory.push((totalBalance(allClubs(world)) / leagueRevenue(allClubs(world))) * 100);
     },
   });
 
@@ -139,7 +139,7 @@ export function validateEconomy(options: ValidateEconomyOptions = {}): EconomyRe
     }
   }
 
-  const clubs = world.league.clubs;
+  const clubs = allClubs(world);
   const squadValues = clubs
     .map((club) => club.squad.reduce((sum, p) => sum + marketValue(p), 0))
     .sort((a, b) => b - a);
@@ -251,7 +251,7 @@ function topTalentConcentration(world: World, topN: number): number {
     .slice(0, topN);
 
   const byClub = new Map<string, number>();
-  for (const club of world.league.clubs) {
+  for (const club of allClubs(world)) {
     for (const player of club.squad) {
       if (ranked.some((r) => r.id === player.id)) {
         byClub.set(club.id, (byClub.get(club.id) ?? 0) + 1);

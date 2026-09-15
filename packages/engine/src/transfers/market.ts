@@ -1,4 +1,5 @@
 import { Rng, clamp } from '../rng/index.js';
+import { allClubs, findClub } from '../world/index.js';
 import type {
   Club,
   Player,
@@ -84,7 +85,7 @@ export function prepareTransferWindow(
   world: World,
   options: ShopOptions = {},
 ): Transfer[] {
-  const clubs = world.league.clubs;
+  const clubs = allClubs(world);
   const transfers: Transfer[] = [];
   const skip = new Set(options.skipClubIds ?? []);
 
@@ -109,7 +110,7 @@ export function shopTransferWindow(
 ): Transfer[] {
   const T = TRANSFER_TUNING;
   const transfers: Transfer[] = [];
-  const clubs = world.league.clubs;
+  const clubs = allClubs(world);
   const skip = new Set(options.skipClubIds ?? []);
 
   // Shuffled over every club, skipped or not, so the draw sequence does not
@@ -169,7 +170,7 @@ function findBestCandidate(
   const T = TRANSFER_TUNING;
   const pool: MarketPlayer[] = world.freeAgents.map((player) => ({ player, club: undefined }));
 
-  for (const club of world.league.clubs) {
+  for (const club of allClubs(world)) {
     if (club.id === buyer.id) continue;
     for (const player of club.squad) pool.push({ player, club });
   }
@@ -283,7 +284,7 @@ function findBuyer(world: World, seller: Club, player: Player, price: number): C
   const T = TRANSFER_TUNING;
   let best: Club | undefined;
 
-  for (const buyer of world.league.clubs) {
+  for (const buyer of allClubs(world)) {
     if (buyer.id === seller.id) continue;
     if (buyer.squad.length >= T.maxSquadSize) continue;
     if (buyer.finances.transferBudget < price) continue;
@@ -412,7 +413,7 @@ export function processContracts(rng: Rng, world: World): { renewed: number; rel
   const released: Player[] = [];
   let renewed = 0;
 
-  for (const club of world.league.clubs) {
+  for (const club of allClubs(world)) {
     const keeping: Player[] = [];
 
     // A club must never release its last specialist in a position. Renewal is
@@ -504,7 +505,7 @@ export function transferTargets(
   options: BrowseOptions = {},
 ): MarketListing[] {
   const T = TRANSFER_TUNING;
-  const buyer = world.league.clubs.find((c) => c.id === buyerClubId);
+  const buyer = findClub(world, buyerClubId);
   if (!buyer) return [];
 
   const listings: MarketListing[] = [];
@@ -542,7 +543,7 @@ export function transferTargets(
   };
 
   for (const player of world.freeAgents) consider(player, undefined);
-  for (const club of world.league.clubs) {
+  for (const club of allClubs(world)) {
     if (club.id === buyerClubId) continue;
     for (const player of club.squad) consider(player, club);
   }
@@ -592,10 +593,10 @@ export function makeBid(
   wageOffer?: number,
 ): BidOutcome {
   const T = TRANSFER_TUNING;
-  const buyer = world.league.clubs.find((c) => c.id === buyerClubId);
+  const buyer = findClub(world, buyerClubId);
   if (!buyer) return { accepted: false, reason: 'unknown_player' };
 
-  const seller = world.league.clubs.find(
+  const seller = allClubs(world).find(
     (c) => c.id !== buyerClubId && c.squad.some((p) => p.id === playerId),
   );
   const player = seller
@@ -656,7 +657,7 @@ export function makeBid(
 /** Lets a player go for nothing. Refused if it would leave the club short. */
 export function releasePlayer(world: World, clubId: string, playerId: string): boolean {
   const T = TRANSFER_TUNING;
-  const club = world.league.clubs.find((c) => c.id === clubId);
+  const club = findClub(world, clubId);
   const player = club?.squad.find((p) => p.id === playerId);
   if (!club || !player) return false;
   if (club.squad.length <= T.minSquadSize) return false;
@@ -676,7 +677,7 @@ export function offerContract(
   years: number,
 ): boolean {
   const T = TRANSFER_TUNING;
-  const club = world.league.clubs.find((c) => c.id === clubId);
+  const club = findClub(world, clubId);
   const player = club?.squad.find((p) => p.id === playerId);
   if (!club || !player) return false;
 
@@ -705,12 +706,12 @@ export function generateIncomingOffers(
   managedClubId: string,
 ): TransferOffer[] {
   const T = TRANSFER_TUNING;
-  const managed = world.league.clubs.find((c) => c.id === managedClubId);
+  const managed = findClub(world, managedClubId);
   if (!managed) return [];
 
   const offers: TransferOffer[] = [];
 
-  for (const buyer of rng.shuffle(world.league.clubs)) {
+  for (const buyer of rng.shuffle(allClubs(world))) {
     if (buyer.id === managedClubId) continue;
     if (buyer.squad.length >= T.maxSquadSize) continue;
 
@@ -768,8 +769,8 @@ export function respondToOffer(
     return undefined;
   }
 
-  const seller = world.league.clubs.find((c) => c.id === offer.sellerClubId);
-  const buyer = world.league.clubs.find((c) => c.id === offer.buyerClubId);
+  const seller = allClubs(world).find((c) => c.id === offer.sellerClubId);
+  const buyer = allClubs(world).find((c) => c.id === offer.buyerClubId);
   const player = seller?.squad.find((p) => p.id === offer.playerId);
   if (!seller || !buyer || !player) {
     offer.status = 'rejected';

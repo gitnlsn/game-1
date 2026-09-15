@@ -115,7 +115,7 @@ describe('bidding', () => {
     );
     if (!target) return; // nothing affordable this window; the other tests still hold
 
-    const seller = career.world.league.clubs.find((c) => c.id === target.sellerClubId)!;
+    const seller = career.world.leagues[0]!.clubs.find((c) => c.id === target.sellerClubId)!;
     const buyerBalance = club.finances.balance;
     const sellerBalance = seller.finances.balance;
     const squadSize = club.squad.length;

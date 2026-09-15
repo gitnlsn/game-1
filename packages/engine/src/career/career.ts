@@ -1,4 +1,5 @@
 import { Rng, clamp } from '../rng/index.js';
+import { allClubs } from '../world/index.js';
 import type { Club, Player, SeasonResult, TableRow, Transfer, World } from '../types.js';
 import {
   applyCloseSeasonSpending,
@@ -102,7 +103,7 @@ export function simulateCareer(
 
 /** Prepares clubs for a new season: clears the books and sets budgets. */
 export function beginSeason(world: World): void {
-  const clubs = world.league.clubs;
+  const clubs = allClubs(world);
   for (const club of clubs) resetSeasonRecord(club);
   setTransferBudgets(clubs, clubs.length);
 }
@@ -133,7 +134,7 @@ export function closeSeason(
   season: SeasonResult,
   options: CloseSeasonOptions = {},
 ): SeasonSummary {
-  const clubs = world.league.clubs;
+  const clubs = allClubs(world);
   distributeSeasonIncome(clubs, season.table);
 
   const finances = clubs.map((club) => toClubSeasonFinance(club));
@@ -285,7 +286,7 @@ function ageAndRetire(
 ): number {
   let retirements = 0;
 
-  for (const club of world.league.clubs) {
+  for (const club of allClubs(world)) {
     const coaching = coachingQuality(club.reputation);
     const staying: Player[] = [];
 

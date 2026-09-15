@@ -46,15 +46,43 @@ describe('generateFixtures', () => {
     for (const id of ids) expect(home.get(id), id).toBe(19);
   });
 
-  it('rejects odd club counts rather than silently dropping a club', () => {
-    expect(() => generateFixtures(['a', 'b', 'c'])).toThrow(/odd club counts/);
+  it('schedules an odd division by sitting one club out each round', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e'];
+    const fixtures = generateFixtures(ids);
+
+    // Every pairing still happens exactly twice, once each way.
+    for (const home of ids) {
+      for (const away of ids) {
+        if (home === away) continue;
+        const matches = fixtures.filter((f) => f.homeClubId === home && f.awayClubId === away);
+        expect(matches, `${home} v ${away}`).toHaveLength(1);
+      }
+    }
+
+    // And nobody plays twice on the same matchday -- the club drawn against the
+    // phantom simply has no fixture that round.
+    const rounds = new Map<number, string[]>();
+    for (const fixture of fixtures) {
+      const played = rounds.get(fixture.round) ?? [];
+      played.push(fixture.homeClubId, fixture.awayClubId);
+      rounds.set(fixture.round, played);
+    }
+    for (const [round, played] of rounds) {
+      expect(new Set(played).size, `round ${round}`).toBe(played.length);
+      expect(played.length, `round ${round}`).toBe(ids.length - 1);
+    }
+  });
+
+  it('names the competition every fixture belongs to', () => {
+    const fixtures = generateFixtures(['a', 'b', 'c', 'd'], undefined, 'l2');
+    expect(fixtures.every((f) => f.competitionId === 'l2')).toBe(true);
   });
 });
 
 describe('buildTable', () => {
   it('awards 3 points for a win and 1 for a draw', () => {
     const world = createWorld({ seed: 'table', clubCount: 4 });
-    const [a, b] = world.league.clubs;
+    const [a, b] = world.leagues[0]!.clubs;
     const results = [
       { homeClubId: a!.id, awayClubId: b!.id,
         home: { clubId: a!.id, goals: 2, shots: 9, shotsOnTarget: 4, possession: 55 },
@@ -66,7 +94,7 @@ describe('buildTable', () => {
         events: [] },
     ];
 
-    const table = buildTable(world.league.clubs, results);
+    const table = buildTable(world.leagues[0]!.clubs, results);
     const rowA = table.find((r) => r.clubId === a!.id)!;
     const rowB = table.find((r) => r.clubId === b!.id)!;
 
@@ -84,7 +112,7 @@ describe('simulateMatch', () => {
   it('reports stats that agree with the event log', () => {
     const world = createWorld({ seed: 'match-stats' });
     const rng = new Rng('match-stats');
-    const [home, away] = world.league.clubs;
+    const [home, away] = world.leagues[0]!.clubs;
 
     for (let i = 0; i < 200; i++) {
       const result = simulateMatch(rng, home!, away!);
@@ -108,8 +136,8 @@ describe('simulateMatch', () => {
 
   it('gives the stronger side the better record over many matches', () => {
     const world = createWorld({ seed: 'strength' });
-    const strong = world.league.clubs[0]!;
-    const weak = world.league.clubs[19]!;
+    const strong = world.leagues[0]!.clubs[0]!;
+    const weak = world.leagues[0]!.clubs[19]!;
     const rng = new Rng('strength-runs');
 
     let strongWins = 0;

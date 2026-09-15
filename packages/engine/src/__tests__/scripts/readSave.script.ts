@@ -34,7 +34,7 @@ while (!isSeasonComplete(career) && guard++ < 60) advanceRound(career);
 const seen = new Set<string>();
 const duplicates: string[] = [];
 let mismatched = 0;
-for (const club of career.world.league.clubs) {
+for (const club of career.world.leagues[0]!.clubs) {
   for (const player of club.squad) {
     if (seen.has(player.id)) duplicates.push(player.id);
     seen.add(player.id);

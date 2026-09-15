@@ -34,7 +34,7 @@ describe('transfer tuning invariants', () => {
 
 describe('askingPrice', () => {
   const world = createWorld({ seed: 'asking' });
-  const club: Club = world.league.clubs[0]!;
+  const club: Club = world.leagues[0]!.clubs[0]!;
 
   it('always asks at least market value', () => {
     for (const player of club.squad) {
@@ -70,14 +70,14 @@ describe('squad needs', () => {
   });
 
   it('counts depth only at a player\'s natural position', () => {
-    const club = world.league.clubs[0]!;
+    const club = world.leagues[0]!.clubs[0]!;
     const keepers = club.squad.filter((p) => p.position === 'GK').length;
     expect(depthAt(club, 'GK')).toBe(keepers);
     expect(keepers).toBeGreaterThanOrEqual(2);
   });
 
   it('rates the best available player for a position', () => {
-    const club = world.league.clubs[0]!;
+    const club = world.leagues[0]!.clubs[0]!;
     const best = bestAbilityAt(club, 'ST');
     expect(best).toBeGreaterThan(0);
     // Excluding the incumbent can only lower it.
@@ -88,7 +88,7 @@ describe('squad needs', () => {
   });
 
   it('ranks the weakest position first, and covers the whole formation', () => {
-    for (const club of world.league.clubs) {
+    for (const club of world.leagues[0]!.clubs) {
       const needs = squadNeeds(club);
       expect(needs.length).toBeGreaterThan(0);
       for (let i = 1; i < needs.length; i++) {
@@ -98,7 +98,7 @@ describe('squad needs', () => {
   });
 
   it('reports a bigger shortfall when a club loses its best player there', () => {
-    const club = world.league.clubs[0]!;
+    const club = world.leagues[0]!.clubs[0]!;
     const before = squadNeeds(club).find((n) => n.position === 'ST')!;
 
     const strikers = club.squad
@@ -119,7 +119,7 @@ describe('generated squads', () => {
       'londrina ec', 'carlisle united', 'grimsby town', 'ceara fc',
     ]);
     for (const seed of ['b1', 'b2', 'b3', 'b4', 'b5']) {
-      for (const club of createWorld({ seed }).league.clubs) {
+      for (const club of createWorld({ seed }).leagues[0]!.clubs) {
         expect(blocked.has(club.name.toLowerCase()), club.name).toBe(false);
       }
     }
@@ -128,7 +128,7 @@ describe('generated squads', () => {
   it('gives every club a player in every position it might need', () => {
     const rng = new Rng('shape');
     void generatePlayer(rng, { position: 'ST', potentialTarget: 70, age: 24 });
-    for (const club of createWorld({ seed: 'shape' }).league.clubs) {
+    for (const club of createWorld({ seed: 'shape' }).leagues[0]!.clubs) {
       expect(depthAt(club, 'GK')).toBeGreaterThanOrEqual(1);
       expect(depthAt(club, 'CB')).toBeGreaterThanOrEqual(1);
       expect(depthAt(club, 'ST')).toBeGreaterThanOrEqual(1);

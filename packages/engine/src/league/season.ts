@@ -3,6 +3,7 @@ import type { Fixture, MatchResult, SeasonResult, TableRow, TeamSheet, World } f
 import { simulateMatch } from '../match/engine.js';
 import { generateFixtures } from './fixtures.js';
 import { buildTable } from './table.js';
+import { allClubs } from '../world/index.js';
 import { advancePlayerWeek } from '../world/status.js';
 import {
   applyMatchdayIncome,
@@ -62,8 +63,16 @@ export function createSeasonState(
   rng: Rng,
   options: SimulateSeasonOptions = {},
 ): SeasonState {
-  const clubs = world.league.clubs;
-  const fixtures = options.fixtures ?? generateFixtures(clubs.map((c) => c.id), rng);
+  /*
+   * One fixture list covering every division. They run in parallel on the same
+   * matchdays, which is what lets a single `nextRound` drive the whole pyramid
+   * -- and later lets a cup round slot in among them.
+   */
+  const fixtures =
+    options.fixtures ??
+    world.leagues.flatMap((league) =>
+      generateFixtures(league.clubs.map((c) => c.id), rng, league.id),
+    );
   const totalRounds = fixtures.reduce((max, fixture) => Math.max(max, fixture.round), 0);
 
   return {
@@ -97,7 +106,7 @@ export function playRound(state: SeasonState): MatchResult[] {
   if (seasonComplete(state)) return [];
 
   const { world, rng, options } = state;
-  const clubs = world.league.clubs;
+  const clubs = allClubs(world);
   const clubById = new Map(clubs.map((club) => [club.id, club]));
 
   if (options.economy) {
@@ -157,9 +166,44 @@ export function playRound(state: SeasonState): MatchResult[] {
   return roundResults;
 }
 
-/** The table as it stands right now, mid-season or at the end. */
-export function currentTable(state: SeasonState): TableRow[] {
-  return buildTable(state.world.league.clubs, state.results);
+/**
+ * The table of one division as it stands, mid-season or at the end.
+ *
+ * Only that division's own results count towards it -- results carry no
+ * competition of their own, so they are matched by who played, which also keeps
+ * cup ties out of the league table.
+ */
+export function currentTable(state: SeasonState, leagueId?: string): TableRow[] {
+  const league = leagueId
+    ? state.world.leagues.find((l) => l.id === leagueId)
+    : state.world.leagues[0];
+  if (!league) return [];
+
+  const members = new Set(league.clubs.map((club) => club.id));
+  const leagueFixtures = new Set(
+    state.fixtures
+      .filter((fixture) => fixture.competitionId === league.id)
+      .map((fixture) => fixtureKey(fixture.homeClubId, fixture.awayClubId)),
+  );
+
+  return buildTable(
+    league.clubs,
+    state.results.filter(
+      (result) =>
+        members.has(result.homeClubId) &&
+        members.has(result.awayClubId) &&
+        leagueFixtures.has(fixtureKey(result.homeClubId, result.awayClubId)),
+    ),
+  );
+}
+
+/** Every division's table, top tier first. */
+export function currentTables(state: SeasonState): TableRow[][] {
+  return state.world.leagues.map((league) => currentTable(state, league.id));
+}
+
+function fixtureKey(homeClubId: string, awayClubId: string): string {
+  return `${homeClubId}>${awayClubId}`;
 }
 
 export function finaliseSeason(state: SeasonState): SeasonResult {
@@ -191,7 +235,7 @@ function buildScorers(world: World, results: readonly MatchResult[]): SeasonResu
   }
 
   const clubByPlayer = new Map<string, string>();
-  for (const club of world.league.clubs) {
+  for (const club of allClubs(world)) {
     for (const player of club.squad) clubByPlayer.set(player.id, club.name);
   }
 

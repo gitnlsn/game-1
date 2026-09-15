@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { finaliseSeason, leagueTable } from '@game1/engine';
+import { leagueOf, finaliseSeason, leagueTable } from '@game1/engine';
 import { Card, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -30,7 +30,7 @@ export function TableScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <SectionTitle>{career.world.league.name}</SectionTitle>
+      <SectionTitle>{leagueOf(career.world, career.managedClubId)?.name ?? ''}</SectionTitle>
       <Card style={styles.tableCard}>
         <View style={[styles.row, styles.headerRow]}>
           <Text style={[styles.pos, styles.headerText]}>#</Text>
