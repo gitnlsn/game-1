@@ -1,3 +1,5 @@
+import type { Tactics } from './match/tactics.js';
+
 /** Every attribute is on a 1-100 scale. 50 is a competent lower-division pro. */
 export interface Attributes {
   // Technical
@@ -195,6 +197,11 @@ export interface TeamSheet {
   starters: (string | undefined)[];
   /** Preferred substitutes, best first. Short lists are topped up automatically. */
   bench: string[];
+  /**
+   * How the side is set up. Omitted means Balanced, which is an exact no-op --
+   * so a sheet written before tactics existed plays identically.
+   */
+  tactics?: Tactics;
 }
 
 export type TeamSheetIssueKind =

@@ -31,7 +31,7 @@ jobs:
       - run: pnpm test
 
   calibration:
-    name: Match and economy calibration
+    name: Match, economy and tactics calibration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

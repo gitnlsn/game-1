@@ -16,6 +16,11 @@ import { clubStrength, computeTeamRating, selectLineup } from './match/ratings.j
 import { simulateMatch } from './match/engine.js';
 import { createWorld, currentAbility } from './world/index.js';
 import { validateEconomy } from './analysis/economy.js';
+import {
+  formatTacticsReport,
+  TACTIC_DOMINANCE,
+  validateTactics,
+} from './analysis/tactics.js';
 import { simulateCareer } from './career/career.js';
 import { formatMoney, marketValue, wageBill } from './economy/valuation.js';
 import { expectedAnnualRevenue } from './economy/finances.js';
@@ -289,11 +294,53 @@ function commandCareer(): void {
   }
 }
 
+/**
+ * The non-dominance check. Tactics are only a decision if no setting is simply
+ * correct, so this exits non-zero when one is -- the same gate `validate` and
+ * `economy` apply to the benchmarks.
+ */
+function commandTactics(): void {
+  const report = validateTactics({
+    seed: flag('seed', 'tactics'),
+    repeats: num('repeats', 20),
+    squads: num('squads', 4),
+  });
+
+  if (has('json')) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  console.log(formatTacticsReport(report));
+
+  const failures: string[] = [];
+  for (const setting of report.settings) {
+    if (setting.ratio > TACTIC_DOMINANCE.ceiling) {
+      failures.push(`${setting.label} is a free win at ${(setting.ratio * 100).toFixed(1)}%`);
+    }
+    if (setting.ratio < TACTIC_DOMINANCE.floor) {
+      failures.push(`${setting.label} is a trap at ${(setting.ratio * 100).toFixed(1)}%`);
+    }
+  }
+  if (new Set(report.bestBySquad).size < 2) {
+    failures.push(`${report.bestBySquad[0]} is the best setting for every squad tested`);
+  }
+
+  console.log('');
+  if (failures.length > 0) {
+    for (const failure of failures) console.log(`OFF: ${failure}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log('No setting dominates.');
+}
+
 const commands: Record<string, () => void> = {
   season: commandSeason,
   economy: commandEconomy,
   career: commandCareer,
   validate: commandValidate,
+  tactics: commandTactics,
   match: commandMatch,
   squad: commandSquad,
 };

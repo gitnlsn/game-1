@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
+  describeTactics,
   formatMoney,
   isAvailable,
   isSeasonComplete,
@@ -12,11 +13,13 @@ import {
   managedResults,
   marketValue,
   nextFixture,
+  tactics as currentTactics,
   wageBill,
   type Career,
   type MatchResult,
 } from '@game1/engine';
 import { Badge, Button, Card, Divider, KeyValue, SectionTitle, StatTile, textStyles } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
@@ -41,7 +44,9 @@ const OUTCOME_COLOR = { W: colors.accent, D: colors.muted, L: colors.danger } as
 
 export function ClubScreen() {
   const navigation = useNavigation<Nav>();
-  const { career, busy, playRound, finishSeason, windowOpen } = useGame();
+  const { career, busy, playRound, finishSeason, beginNextSeason, windowOpen } = useGame();
+  // Before the guard below: hooks cannot run conditionally.
+  const [confirmingSeason, setConfirmingSeason] = useState(false);
   if (!career) return null;
 
   const club = managedClub(career);
@@ -116,6 +121,19 @@ export function ClubScreen() {
             onPress={() => navigation.navigate('transfers')}
             style={styles.playButton}
           />
+          {/*
+            * Without this the window is a dead end: starting the next season
+            * lived only on the season summary screen, which you cannot get back
+            * to once you have navigated away from it, so a save with an open
+            * window had no way forward at all.
+            */}
+          <Button
+            label={`Start season ${career.world.season + 1}`}
+            variant="secondary"
+            loading={busy}
+            onPress={() => setConfirmingSeason(true)}
+            style={styles.quickButton}
+          />
         </Card>
       ) : complete ? (
         <Card style={styles.matchCard}>
@@ -155,6 +173,14 @@ export function ClubScreen() {
               ? ` · ${ordinal(table.findIndex((r) => r.clubId === upcoming.opponent.id) + 1)} in the table`
               : ''}
           </Text>
+
+          {/*
+            * Quick play skips team selection, which is also where instructions
+            * are set -- so a manager who always quick-plays would never see how
+            * his side is set up. Stating it here is what keeps it a decision he
+            * is making rather than one being made for him.
+            */}
+          <Text style={styles.setup}>Set up: {describeTactics(currentTactics(career))}</Text>
 
           <Button
             label="Pick team"
@@ -225,6 +251,21 @@ export function ClubScreen() {
       </Card>
 
       <HistoryCard career={career} />
+
+      <ConfirmDialog
+        visible={confirmingSeason}
+        title={`Start season ${career.world.season + 1}?`}
+        message={
+          'The window shuts and the other clubs do their remaining business. ' +
+          'Anything you were still weighing up goes with it.'
+        }
+        confirmLabel="Start the season"
+        onConfirm={async () => {
+          setConfirmingSeason(false);
+          await beginNextSeason();
+        }}
+        onCancel={() => setConfirmingSeason(false)}
+      />
     </ScrollView>
   );
 }
@@ -284,6 +325,9 @@ const styles = StyleSheet.create({
   fixtureRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   opponentName: { color: colors.text, fontSize: 18, fontWeight: '700', flex: 1 },
   opponentMeta: { color: colors.muted, fontSize: 12, marginTop: 4 },
+  setup: {
+    color: colors.faint, fontSize: 12, marginTop: spacing.sm, fontStyle: 'italic',
+  },
   playButton: { marginTop: spacing.md },
   quickButton: { marginTop: spacing.sm },
   gear: { padding: spacing.xs, marginRight: spacing.xs },

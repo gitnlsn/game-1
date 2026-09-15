@@ -32,6 +32,7 @@ import {
 } from '../league/season.js';
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
+import { resolveTactics, type Tactics } from '../match/tactics.js';
 import { createWorld } from '../world/index.js';
 import {
   createScoutingState,
@@ -358,9 +359,20 @@ export function previewLineup(career: Career): { lineup: Lineup; issues: TeamShe
  * told about it, rather than have it rejected.
  */
 export function setTeamSheet(career: Career, sheet: TeamSheet): TeamSheetIssue[] {
+  /*
+   * A sheet with no `tactics` means the caller is not talking about tactics, not
+   * that it wants them cleared -- so the standing instructions survive. Without
+   * this, a selection screen that saves the eleven at kick-off silently wipes
+   * whatever the manager set up, because the two are edited at different moments
+   * and the eleven is the one that gets written last.
+   */
+  const existing = career.season.teamSheets.get(career.managedClubId);
   career.season.teamSheets.set(career.managedClubId, {
     ...sheet,
     clubId: career.managedClubId,
+    ...(sheet.tactics ?? existing?.tactics
+      ? { tactics: sheet.tactics ?? existing!.tactics! }
+      : {}),
   });
   return previewLineup(career).issues;
 }
@@ -368,4 +380,28 @@ export function setTeamSheet(career: Career, sheet: TeamSheet): TeamSheetIssue[]
 /** Hands selection back to the engine. */
 export function clearTeamSheet(career: Career): void {
   career.season.teamSheets.delete(career.managedClubId);
+}
+
+/** How the side is currently set up. Balanced until the manager says otherwise. */
+export function tactics(career: Career): Tactics {
+  return resolveTactics(career.season.teamSheets.get(career.managedClubId)?.tactics);
+}
+
+/**
+ * Changes how the side is set up without touching who is in it.
+ *
+ * Separate from `setTeamSheet` on purpose: instructions and selection are
+ * different decisions made at different moments, and going through the sheet
+ * would mean a screen that only wants to change the mentality has to hold a
+ * whole eleven correctly to avoid clobbering it.
+ */
+export function setTactics(career: Career, patch: Partial<Tactics>): Tactics {
+  const sheet = currentTeamSheet(career);
+  const next = resolveTactics({ ...tactics(career), ...patch });
+  career.season.teamSheets.set(career.managedClubId, {
+    ...sheet,
+    clubId: career.managedClubId,
+    tactics: next,
+  });
+  return next;
 }

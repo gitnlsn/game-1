@@ -10,6 +10,7 @@ import {
   type LineupSlot,
   type TeamRating,
 } from './ratings.js';
+import { resolveTactics, tacticShapes, type Tactics, type TacticShapes } from './tactics.js';
 
 /**
  * Every magic number in the match engine lives here. These are calibrated
@@ -160,6 +161,10 @@ export interface SimulateMatchOptions {
 interface TeamState {
   club: Club;
   lineup: Lineup;
+  /** The manager's instructions. Balanced for every side that has not set any. */
+  tactics: Tactics;
+  /** What those instructions do, precomputed. All neutral for a Balanced side. */
+  shapes: TacticShapes;
   /** Multiplier covering home advantage and today's form. */
   boost: number;
   rating: TeamRating;
@@ -260,12 +265,15 @@ export function simulateMatch(
 
 function createTeamState(club: Club, sheet: TeamSheet | undefined, boost: number): TeamState {
   const { lineup } = resolveTeamSheet(club, sheet);
+  const tactics = resolveTactics(sheet?.tactics);
   const stamina =
     lineup.slots.reduce((sum, slot) => sum + slot.player.attributes.stamina, 0) / lineup.slots.length;
 
   const state: TeamState = {
     club,
     lineup,
+    tactics,
+    shapes: tacticShapes(tactics),
     boost,
     rating: { attack: 1, midfield: 1, defence: 1, goalkeeping: 1 },
     goalkeepingBase: 1,
@@ -327,10 +335,16 @@ function refreshRating(team: TeamState): void {
   team.stamina =
     team.onPitch.reduce((sum, slot) => sum + slot.player.attributes.stamina, 0) /
     Math.max(1, team.onPitch.length);
+  /*
+   * Instructions reshape the side rather than improving it. Attacking commits
+   * men forward, which is worth exactly as much threat as it costs cover;
+   * pressing buys the ball higher up the pitch with the space behind the line.
+   * Both are no-ops at 0, so a side with no instructions is untouched.
+   */
   team.rating = {
-    attack: base.attack * team.boost * Math.pow(T.shorthandedAttack, short),
+    attack: base.attack * team.boost * Math.pow(T.shorthandedAttack, short) * team.shapes.attack,
     midfield: base.midfield * team.boost * Math.pow(T.shorthandedMidfield, short),
-    defence: base.defence * team.boost * Math.pow(T.shorthandedDefence, short),
+    defence: base.defence * team.boost * Math.pow(T.shorthandedDefence, short) * team.shapes.defence,
     goalkeeping: base.goalkeeping * team.boost,
   };
 }
@@ -342,8 +356,17 @@ function refreshRating(team: TeamState): void {
  */
 function possessionShare(home: TeamState, away: TeamState, neutral: boolean): number {
   const T = MATCH_TUNING;
+  /*
+   * Pressing wins the ball back higher up, so a pressing side sees more of it;
+   * playing direct gives it away sooner, and sitting deep concedes territory.
+   * All folded in before the exponent, where they read as control rather than as
+   * a thumb on the final share.
+   */
   const control = (team: TeamState) =>
-    Math.pow(team.rating.midfield * (1 + (team.keeperDistribution - 50) / 500), T.possessionExponent);
+    Math.pow(
+      team.rating.midfield * (1 + (team.keeperDistribution - 50) / 500) * team.shapes.control,
+      T.possessionExponent,
+    );
 
   const homeControl = control(home);
   return clamp(
@@ -371,7 +394,15 @@ function fatigueMultiplier(team: TeamState, minute: number): number {
   if (minute <= T.fatigueFrom) return 1;
   const progress = (minute - T.fatigueFrom) / (95 - T.fatigueFrom);
   const staminaShortfall = clamp((70 - team.stamina) / 40, 0, 1);
-  return 1 - T.fatigueMax * progress * staminaShortfall;
+  /*
+   * Chasing the ball for an hour is what a press costs, and it comes due late.
+   * It is ADDED to the stamina shortfall rather than multiplying it: as a
+   * multiplier it was worth nothing, because any side with stamina over 70 has
+   * no shortfall to multiply and so pressed for free. A pressing side runs more
+   * than it otherwise would however fit it is.
+   */
+  const load = clamp(staminaShortfall + team.shapes.fatigueLoad, 0, 1.5);
+  return 1 - T.fatigueMax * progress * load;
 }
 
 /** Teams chasing a game attack harder; teams protecting a lead attack less. */
@@ -428,8 +459,13 @@ function resolveAttack(
   // edge into a meaningfully larger share of chances.
   const edge = attackStrength / (attackStrength + defenceStrength);
 
-  // Worked on the ground, or delivered into the box?
-  const aerial = rng.chance(T.aerialShare);
+  /*
+   * Worked on the ground, or delivered into the box? Width moves the balance,
+   * and this is the axis that is genuinely about your players rather than about
+   * risk: whether crosses are the right idea depends on who is attacking them.
+   */
+  const aerialShare = clamp(T.aerialShare + attacker.shapes.aerialShift, 0.02, 0.6);
+  const aerial = rng.chance(aerialShare);
   const shooter = aerial ? pickAerialTarget(rng, attacker) : pickShooter(rng, attacker);
   const marker = pickDefender(rng, defender);
 
@@ -449,8 +485,13 @@ function resolveAttack(
       );
   const duel = 0.5 + (rawDuel - 0.5) * T.duelWeight;
 
+  // Direct play turns a sequence into a shot more often -- the ball spends less
+  // time being kept and more time being played forward.
   const shotChance = clamp(
-    T.shotBase * Math.pow(edge / 0.5, T.shotExponent) * Math.pow(duel / 0.5, T.duelExponent),
+    T.shotBase *
+      Math.pow(edge / 0.5, T.shotExponent) *
+      Math.pow(duel / 0.5, T.duelExponent) *
+      attacker.shapes.shot,
     0.05,
     T.shotChanceCeiling,
   );

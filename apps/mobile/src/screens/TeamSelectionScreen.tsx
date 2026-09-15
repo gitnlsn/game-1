@@ -12,12 +12,19 @@ import {
   resolveTeamSheet,
   setTeamSheet,
   suggestedTeamSheet,
+  setTactics,
+  tactics as currentTactics,
+  BALANCED,
+  describeTactics,
+  tacticShapes,
+  TACTIC_AXES,
   FORMATIONS,
   POSITION_GROUP,
   type Career,
   type Player,
   type Position,
   type TeamSheet,
+  type Tactics,
 } from '@game1/engine';
 import { Badge, Button, Card, ChipRow, SectionTitle } from '../components/ui';
 import { colors, conditionColor, positionColor, ratingColor, spacing } from '../theme';
@@ -27,6 +34,20 @@ import type { RootStackParamList } from '../nav/routes';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const FORMATION_OPTIONS = Object.keys(FORMATIONS).map((key) => ({ value: key, label: key }));
+
+/**
+ * Three positions per axis, not five. The engine accepts anything from -2 to +2,
+ * but these three are the ones the non-dominance harness actually measures --
+ * offering settings nobody has checked for dominance would be offering a trap.
+ */
+const AXIS_OPTIONS = TACTIC_AXES.map((axis) => ({
+  axis,
+  options: [
+    { value: '-2', label: axis.low },
+    { value: '0', label: 'Balanced' },
+    { value: '2', label: axis.high },
+  ],
+}));
 const GROUP_ORDER: Record<string, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
 
 /** Keeps the manager's players when the shape changes, re-slotting them by best fit. */
@@ -59,12 +80,21 @@ function reslot(career: Career, sheet: TeamSheet, formation: string): TeamSheet 
 
 export function TeamSelectionScreen() {
   const navigation = useNavigation<Nav>();
-  const { career, busy, playRound, settings } = useGame();
+  const { career, busy, playRound, refresh, settings } = useGame();
 
   const [sheet, setSheet] = useState<TeamSheet | undefined>(() =>
     career ? currentTeamSheet(career) : undefined,
   );
   const [selected, setSelected] = useState<{ slot: number } | { bench: string } | undefined>();
+  /*
+   * Instructions commit as soon as they are changed, where the eleven commits at
+   * kick-off. That difference is the point rather than an inconsistency: how the
+   * side is set up is a standing decision that carries into next week, while the
+   * team is picked for one match.
+   */
+  const [shape, setShape] = useState<Tactics | undefined>(() =>
+    career ? currentTactics(career) : undefined,
+  );
 
   const club = career ? managedClub(career) : undefined;
 
@@ -73,7 +103,23 @@ export function TeamSelectionScreen() {
     [club, sheet],
   );
 
-  const rating = useMemo(() => (lineup ? computeTeamRating(lineup) : undefined), [lineup]);
+  /*
+   * The readout has the instructions folded in, because otherwise they are
+   * invisible: the engine applies them at kick-off, so picking "Attacking" moved
+   * nothing on screen and the whole section read as decoration. These are the
+   * same multipliers the match will use.
+   */
+  const rating = useMemo(() => {
+    if (!lineup) return undefined;
+    const base = computeTeamRating(lineup);
+    const shapes = tacticShapes(shape ?? BALANCED);
+    return {
+      ...base,
+      attack: base.attack * shapes.attack,
+      midfield: base.midfield * shapes.control,
+      defence: base.defence * shapes.defence,
+    };
+  }, [lineup, shape]);
 
   const benchAndRest = useMemo(() => {
     if (!club || !lineup) return [];
@@ -172,6 +218,27 @@ export function TeamSelectionScreen() {
             setSelected(undefined);
           }}
         />
+
+        <SectionTitle>Instructions</SectionTitle>
+        <Card style={styles.tacticsCard}>
+          <Text style={styles.tacticsSummary}>{describeTactics(shape ?? currentTactics(career))}</Text>
+          {AXIS_OPTIONS.map(({ axis, options }) => (
+            <View key={axis.key} style={styles.axis}>
+              <Text style={styles.axisLabel}>{axis.label}</Text>
+              <ChipRow
+                options={options}
+                value={String((shape ?? currentTactics(career))[axis.key])}
+                onChange={(value) => {
+                  setShape(setTactics(career, { [axis.key]: Number(value) }));
+                  // The engine mutates in place, so nothing is written to disk
+                  // until something asks for it.
+                  refresh();
+                }}
+              />
+              <Text style={styles.axisNote}>{axis.note}</Text>
+            </View>
+          ))}
+        </Card>
 
         {rating ? (
           <View style={styles.ratingRow}>
@@ -345,6 +412,14 @@ const styles = StyleSheet.create({
   },
   ratingValue: { fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
   issues: { marginTop: spacing.md, borderColor: colors.warn },
+  tacticsCard: { marginTop: spacing.sm, gap: spacing.md },
+  tacticsSummary: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+  axis: { gap: spacing.xs },
+  axisLabel: {
+    color: colors.faint, fontSize: 9, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  axisNote: { color: colors.faint, fontSize: 11, fontStyle: 'italic' },
   issuesText: { color: colors.warn, fontSize: 12 },
   pitchRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.xs },
   slot: {

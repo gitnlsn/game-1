@@ -9,7 +9,7 @@
     "build:engine": "pnpm --filter @game1/engine build",
     "mobile": "pnpm build:engine && pnpm --filter @game1/mobile exec expo start",
     "mobile:web": "pnpm build:engine && pnpm --filter @game1/mobile exec expo start --web",
-    "calibrate": "pnpm --filter @game1/engine exec tsx src/cli.ts validate --seasons 25 && pnpm --filter @game1/engine exec tsx src/cli.ts economy --seasons 25"
+    "calibrate": "pnpm --filter @game1/engine exec tsx src/cli.ts validate --seasons 25 && pnpm --filter @game1/engine exec tsx src/cli.ts economy --seasons 25 && pnpm --filter @game1/engine exec tsx src/cli.ts tactics --repeats 12"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

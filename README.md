@@ -252,10 +252,49 @@ is that you can *act*. `marketValue` likewise keeps the true number, because it 
 the market's price. `scoutedValue` runs the same curve on your estimate, and the
 gap between the two is where a bargain or a mistake lives.
 
+## Tactics
+
+Four axes -- **mentality**, **tempo**, **pressing**, **width** -- each running -2
+to +2, and every one of them an exact no-op at 0. That is not a convenience: it
+is why both validator digests are byte-identical across the whole feature, and
+why a save written before tactics existed plays exactly as it did. All the
+shaping lives in one pure function, `tacticShapes`, so "Balanced is neutral" is a
+property a test can pin rather than a claim about six multiplications scattered
+through the match loop.
+
+Every axis pays for what it buys. Attacking commits men forward: more threat,
+less cover, and a little more of the ball. Direct gets at goal sooner and hands
+it back sooner. Pressing wins it higher up, at the cost of the space behind the
+line and legs in the closing stages. Width is the odd one out and deliberately
+so -- it moves the share of chances that arrive through the air and costs
+nothing, because whether crosses are the right idea is a question about your
+squad rather than about risk.
+
+**`pnpm sim tactics` is what stops this being a lever.** It plays every setting's
+full home-and-away programme against a league of Balanced sides, four squads
+spread across the table, and fails the build if any setting is worth more than
+108% or less than 92% of Balanced's points per game, or if one setting is the
+right answer for every squad. Matches are *paired* -- the same fixture under two
+settings starts from an identical seed -- because the effects are a few percent
+and measuring a few percent unpaired takes an order of magnitude more matches.
+
+Measured across five worlds while tuning, the widest any setting reached was
+95.7% to 105.1%, and every world produced three or four different winners across
+its four squads. Two numbers were fixed by that harness rather than by taste: the
+first cut had pressing at 111% because its fatigue cost multiplied a stamina
+shortfall that most sides do not have, so it pressed for free; and sitting deep
+was worth +7% because it cost goals you might have scored and nothing else, until
+conceding territory was priced in.
+
+The AI plays Balanced. Giving nineteen clubs instructions would move every
+benchmark for a feature whose whole point is that it is worth at most eight
+percent -- and the harness already caps what the manager can gain by choosing
+well.
+
 ## Tests and CI
 
-`pnpm test` runs both packages: 149 engine tests and 12 app tests. `pnpm calibrate`
-runs the real harnesses and **exits non-zero if any benchmark has drifted**, so CI
+`pnpm test` runs both packages: 164 engine tests and 12 app tests. `pnpm calibrate`
+runs the real harnesses -- match, economy and tactics -- and **exits non-zero if any benchmark has drifted or any setting has become dominant**, so CI
 gates on calibration rather than only on tests — the two catch different things,
 and the economy once failed on its own default seed while the suite stayed green.
 
