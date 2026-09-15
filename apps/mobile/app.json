@@ -12,14 +12,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0E1116",
+        "backgroundColor": "#11161C",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.elevendeep.app",
-      "versionCode": 4
+      "versionCode": 5
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -27,7 +27,7 @@
     "backgroundColor": "#0E1116",
     "extra": {
       "eas": {
-        "projectId": "0de18376-a823-412e-b5e7-f38680808b04"
+        "projectId": "1e9451b0-260c-4168-af2b-915081e54578"
       }
     }
   }
