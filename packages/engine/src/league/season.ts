@@ -180,9 +180,21 @@ export function upcomingRound(state: SeasonState): Fixture[] {
   return state.fixtures.filter((fixture) => fixture.round === state.nextRound);
 }
 
+/** True when this matchday is a midweek one, played without a week's rest. */
+export function isMidweek(state: SeasonState, round: number): boolean {
+  return state.cup !== undefined && CUP_TUNING.rounds.includes(round);
+}
+
 /**
  * Plays one round: a week passes first (wages, recovery, bans ticking down),
  * then every match in the round is played.
+ *
+ * A **midweek** matchday is the exception, and it is what makes a cup run cost
+ * something. No week passes before it: nobody recovers, no wages are paid, and
+ * the side that played on Saturday plays again on Wednesday on the same legs.
+ * Give the cup its own free week instead and it adds rest rather than removing
+ * it -- which is exactly what happened when it did, and why the minutes share of
+ * a settled eleven went UP when a cup was added.
  */
 export function playRound(state: SeasonState): MatchResult[] {
   if (seasonComplete(state)) return [];
@@ -191,13 +203,18 @@ export function playRound(state: SeasonState): MatchResult[] {
   const clubs = allClubs(world);
   const clubById = new Map(clubs.map((club) => [club.id, club]));
 
-  if (options.economy) {
+  const midweek = isMidweek(state, state.nextRound);
+
+  if (options.economy && !midweek) {
     /*
      * Per division, not across the pyramid. Operating costs are a share of what
      * a club is expected to earn, and that expectation is priced off how many
      * home matches it plays -- hand it the whole world's club count and every
      * side is run as though it played twice the football it does, which
      * bankrupted the entire second division in twenty seasons.
+     *
+     * Skipped midweek, because no week has passed. Paying here too would bill a
+     * 38-week season for 44 weeks of wages.
      */
     for (const league of world.leagues) {
       for (const club of league.clubs) {
@@ -209,7 +226,7 @@ export function playRound(state: SeasonState): MatchResult[] {
   }
 
   // A week passes between rounds: everyone recovers, bans and lay-offs tick.
-  if (options.playerState) {
+  if (options.playerState && !midweek) {
     for (const club of clubs) {
       for (const player of club.squad) advancePlayerWeek(player);
     }

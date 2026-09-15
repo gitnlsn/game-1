@@ -21,7 +21,7 @@ export const CUP_TUNING = {
    * same matchday, and a screen showing "the next match" could only show one of
    * them. A season with a cup is 44 matchdays, not 38.
    */
-  rounds: [5, 12, 20, 28, 36, 42],
+  rounds: [5, 12, 20, 28, 36, 42] as readonly number[],
   /**
    * Extra time is played at reduced intensity: tired legs, and sides that have
    * already decided they would rather take their chances from the spot.

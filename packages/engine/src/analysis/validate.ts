@@ -42,19 +42,15 @@ export const BENCHMARKS: readonly Benchmark[] = [
    * Revisited once there were cup competitions, as the old note here said to be.
    * The answer was not what the note assumed.
    *
-   * Measured over six worlds: a league-only season gives 77.8, and a season with
-   * the cup gives 78.7 -- very slightly WORSE. An earlier build, where cup ties
-   * shared a matchday with league fixtures, gave 75.9. So what spreads minutes
-   * is not how many matches a club plays, it is congestion: two matches and one
-   * week to recover between them. Giving the cup its own matchdays removed the
-   * congestion and added recovery weeks instead, and the best eleven stayed fit
-   * enough to play everything.
+   * What spreads minutes is not how many matches a club plays, it is congestion:
+   * two matches with one week to recover between them. Measured over six worlds,
+   * a league-only season gives 77.8. Adding a cup on its own free matchdays gave
+   * 78.7 -- slightly WORSE, because it added rest rather than removing it. Making
+   * those matchdays midweek, so no week passes before a cup tie, gives 76.2.
    *
-   * The target stays where it is, because 78.7 sits inside it. Real clubs do
-   * spread minutes more widely, and the lever for that is a congested calendar
-   * -- midweek cup ties between weekend league games -- not more competitions.
-   * That is a calendar change with a UI cost (a club would play twice in a
-   * "round"), so it is noted rather than done here.
+   * Still above the target, and deliberately so: closing the rest of the gap
+   * means changing how readily a manager rotates, which is `selectLineup` and
+   * the effectiveness curve, and would move every other benchmark on this list.
    */
   { key: 'topElevenMinuteShare', label: 'Minutes share of top 11 %', target: 72, tolerance: 8, decimals: 1 },
 ];

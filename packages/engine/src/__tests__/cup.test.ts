@@ -7,7 +7,7 @@ import {
   firstRoundClubs,
   resolveShootout,
 } from '../league/cup.js';
-import { createSeasonState, currentTable, playRound } from '../league/season.js';
+import { createSeasonState, currentTable, isMidweek, playRound } from '../league/season.js';
 import { cupRoundName } from '../career/controller.js';
 import { allClubs, createWorld } from '../world/index.js';
 import type { SeasonState } from '../league/season.js';
@@ -161,5 +161,70 @@ describe('naming a round', () => {
     expect(cupRoundName(40)).toBe('First round');
     expect(cupRoundName(20)).toBe('First round');
     expect(cupRoundName(32)).toBe('Round of 32');
+  });
+});
+
+describe('a cup tie is a midweek match', () => {
+  it('gives nobody a week off before it', () => {
+    const world = createWorld({ seed: 'midweek', divisions: 2 });
+    const state = createSeasonState(world, new Rng('midweek'), { cup: true, playerState: true });
+
+    // Play up to the matchday before the first cup round.
+    const cupDay = CUP_TUNING.rounds[0]!;
+    while (state.nextRound < cupDay) playRound(state);
+
+    const before = new Map(
+      allClubs(world).flatMap((c) => c.squad.map((p) => [p.id, p.status.condition] as const)),
+    );
+    expect(isMidweek(state, state.nextRound)).toBe(true);
+    playRound(state);
+
+    /*
+     * Nobody should have recovered. A player who did not feature keeps exactly
+     * the condition he had, where an ordinary round would have rested him --
+     * which is the whole point: a cup run has to cost tired legs, and giving the
+     * cup its own free week added rest instead of removing it.
+     */
+    const rested = allClubs(world)
+      .flatMap((c) => c.squad)
+      .filter((p) => p.status.condition > (before.get(p.id) ?? 0));
+    expect(rested).toHaveLength(0);
+  });
+
+  it('bills a season for the weeks it actually lasts', () => {
+    const run = (cup: boolean) => {
+      const world = createWorld({ seed: 'wages', divisions: 2 });
+      const state = createSeasonState(world, new Rng('wages'), {
+        cup,
+        playerState: true,
+        economy: true,
+      });
+      while (state.nextRound <= state.totalRounds) playRound(state);
+      return world.leagues[0]!.clubs[0]!.finances.season.wages;
+    };
+
+    // A cup season runs 44 matchdays but still only 38 weeks. Paying per
+    // matchday billed it for six weeks of wages nobody worked.
+    expect(run(true)).toBe(run(false));
+  });
+
+  it('makes a settled eleven play less of the football', () => {
+    const share = (cup: boolean) => {
+      let top = 0;
+      let total = 0;
+      for (const seed of ['r1', 'r2']) {
+        const world = createWorld({ seed, divisions: 2 });
+        const state = createSeasonState(world, new Rng(seed), { cup, playerState: true });
+        while (state.nextRound <= state.totalRounds) playRound(state);
+        for (const club of allClubs(world)) {
+          const minutes = club.squad.map((p) => p.status.minutes).sort((a, b) => b - a);
+          top += minutes.slice(0, 11).reduce((a, b) => a + b, 0);
+          total += minutes.reduce((a, b) => a + b, 0);
+        }
+      }
+      return (top / total) * 100;
+    };
+
+    expect(share(true)).toBeLessThan(share(false));
   });
 });
