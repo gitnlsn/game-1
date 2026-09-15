@@ -173,6 +173,11 @@ export interface SimulateMatchOptions {
   startMinute?: number;
   /** Overrides the chance a minute contains an attacking sequence. */
   attackRate?: number;
+  /**
+   * The side a manager is running by hand. That side makes no substitutions of
+   * its own, so the engine cannot undo his team while he watches it play.
+   */
+  manualSide?: 'home' | 'away';
 }
 
 interface TeamState {
@@ -209,12 +214,35 @@ interface TeamState {
   substitutionsUsed: number;
 }
 
-export function simulateMatch(
+/**
+ * A match being played a minute at a time.
+ *
+ * `simulateMatch` is built on exactly these functions, so the whole-match path
+ * and the stepped one consume the generator identically and produce the same
+ * football. That equivalence is the point: a live match must not be a second
+ * implementation that drifts from the one every benchmark is calibrated against.
+ */
+export interface MatchInProgress {
+  rng: Rng;
+  home: TeamState;
+  away: TeamState;
+  events: MatchEvent[];
+  /** Minutes played so far. The next `stepMatch` plays `minute + 1`. */
+  minute: number;
+  finalMinute: number;
+  possessionSum: number;
+  possessionMinutes: number;
+  options: SimulateMatchOptions;
+  attackRate: number;
+  neutral: boolean;
+}
+
+export function startMatch(
   rng: Rng,
   homeClub: Club,
   awayClub: Club,
   options: SimulateMatchOptions = {},
-): MatchResult {
+): MatchInProgress {
   const T = MATCH_TUNING;
   const venueBoost = options.neutral ? 1 : T.homeAdvantage;
 
@@ -225,54 +253,86 @@ export function simulateMatch(
   const home = createTeamState(homeClub, options.homeSheet, venueBoost * homeForm);
   const away = createTeamState(awayClub, options.awaySheet, awayForm);
 
-  const attackRate = options.attackRate ?? T.attackRate;
-  const events: MatchEvent[] = [];
-  // Possession is accumulated minute by minute rather than fixed at kickoff, so
-  // a sending off or a substitution actually changes who has the ball.
-  let possessionSum = 0;
-  let possessionMinutes = 0;
   const startMinute = options.startMinute ?? 0;
   const stoppage = rng.int(1, 5);
-  const finalMinute = startMinute + (options.minutes ?? 90) + stoppage;
 
-  for (let minute = startMinute + 1; minute <= finalMinute; minute++) {
-    resolveDiscipline(rng, home, away, minute, events);
-    resolveInjuries(rng, home, away, minute, events);
-    considerSubstitutions(rng, home, minute, events);
-    considerSubstitutions(rng, away, minute, events);
+  return {
+    rng,
+    home,
+    away,
+    events: [],
+    minute: startMinute,
+    finalMinute: startMinute + (options.minutes ?? 90) + stoppage,
+    possessionSum: 0,
+    possessionMinutes: 0,
+    options,
+    attackRate: options.attackRate ?? T.attackRate,
+    neutral: options.neutral === true,
+  };
+}
 
-    const homePossession = possessionShare(home, away, options.neutral === true);
-    possessionSum += homePossession;
-    possessionMinutes++;
+export function matchComplete(match: MatchInProgress): boolean {
+  return match.minute >= match.finalMinute;
+}
 
-    if (!rng.chance(attackRate)) continue;
+/** Plays the next minute. Returns whatever happened in it, which is often nothing. */
+export function stepMatch(match: MatchInProgress): MatchEvent[] {
+  if (matchComplete(match)) return [];
 
+  const { rng, home, away, options } = match;
+  const minute = match.minute + 1;
+  const before = match.events.length;
+
+  resolveDiscipline(rng, home, away, minute, match.events);
+  resolveInjuries(rng, home, away, minute, match.events);
+  /*
+   * A side under manual control makes no substitutions of its own. Leaving the
+   * automatic ones on would mean the engine quietly undoing a manager's team
+   * while he was watching it play.
+   */
+  if (options.manualSide !== 'home') considerSubstitutions(rng, home, minute, match.events);
+  if (options.manualSide !== 'away') considerSubstitutions(rng, away, minute, match.events);
+
+  const homePossession = possessionShare(home, away, match.neutral);
+  match.possessionSum += homePossession;
+  match.possessionMinutes++;
+
+  if (rng.chance(match.attackRate)) {
     const homeAttacking = rng.chance(homePossession);
     const attacker = homeAttacking ? home : away;
     const defender = homeAttacking ? away : home;
-    resolveAttack(rng, attacker, defender, minute, events);
+    resolveAttack(rng, attacker, defender, minute, match.events);
   }
 
+  match.minute = minute;
+  return match.events.slice(before);
+}
+
+/** Blows the whistle and writes the result. */
+export function finishMatch(match: MatchInProgress): MatchResult {
+  const { rng, home, away, options, events } = match;
+
   if (options.updatePlayerState) {
-    applyPlayerState(rng, home, finalMinute, away.goals);
-    applyPlayerState(rng, away, finalMinute, home.goals);
+    applyPlayerState(rng, home, match.finalMinute, away.goals);
+    applyPlayerState(rng, away, match.finalMinute, home.goals);
     applyEventOutcomes(rng, events, [home, away]);
   }
 
-  const homeShare = possessionMinutes > 0 ? possessionSum / possessionMinutes : 0.5;
+  const homeShare =
+    match.possessionMinutes > 0 ? match.possessionSum / match.possessionMinutes : 0.5;
 
   return {
-    homeClubId: homeClub.id,
-    awayClubId: awayClub.id,
+    homeClubId: home.club.id,
+    awayClubId: away.club.id,
     home: {
-      clubId: homeClub.id,
+      clubId: home.club.id,
       goals: home.goals,
       shots: home.shots,
       shotsOnTarget: home.shotsOnTarget,
       possession: Math.round(homeShare * 100),
     },
     away: {
-      clubId: awayClub.id,
+      clubId: away.club.id,
       goals: away.goals,
       shots: away.shots,
       shotsOnTarget: away.shotsOnTarget,
@@ -280,6 +340,108 @@ export function simulateMatch(
     },
     events,
   };
+}
+
+// --- In-match control ------------------------------------------------------
+
+export type SubstitutionRefusal =
+  | 'not_on_pitch'
+  | 'not_on_bench'
+  | 'none_left'
+  | 'wrong_side';
+
+export interface MatchSideView {
+  clubId: string;
+  goals: number;
+  /** Who is on the pitch, with the position each is filling. */
+  onPitch: { player: Player; position: Position; minutesPlayed: number }[];
+  bench: Player[];
+  substitutionsUsed: number;
+  substitutionsLeft: number;
+  tactics: Tactics;
+}
+
+/** What a manager can see of his side right now, for a screen to render. */
+export function matchSide(match: MatchInProgress, side: 'home' | 'away'): MatchSideView {
+  const team = side === 'home' ? match.home : match.away;
+  const T = MATCH_TUNING;
+
+  return {
+    clubId: team.club.id,
+    goals: team.goals,
+    onPitch: team.onPitch.map((slot) => ({
+      player: slot.player,
+      position: slot.position,
+      minutesPlayed: match.minute - (team.enteredAt.get(slot.player.id) ?? 0),
+    })),
+    bench: [...team.bench],
+    substitutionsUsed: team.substitutionsUsed,
+    substitutionsLeft: Math.max(0, T.maxSubstitutions - team.substitutionsUsed),
+    tactics: team.tactics,
+  };
+}
+
+/**
+ * Makes a substitution on the manager's instruction.
+ *
+ * Uses exactly the machinery the automatic ones use, so a manual change is worth
+ * what an engine one would be -- no bonus for being made by hand, and none of
+ * the engine's own judgement applied to it either.
+ */
+export function substitute(
+  match: MatchInProgress,
+  side: 'home' | 'away',
+  offPlayerId: string,
+  onPlayerId: string,
+): { done: boolean; reason?: SubstitutionRefusal } {
+  const T = MATCH_TUNING;
+  if (match.options.manualSide !== side) return { done: false, reason: 'wrong_side' };
+
+  const team = side === 'home' ? match.home : match.away;
+  if (team.substitutionsUsed >= T.maxSubstitutions) return { done: false, reason: 'none_left' };
+
+  const outSlot = team.onPitch.find((slot) => slot.player.id === offPlayerId);
+  if (!outSlot) return { done: false, reason: 'not_on_pitch' };
+
+  const inPlayer = team.bench.find((player) => player.id === onPlayerId);
+  if (!inPlayer) return { done: false, reason: 'not_on_bench' };
+
+  team.onPitch = team.onPitch.filter((slot) => slot.player.id !== offPlayerId);
+  creditMinutes(team, offPlayerId, match.minute);
+  bringOn(team, inPlayer, outSlot.position, match.minute, match.events, offPlayerId);
+  refreshRating(team);
+
+  return { done: true };
+}
+
+/**
+ * Changes how a side is set up mid-match.
+ *
+ * The ratings are rebuilt straight away, so the change applies from the next
+ * minute rather than at some later recalculation -- a manager who goes attacking
+ * chasing a game at 80 minutes has ten minutes of it, not none.
+ */
+export function changeMatchTactics(
+  match: MatchInProgress,
+  side: 'home' | 'away',
+  patch: Partial<Tactics>,
+): Tactics {
+  const team = side === 'home' ? match.home : match.away;
+  team.tactics = resolveTactics({ ...team.tactics, ...patch });
+  team.shapes = tacticShapes(team.tactics);
+  refreshRating(team);
+  return team.tactics;
+}
+
+export function simulateMatch(
+  rng: Rng,
+  homeClub: Club,
+  awayClub: Club,
+  options: SimulateMatchOptions = {},
+): MatchResult {
+  const match = startMatch(rng, homeClub, awayClub, options);
+  while (!matchComplete(match)) stepMatch(match);
+  return finishMatch(match);
 }
 
 function createTeamState(club: Club, sheet: TeamSheet | undefined, boost: number): TeamState {

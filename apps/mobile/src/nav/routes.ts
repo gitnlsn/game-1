@@ -13,6 +13,7 @@ export type RootStackParamList = {
   transfers: undefined;
   settings: undefined;
   sacked: undefined;
+  liveMatch: undefined;
 };
 
 declare global {

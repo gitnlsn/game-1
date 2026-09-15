@@ -2,6 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   advanceRound,
+  beginLiveMatch,
+  endLiveMatch,
   endSeason,
   isSacked,
   isSeasonComplete,
@@ -9,6 +11,7 @@ import {
   startNextSeason,
   transferWindow,
   type Career,
+  type LiveMatch,
   type MatchResult,
   type SeasonSummary,
 } from '@game1/engine';
@@ -50,6 +53,17 @@ interface GameContextValue {
   /** True once the board has dismissed you. The career is over. */
   sacked: boolean;
   /**
+   * The match being watched, if any.
+   *
+   * Held here rather than on the screen because starting one plays the rest of
+   * the round: navigating away from a half-played match would leave the season
+   * with a round it can neither finish nor replay.
+   */
+  live: LiveMatch | undefined;
+  startLive: () => Promise<LiveMatch | undefined>;
+  /** Blows the whistle, books the result and closes the round. */
+  endLive: () => MatchResult | undefined;
+  /**
    * Re-render and save after a screen has mutated the world directly -- the
    * transfer screen calls engine functions itself rather than going through an
    * action here, because every one of them is a one-liner.
@@ -88,6 +102,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [saveProblem, setSaveProblem] = useState<SaveProblem | undefined>();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [live, setLive] = useState<LiveMatch | undefined>();
 
   // Restore a save on launch.
   useEffect(() => {
@@ -175,8 +190,36 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [career, persist]);
 
+  const startLive = useCallback(async (): Promise<LiveMatch | undefined> => {
+    if (!career || isSeasonComplete(career) || live) return undefined;
+
+    setBusy(true);
+    await nextFrame();
+    try {
+      const started = beginLiveMatch(career);
+      if (started) {
+        setLive(started);
+        setVersion((v) => v + 1);
+      }
+      return started;
+    } finally {
+      setBusy(false);
+    }
+  }, [career, live]);
+
+  const endLive = useCallback((): MatchResult | undefined => {
+    if (!career || !live) return undefined;
+
+    const result = endLiveMatch(live, career);
+    setLive(undefined);
+    setVersion((v) => v + 1);
+    persist(career);
+    return result;
+  }, [career, live, persist]);
+
   const abandonCareer = useCallback(() => {
     setCareer(undefined);
+    setLive(undefined);
     setVersion((v) => v + 1);
     clearCareer(AsyncStorage).catch(() => {});
   }, []);
@@ -199,14 +242,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<GameContextValue>(
     () => ({
-      career, version, loading, busy, saveProblem, settings,
+      career, version, loading, busy, saveProblem, settings, live, startLive, endLive,
       windowOpen: !!career && !!transferWindow(career),
       sacked: !!career && isSacked(career),
       newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
       dismissSaveProblem, updateSettings, refresh,
     }),
     [
-      career, version, loading, busy, saveProblem, settings,
+      career, version, loading, busy, saveProblem, settings, live, startLive, endLive,
       newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
       dismissSaveProblem, updateSettings, refresh,
     ],

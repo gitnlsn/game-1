@@ -6,8 +6,9 @@ import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 
 const MATCH_MODES = [
-  { value: 'replay' as const, label: 'Play it out' },
-  { value: 'instant' as const, label: 'Instant result' },
+  { value: 'instant' as const, label: 'Instant' },
+  { value: 'replay' as const, label: 'Replay' },
+  { value: 'live' as const, label: 'Live' },
 ];
 
 export function SettingsScreen() {
@@ -24,9 +25,11 @@ export function SettingsScreen() {
           onChange={(matchMode) => updateSettings({ matchMode })}
         />
         <Text style={styles.note}>
-          {settings.matchMode === 'replay'
-            ? 'Goals and cards appear as the clock runs. You can skip at any point.'
-            : 'The full result appears straight away.'}
+          {settings.matchMode === 'live'
+            ? 'The match is played as you watch, and you can make substitutions and change your instructions while it runs.'
+            : settings.matchMode === 'replay'
+              ? 'Goals and cards appear as the clock runs. You can skip at any point.'
+              : 'The full result appears straight away.'}
         </Text>
       </Card>
 

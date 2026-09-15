@@ -186,6 +186,17 @@ export function isMidweek(state: SeasonState, round: number): boolean {
   return state.cup !== undefined && CUP_TUNING.rounds.includes(round);
 }
 
+export interface PlayRoundOptions {
+  /**
+   * A fixture to leave unplayed, so a manager can play it himself.
+   *
+   * The round still runs: everybody else's match is played and the week still
+   * passes. Only this one is held back, for `playFixture` to settle once the
+   * manager is done with it.
+   */
+  skipClubId?: string;
+}
+
 /**
  * Plays one round: a week passes first (wages, recovery, bans ticking down),
  * then every match in the round is played.
@@ -197,7 +208,7 @@ export function isMidweek(state: SeasonState, round: number): boolean {
  * it -- which is exactly what happened when it did, and why the minutes share of
  * a settled eleven went UP when a cup was added.
  */
-export function playRound(state: SeasonState): MatchResult[] {
+export function playRound(state: SeasonState, round: PlayRoundOptions = {}): MatchResult[] {
   if (seasonComplete(state)) return [];
 
   const { world, rng, options } = state;
@@ -242,6 +253,12 @@ export function playRound(state: SeasonState): MatchResult[] {
 
   for (const fixture of state.fixtures) {
     if (fixture.round !== state.nextRound) continue;
+    if (
+      round.skipClubId &&
+      (fixture.homeClubId === round.skipClubId || fixture.awayClubId === round.skipClubId)
+    ) {
+      continue;
+    }
 
     const home = clubById.get(fixture.homeClubId);
     const away = clubById.get(fixture.awayClubId);
@@ -287,12 +304,72 @@ export function playRound(state: SeasonState): MatchResult[] {
     state.played.set(away.id, (state.played.get(away.id) ?? 0) + 1);
   }
 
+  // Held back for the manager: the round is not over and the cup cannot move on
+  // until his match has been played.
+  if (round.skipClubId) return roundResults;
+
+  closeRound(state);
+  return roundResults;
+}
+
+/**
+ * Settles a fixture that `playRound` held back, and closes the round.
+ *
+ * Scoring, the table, matchday income and the cup all go through the same code
+ * the ordinary path uses -- a manager's own match must count exactly as
+ * everybody else's does, or the competition he is playing in is not the one he
+ * is watching.
+ */
+export function playFixture(
+  state: SeasonState,
+  fixture: Fixture,
+  result: MatchResult,
+): MatchResult {
+  const clubs = allClubs(state.world);
+  const home = clubs.find((c) => c.id === fixture.homeClubId);
+  const away = clubs.find((c) => c.id === fixture.awayClubId);
+  const stamped: MatchResult = { ...result, competitionId: fixture.competitionId };
+
+  state.results.push(stamped);
+
+  const tie = state.cup
+    ? currentTies(state.cup).find(
+        (t) => t.homeClubId === fixture.homeClubId && t.awayClubId === fixture.awayClubId,
+      )
+    : undefined;
+
+  if (state.options.economy && home && away) {
+    const games = state.played.get(home.id) ?? 0;
+    const pointsPerGame = games === 0 ? 1.3 : (state.points.get(home.id) ?? 0) / games;
+    applyMatchdayIncome(home, away, pointsPerGame);
+  }
+
+  // A cup tie earns no league points, the same as in `playRound`.
+  if (!tie && home && away) {
+    const homePoints =
+      stamped.home.goals > stamped.away.goals
+        ? 3
+        : stamped.home.goals === stamped.away.goals
+          ? 1
+          : 0;
+    const awayPoints = homePoints === 3 ? 0 : homePoints;
+    state.points.set(home.id, (state.points.get(home.id) ?? 0) + homePoints);
+    state.points.set(away.id, (state.points.get(away.id) ?? 0) + awayPoints);
+    state.played.set(home.id, (state.played.get(home.id) ?? 0) + 1);
+    state.played.set(away.id, (state.played.get(away.id) ?? 0) + 1);
+  }
+
+  state.options.onMatch?.(stamped, fixture);
+  closeRound(state);
+  return stamped;
+}
+
+/** Moves the cup on and turns the page. */
+function closeRound(state: SeasonState): void {
   if (state.cup && cupRoundMatchday(state.cup) === state.nextRound) {
     advanceCupRound(state.cup);
   }
-
   state.nextRound += 1;
-  return roundResults;
 }
 
 /**

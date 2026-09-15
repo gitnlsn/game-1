@@ -80,7 +80,7 @@ function reslot(career: Career, sheet: TeamSheet, formation: string): TeamSheet 
 
 export function TeamSelectionScreen() {
   const navigation = useNavigation<Nav>();
-  const { career, busy, playRound, refresh, settings } = useGame();
+  const { career, busy, playRound, refresh, settings, startLive } = useGame();
 
   const [sheet, setSheet] = useState<TeamSheet | undefined>(() =>
     career ? currentTeamSheet(career) : undefined,
@@ -183,6 +183,14 @@ export function TeamSelectionScreen() {
 
   const kickOff = async () => {
     setTeamSheet(career, sheet);
+
+    if (settings.matchMode === 'live') {
+      // Started AFTER the sheet is stored, or the eleven just picked is not the
+      // eleven that takes the pitch.
+      if (await startLive()) navigation.replace('liveMatch');
+      return;
+    }
+
     const outcome = await playRound();
     if (outcome?.ownMatch) {
       navigation.replace('matchResult', { round: career.season.nextRound - 1 });

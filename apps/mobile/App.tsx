@@ -17,6 +17,7 @@ import { TransfersScreen } from './src/screens/TransfersScreen';
 import { NewCareerScreen } from './src/screens/NewCareerScreen';
 import { SaveProblemScreen } from './src/screens/SaveProblemScreen';
 import { SackedScreen } from './src/screens/SackedScreen';
+import { LiveMatchScreen } from './src/screens/LiveMatchScreen';
 import type { RootStackParamList } from './src/nav/routes';
 import { colors } from './src/theme';
 
@@ -67,6 +68,12 @@ function Game() {
         options={{ title: 'Team selection' }}
       />
       <Stack.Screen name="matchResult" component={MatchScreen} options={{ title: 'Result' }} />
+      {/* No going back mid-match: the rest of the round has already been played. */}
+      <Stack.Screen
+        name="liveMatch"
+        component={LiveMatchScreen}
+        options={{ title: 'Live', headerBackVisible: false, gestureEnabled: false }}
+      />
       <Stack.Screen
         name="seasonSummary"
         component={SeasonSummaryScreen}

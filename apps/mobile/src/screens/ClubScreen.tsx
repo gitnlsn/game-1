@@ -50,7 +50,10 @@ const OUTCOME_COLOR = { W: colors.accent, D: colors.muted, L: colors.danger } as
 
 export function ClubScreen() {
   const navigation = useNavigation<Nav>();
-  const { career, busy, playRound, finishSeason, beginNextSeason, windowOpen, sacked } = useGame();
+  const {
+    career, busy, playRound, finishSeason, beginNextSeason, windowOpen, sacked,
+    settings, startLive,
+  } = useGame();
   // Before the guard below: hooks cannot run conditionally.
   const [confirmingSeason, setConfirmingSeason] = useState(false);
   if (!career) return null;
@@ -220,10 +223,14 @@ export function ClubScreen() {
           />
           {/* For the 38 rounds a season where you do not care to pick. */}
           <Button
-            label="Quick play"
+            label={settings.matchMode === 'live' ? 'Watch it' : 'Quick play'}
             variant="secondary"
             loading={busy}
             onPress={async () => {
+              if (settings.matchMode === 'live') {
+                if (await startLive()) navigation.navigate('liveMatch');
+                return;
+              }
               const outcome = await playRound();
               if (outcome?.ownMatch && career) {
                 navigation.navigate('matchResult', { round: career.season.nextRound - 1 });

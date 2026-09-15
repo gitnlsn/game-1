@@ -353,6 +353,31 @@ every club lent out every fringe youngster it had — 139 of them across forty
 clubs, a third of the world's under-23s moving at once, which is churn rather
 than a decision.
 
+### Watching a match
+
+The match engine is steppable: `startMatch`, `stepMatch`, `finishMatch`.
+`simulateMatch` is built on exactly those, so the whole-match path and the
+minute-by-minute one consume the generator identically and produce the same
+football — asserted across eight seeds, comparing the result AND the final RNG
+state. That equivalence is the point: a live match must not be a second
+implementation of the rules that drifts from the one every benchmark is
+calibrated against.
+
+`manualSide` stops the engine substituting for the side a manager is running,
+so it cannot quietly undo his team while he watches it play. Forced changes for
+injuries still happen — finishing with ten men because nobody was watching would
+be a worse bug than the one that prevents.
+
+A round can hold one fixture back (`playRound({ skipClubId })`), so everybody
+else's match is played immediately and only yours waits. Pausing the whole world
+instead would make the table jump around whatever minute you happened to be
+watching. The held fixture settles through `playFixture`, which runs the same
+scoring, income and cup code the ordinary path does.
+
+The live match lives on the app's game context rather than on the screen,
+because starting one plays the rest of its round: a screen that owned it could
+strand the season by being navigated away from.
+
 ### What the cup did not fix
 
 The `topElevenMinuteShare` benchmark carried a note for three milestones saying to
@@ -370,7 +395,7 @@ twice in one "round".
 
 ## Tests and CI
 
-`pnpm test` runs both packages: 204 engine tests and 12 app tests. `pnpm calibrate`
+`pnpm test` runs both packages: 233 engine tests and 12 app tests. `pnpm calibrate`
 runs the real harnesses -- match, economy, tactics and pyramid -- and **exits non-zero if any benchmark has drifted or any setting has become dominant**, so CI
 gates on calibration rather than only on tests — the two catch different things,
 and the economy once failed on its own default seed while the suite stayed green.

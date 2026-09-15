@@ -28,7 +28,11 @@ export interface SaveProblem {
 
 export interface Settings {
   /** Show the match play out minute by minute, or just give the result. */
-  matchMode: 'instant' | 'replay';
+  /**
+   * `instant` shows the finished result, `replay` plays its timeline back, and
+   * `live` plays the match as you watch, with substitutions available.
+   */
+  matchMode: 'instant' | 'replay' | 'live';
 }
 
 export const DEFAULT_SETTINGS: Settings = { matchMode: 'replay' };

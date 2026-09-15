@@ -30,10 +30,18 @@ import {
   seasonComplete,
   upcomingRound,
   currentTable,
+  playFixture,
   type SeasonState,
 } from '../league/season.js';
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
+import {
+  finishMatch,
+  matchComplete,
+  startMatch,
+  stepMatch,
+  type MatchInProgress,
+} from '../match/engine.js';
 import type { CupState, CupTie } from '../league/cup.js';
 import {
   loanCandidates,
@@ -445,6 +453,60 @@ export function startNextSeason(career: Career): Transfer[] {
 }
 
 // --- Acting in the window --------------------------------------------------
+
+/** A match the manager is watching and running, minute by minute. */
+export interface LiveMatch {
+  match: MatchInProgress;
+  fixture: Fixture;
+  /** Which side of the match is the manager's. */
+  side: 'home' | 'away';
+  /** Everybody else's results from the same round, played already. */
+  otherResults: MatchResult[];
+}
+
+/**
+ * Starts the managed club's next match and holds the round open.
+ *
+ * Every other fixture in the round is played immediately -- only this one waits.
+ * The alternative, pausing the whole world, would mean the league table moved in
+ * jumps around whatever minute the manager happened to be watching.
+ */
+export function beginLiveMatch(career: Career): LiveMatch | undefined {
+  const upcoming = nextFixture(career);
+  if (!upcoming) return undefined;
+
+  const otherResults = playRound(career.season, { skipClubId: career.managedClubId });
+
+  const home = findClub(career.world, upcoming.fixture.homeClubId);
+  const away = findClub(career.world, upcoming.fixture.awayClubId);
+  if (!home || !away) return undefined;
+
+  const side = upcoming.home ? 'home' : 'away';
+  const ownSheet = career.season.teamSheets.get(career.managedClubId);
+  const opponentSheet = career.season.teamSheets.get(upcoming.opponent.id);
+
+  const match = startMatch(career.rng, home, away, {
+    updatePlayerState: true,
+    manualSide: side,
+    ...(upcoming.home
+      ? {
+          ...(ownSheet ? { homeSheet: ownSheet } : {}),
+          ...(opponentSheet ? { awaySheet: opponentSheet } : {}),
+        }
+      : {
+          ...(opponentSheet ? { homeSheet: opponentSheet } : {}),
+          ...(ownSheet ? { awaySheet: ownSheet } : {}),
+        }),
+  });
+
+  return { match, fixture: upcoming.fixture, side, otherResults };
+}
+
+/** Blows the whistle, books the result and closes the round. */
+export function endLiveMatch(live: LiveMatch, career: Career): MatchResult {
+  while (!matchComplete(live.match)) stepMatch(live.match);
+  return playFixture(career.season, live.fixture, finishMatch(live.match));
+}
 
 /** Players the manager could send out to get football. */
 export function loanableSquad(career: Career): Player[] {
