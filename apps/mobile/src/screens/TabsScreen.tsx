@@ -3,16 +3,16 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ClubScreen } from './ClubScreen';
 import { SquadScreen } from './SquadScreen';
-import { TableScreen } from './TableScreen';
+import { SeasonScreen } from './SeasonScreen';
 import { FinancesScreen } from './FinancesScreen';
 import { colors } from '../theme';
 
-type TabKey = 'club' | 'squad' | 'table' | 'finances';
+type TabKey = 'club' | 'squad' | 'season' | 'finances';
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: 'club', label: 'Club', icon: '⚑' },
   { key: 'squad', label: 'Squad', icon: '👥' },
-  { key: 'table', label: 'Table', icon: '≡' },
+  { key: 'season', label: 'Season', icon: '≡' },
   { key: 'finances', label: 'Money', icon: '◈' },
 ];
 
@@ -29,8 +29,8 @@ export function TabsScreen() {
           <ClubScreen />
         ) : tab === 'squad' ? (
           <SquadScreen />
-        ) : tab === 'table' ? (
-          <TableScreen />
+        ) : tab === 'season' ? (
+          <SeasonScreen />
         ) : (
           <FinancesScreen />
         )}

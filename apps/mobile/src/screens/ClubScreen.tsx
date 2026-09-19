@@ -24,7 +24,7 @@ import {
   type Career,
   type MatchResult,
 } from '@eleven-deep/engine';
-import { Badge, Button, Card, Divider, KeyValue, SectionTitle, StatTile, textStyles } from '../components/ui';
+import { Badge, Button, Card, Divider, KeyValue, OutcomeDot, SectionTitle, StatTile, textStyles } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, spacing } from '../theme';
 import { ordinal } from '../format';
@@ -40,8 +40,6 @@ function outcomeFor(result: MatchResult, clubId: string): 'W' | 'D' | 'L' {
   const other = home ? result.away.goals : result.home.goals;
   return own > other ? 'W' : own === other ? 'D' : 'L';
 }
-
-const OUTCOME_COLOR = { W: colors.accent, D: colors.muted, L: colors.danger } as const;
 
 export function ClubScreen() {
   const navigation = useNavigation<Nav>();
@@ -276,8 +274,8 @@ export function ClubScreen() {
               <View key={`${result.homeClubId}-${result.awayClubId}-${index}`}>
                 {index > 0 ? <Divider /> : null}
                 <View style={styles.resultRow}>
-                  <View style={[styles.outcomeDot, { backgroundColor: OUTCOME_COLOR[outcome] }]}>
-                    <Text style={styles.outcomeText}>{outcome}</Text>
+                  <View style={styles.outcomeSlot}>
+                    <OutcomeDot outcome={outcome} />
                   </View>
                   <Text style={styles.resultOpponent} numberOfLines={1}>
                     {home ? 'vs' : 'at'} {opponent?.name ?? 'Unknown'}
@@ -437,15 +435,7 @@ const styles = StyleSheet.create({
   finishedText: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   noForm: { color: colors.faint, fontSize: 13, fontStyle: 'italic' },
   resultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3 },
-  outcomeDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  outcomeText: { color: '#0E1116', fontSize: 11, fontWeight: '800' },
+  outcomeSlot: { marginRight: spacing.sm },
   resultOpponent: { color: colors.text, fontSize: 13, flex: 1 },
   resultScore: {
     color: colors.text,

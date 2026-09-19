@@ -1,29 +1,33 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { divisionTables, finaliseSeason, managedLeague } from '@eleven-deep/engine';
-import { Card, ChipRow, SectionTitle } from '../components/ui';
+import { finaliseSeason, type League, type TableRow } from '@eleven-deep/engine';
+import { Card, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-export function TableScreen() {
+/**
+ * One division's table. Which division is shown, and the chips that choose it,
+ * belong to `SeasonScreen`: the selector shares a row with the view switcher up
+ * there, so the table cannot own it and still sit beside it.
+ */
+export function TableScreen({
+  division,
+  divisionCount,
+}: {
+  division: { league: League; table: TableRow[] } | undefined;
+  divisionCount: number;
+}) {
   const navigation = useNavigation<Nav>();
   const { career, version } = useGame();
 
-  const divisions = useMemo(() => (career ? divisionTables(career) : []), [career, version]);
-  const [tier, setTier] = useState<string | undefined>();
-
+  const table = division?.table ?? [];
   // finaliseSeason rebuilds the scorer map from every result in the season, so
   // it must not run on every render.
-  const shown =
-    divisions.find((d) => d.league.id === tier) ??
-    divisions.find((d) => career && d.league.id === managedLeague(career).id) ??
-    divisions[0];
-  const table = shown?.table ?? [];
   const scorers = useMemo(
     () => (career ? finaliseSeason(career.season).scorers.slice(0, 10) : []),
     [career, version],
@@ -37,15 +41,7 @@ export function TableScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {divisions.length > 1 ? (
-        <ChipRow
-          style={styles.divisions}
-          options={divisions.map((d) => ({ value: d.league.id, label: `Tier ${d.league.tier}` }))}
-          value={shown?.league.id ?? ''}
-          onChange={setTier}
-        />
-      ) : null}
-      <SectionTitle>{shown?.league.name ?? ''}</SectionTitle>
+      <SectionTitle>{division?.league.name ?? ''}</SectionTitle>
       <Card style={styles.tableCard}>
         <View style={[styles.row, styles.headerRow]}>
           <Text style={[styles.pos, styles.headerText]}>#</Text>
@@ -60,8 +56,8 @@ export function TableScreen() {
 
         {table.map((row, index) => {
           const own = row.clubId === career.managedClubId;
-          const tierNumber = shown?.league.tier ?? 1;
-          const lastTier = tierNumber >= divisions.length;
+          const tierNumber = division?.league.tier ?? 1;
+          const lastTier = tierNumber >= divisionCount;
           /*
            * Which end of the table matters depends on where you are. There is
            * nothing below the bottom division to go down to, and nothing above
@@ -137,7 +133,6 @@ export function TableScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
-  divisions: { marginBottom: spacing.sm },
   tableCard: { padding: 0, overflow: 'hidden', marginBottom: spacing.lg },
   row: {
     flexDirection: 'row',

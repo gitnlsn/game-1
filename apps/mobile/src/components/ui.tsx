@@ -79,6 +79,52 @@ export function Chip({
   );
 }
 
+/**
+ * Segments of one control, joined inside a single border.
+ *
+ * Same shape as `ChipRow`, and deliberately not the same thing to look at: a row
+ * of chips is a set of filters, where any of them might be on. Segments are one
+ * question with one answer. Where both appear together, that difference is what
+ * says which choice contains the other.
+ */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  style,
+}: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[styles.segmented, style]}>
+      {options.map((option, index) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            accessibilityRole="button"
+            accessibilityLabel={option.label}
+            accessibilityState={{ selected }}
+            style={[
+              styles.segment,
+              index > 0 ? styles.segmentDivided : null,
+              selected ? styles.segmentSelected : null,
+            ]}
+          >
+            <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function ChipRow<T extends string>({
   options,
   value,
@@ -227,6 +273,36 @@ export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.divider, style]} />;
 }
 
+export const OUTCOME_COLOR = { W: colors.accent, D: colors.muted, L: colors.danger } as const;
+
+/**
+ * A win, a draw or a defeat, as a filled disc. The glyph is the page background
+ * rather than a text colour, so the disc reads as a token at any size.
+ */
+export function OutcomeDot({
+  outcome,
+  size = 22,
+}: {
+  outcome: 'W' | 'D' | 'L';
+  size?: number;
+}) {
+  return (
+    <View
+      style={[
+        styles.outcomeDot,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: OUTCOME_COLOR[outcome],
+        },
+      ]}
+    >
+      <Text style={[styles.outcomeText, { fontSize: Math.round(size * 0.5) }]}>{outcome}</Text>
+    </View>
+  );
+}
+
 export function EmptyNote({ children }: { children: React.ReactNode }) {
   return <Text style={styles.emptyNote}>{children}</Text>;
 }
@@ -292,6 +368,17 @@ const styles = StyleSheet.create({
   chipText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   chipTextSelected: { color: '#EAFBEF' },
   chipRow: { flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' },
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  segment: { paddingHorizontal: spacing.md, paddingVertical: 5 },
+  segmentDivided: { borderLeftWidth: 1, borderLeftColor: colors.border },
+  segmentSelected: { backgroundColor: colors.accentDim },
   statBarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   statBarLabel: {
     color: colors.faint,
@@ -348,6 +435,8 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  outcomeDot: { alignItems: 'center', justifyContent: 'center' },
+  outcomeText: { color: colors.bg, fontWeight: '800' },
   emptyNote: {
     color: colors.faint,
     fontSize: 13,
