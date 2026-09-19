@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   allClubs,
@@ -37,6 +38,7 @@ const LABELS: Record<AttributeKey, string> = {
 
 export function PlayerScreen({ route }: Props) {
   const { career, version, refresh } = useGame();
+  const insets = useSafeAreaInsets();
   const { playerId } = route.params;
 
   const player = career?.world.players.get(playerId);
@@ -63,7 +65,10 @@ export function PlayerScreen({ route }: Props) {
   const groups = player.position === 'GK' ? [GROUPS[3]!, ...GROUPS.slice(0, 3)] : GROUPS;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl * 2 + insets.bottom }]}
+    >
       <Card>
         <View style={styles.header}>
           <View style={[styles.positionChip, { borderColor: positionColor(player.position) }]}>

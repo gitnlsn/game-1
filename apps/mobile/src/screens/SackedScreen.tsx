@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { managedClub } from '@eleven-deep/engine';
@@ -19,6 +20,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  */
 export function SackedScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { career, abandonCareer } = useGame();
 
   const record = useMemo(() => {
@@ -95,7 +97,7 @@ export function SackedScreen() {
         </Card>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
         <Button
           label="Start a new career"
           onPress={() => {

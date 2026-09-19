@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -56,6 +57,7 @@ const REJECTION: Record<BidRejection, string> = {
 
 export function TransfersScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { career, version, refresh } = useGame();
   const [tab, setTab] = useState<Tab>('offers');
   const [position, setPosition] = useState<string>('any');
@@ -126,7 +128,10 @@ export function TransfersScreen() {
         <ChipRow options={TABS} value={tab} onChange={setTab} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: spacing.xl * 2 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         {message ? (
           <Card style={styles.message}>
             <Text style={styles.messageText}>{message}</Text>

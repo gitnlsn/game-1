@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   CAREER_DEFAULTS,
   allClubs,
@@ -50,10 +51,16 @@ export function NewCareerScreen() {
     [world],
   );
 
+  // No navigator header here: this screen owns its own edge-to-edge insets.
+  const insets = useSafeAreaInsets();
+
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: spacing.lg + insets.top, paddingBottom: spacing.xl * 2 + insets.bottom },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       <Text style={textStyles.title}>Take charge</Text>

@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -80,6 +81,7 @@ function reslot(career: Career, sheet: TeamSheet, formation: string): TeamSheet 
 
 export function TeamSelectionScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { career, busy, playRound, refresh, settings, startLive } = useGame();
 
   const [sheet, setSheet] = useState<TeamSheet | undefined>(() =>
@@ -292,7 +294,7 @@ export function TeamSelectionScreen() {
         ))}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}>
         <Text style={styles.footerNote}>
           {selected
             ? 'Tap a player to swap'

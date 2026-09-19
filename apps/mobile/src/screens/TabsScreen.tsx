@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ClubScreen } from './ClubScreen';
 import { SquadScreen } from './SquadScreen';
 import { TableScreen } from './TableScreen';
@@ -17,9 +18,12 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 
 export function TabsScreen() {
   const [tab, setTab] = useState<TabKey>('club');
+  // The app draws edge to edge, so the status bar and the system navigation
+  // bar are ours to keep clear of.
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.screen}>
         {tab === 'club' ? (
           <ClubScreen />
@@ -32,7 +36,7 @@ export function TabsScreen() {
         )}
       </View>
 
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { paddingBottom: TAB_BAR_PADDING + insets.bottom }]}>
         {TABS.map((item) => {
           const active = item.key === tab;
           return (
@@ -56,6 +60,8 @@ export function TabsScreen() {
   );
 }
 
+const TAB_BAR_PADDING = 6;
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   screen: { flex: 1 },
@@ -64,8 +70,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
-    paddingTop: 6,
-    paddingBottom: 6,
+    paddingTop: TAB_BAR_PADDING,
   },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 4 },
   tabIcon: { fontSize: 17, color: colors.faint },

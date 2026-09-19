@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, ChipRow, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, spacing } from '../theme';
@@ -13,10 +14,14 @@ const MATCH_MODES = [
 
 export function SettingsScreen() {
   const { settings, updateSettings, abandonCareer } = useGame();
+  const insets = useSafeAreaInsets();
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.lg + insets.bottom }]}
+    >
       <SectionTitle>Matches</SectionTitle>
       <Card>
         <ChipRow

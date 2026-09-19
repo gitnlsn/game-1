@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { formatMoney, isSacked, managedLeague } from '@eleven-deep/engine';
@@ -12,6 +13,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function SeasonSummaryScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { career, busy, beginNextSeason } = useGame();
 
   // Read the season just finished out of the career rather than carrying it as a
@@ -149,7 +151,7 @@ export function SeasonSummaryScreen() {
         </ScrollView>
 
         {sacked ? (
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
             <Button
               label="See the board's decision"
               variant="danger"
@@ -157,7 +159,7 @@ export function SeasonSummaryScreen() {
             />
           </View>
         ) : (
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
             <Button
               label="Transfer window"
               onPress={() => navigation.navigate('transfers')}

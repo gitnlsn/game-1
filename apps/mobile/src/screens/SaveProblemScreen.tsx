@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -17,10 +18,18 @@ const EXPLANATION = {
  */
 export function SaveProblemScreen() {
   const { saveProblem, dismissSaveProblem } = useGame();
+  // No navigator header here: this screen owns its own edge-to-edge insets.
+  const insets = useSafeAreaInsets();
   if (!saveProblem) return null;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: spacing.xl * 2 + insets.top, paddingBottom: spacing.lg + insets.bottom },
+      ]}
+    >
       <Text style={styles.title}>Your save could not be opened</Text>
       <Card style={styles.card}>
         <Text style={styles.message}>{EXPLANATION[saveProblem.kind]}</Text>

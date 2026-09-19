@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,6 +21,7 @@ const REPLAY_DURATION_MS = 6000;
 
 export function MatchScreen({ route }: Props) {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { career, settings } = useGame();
   const { round } = route.params;
 
@@ -173,7 +175,7 @@ export function MatchScreen({ route }: Props) {
         </Card>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
         {finished ? (
           <Button label="Continue" onPress={() => navigation.navigate('tabs')} />
         ) : (

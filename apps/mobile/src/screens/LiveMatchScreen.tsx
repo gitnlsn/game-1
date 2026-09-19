@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -33,6 +34,7 @@ const MS_PER_MINUTE = 70;
  */
 export function LiveMatchScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { career, live, endLive } = useGame();
 
   const [minute, setMinute] = useState(0);
@@ -218,7 +220,7 @@ export function LiveMatchScreen() {
         )}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
         {done ? (
           <Button label="Full time" onPress={finish} />
         ) : panel === 'none' ? (
