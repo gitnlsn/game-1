@@ -43,6 +43,15 @@ interface GameContextValue {
   loading: boolean;
   busy: boolean;
   settings: Settings;
+  /**
+   * True once the manager has come through the title screen into a live
+   * career. It decides which screen set is mounted.
+   */
+  started: boolean;
+  /** Enter the saved career from the title screen. */
+  continueCareer: () => void;
+  /** Leave a career for the title screen without deleting anything. */
+  returnToTitle: () => void;
   newCareer: (seed: string, managedClubId: string) => void;
   playRound: () => Promise<RoundOutcome | undefined>;
   finishSeason: () => Promise<SeasonSummary | undefined>;
@@ -103,6 +112,15 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [saveProblem, setSaveProblem] = useState<SaveProblem | undefined>();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [live, setLive] = useState<LiveMatch | undefined>();
+  const [resumed, setResumed] = useState(false);
+
+  /*
+   * Derived, not stored: the invariant "started implies there is a career" is
+   * enforced here once rather than at every call site that clears one. It is
+   * also why `abandonCareer` needs no line of its own -- dropping the career
+   * drops you back to the title by arithmetic.
+   */
+  const started = resumed && career !== undefined;
 
   // Restore a save on launch.
   useEffect(() => {
@@ -130,10 +148,27 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     saveCareer(AsyncStorage, next).catch((error) => console.warn('Could not save', error));
   }, []);
 
+  const continueCareer = useCallback(() => setResumed(true), []);
+
+  /*
+   * Costs nothing and flushes nothing: saving is save-on-action, so the career
+   * on disk is already current. The one exception is a match being watched --
+   * `beginLiveMatch` plays the rest of the round in memory without saving, so
+   * walking out mid-match would leave the season a round ahead of its save.
+   * Unreachable today, since the live screen has no back button and Settings
+   * is only on the Club tab, but the failure it prevents is a corrupted round.
+   */
+  const returnToTitle = useCallback(() => {
+    if (live) return;
+    setResumed(false);
+  }, [live]);
+
   const newCareer = useCallback(
     (seed: string, managedClubId: string) => {
       const next = startCareer({ seed, managedClubId });
       setCareer(next);
+      // Picking a club is the same decision as pressing Continue.
+      setResumed(true);
       setVersion((v) => v + 1);
       persist(next);
     },
@@ -217,6 +252,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return result;
   }, [career, live, persist]);
 
+  /*
+   * No `setResumed(false)` here on purpose: `started` is derived from whether
+   * a career exists, so clearing one lands you back on the title screen by
+   * itself. A second flag here would look load-bearing and would not be.
+   */
   const abandonCareer = useCallback(() => {
     setCareer(undefined);
     setLive(undefined);
@@ -245,11 +285,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       career, version, loading, busy, saveProblem, settings, live, startLive, endLive,
       windowOpen: !!career && !!transferWindow(career),
       sacked: !!career && isSacked(career),
+      started, continueCareer, returnToTitle,
       newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
       dismissSaveProblem, updateSettings, refresh,
     }),
     [
       career, version, loading, busy, saveProblem, settings, live, startLive, endLive,
+      started, continueCareer, returnToTitle,
       newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
       dismissSaveProblem, updateSettings, refresh,
     ],

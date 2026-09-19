@@ -18,10 +18,18 @@ import { NewCareerScreen } from './src/screens/NewCareerScreen';
 import { SaveProblemScreen } from './src/screens/SaveProblemScreen';
 import { SackedScreen } from './src/screens/SackedScreen';
 import { LiveMatchScreen } from './src/screens/LiveMatchScreen';
+import { TitleScreen } from './src/screens/TitleScreen';
 import type { RootStackParamList } from './src/nav/routes';
 import { colors } from './src/theme';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const screenOptions = {
+  headerStyle: { backgroundColor: colors.surface },
+  headerTintColor: colors.text,
+  headerTitleStyle: { fontSize: 16, fontWeight: '700' as const },
+  contentStyle: { backgroundColor: colors.bg },
+};
 
 const navTheme: Theme = {
   ...DarkTheme,
@@ -36,7 +44,7 @@ const navTheme: Theme = {
 };
 
 function Game() {
-  const { career, loading, saveProblem } = useGame();
+  const { loading, saveProblem, started } = useGame();
 
   if (loading) {
     return (
@@ -47,19 +55,39 @@ function Game() {
     );
   }
 
-  // A save that could not be read is explained, not silently discarded.
+  /*
+   * Ahead of the menu on purpose. A save that could not be read is explained,
+   * not silently discarded -- and if the title screen came first, it would
+   * appear with the Continue card quietly missing and no account of where the
+   * career went.
+   */
   if (saveProblem) return <SaveProblemScreen />;
-  if (!career) return <NewCareerScreen />;
+
+  /*
+   * One navigator, two screen sets, only ever one of them mounted. Their route
+   * names are disjoint (see `nav/routes.ts`), so flipping `started` resets
+   * navigation rather than stranding it on a route that exists in both.
+   */
+  if (!started) {
+    return (
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen name="title" component={TitleScreen} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="newCareer"
+          component={NewCareerScreen}
+          options={{ title: 'New career' }}
+        />
+        <Stack.Screen
+          name="menuSettings"
+          component={SettingsScreen}
+          options={{ title: 'Settings' }}
+        />
+      </Stack.Navigator>
+    );
+  }
 
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontSize: 16, fontWeight: '700' },
-        contentStyle: { backgroundColor: colors.bg },
-      }}
-    >
+    <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="tabs" component={TabsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="player" component={PlayerScreen} options={{ title: 'Player' }} />
       <Stack.Screen

@@ -51,7 +51,8 @@ export function NewCareerScreen() {
     [world],
   );
 
-  // No navigator header here: this screen owns its own edge-to-edge insets.
+  // Pushed from the title screen, so the navigator supplies the header and the
+  // top inset with it. The bottom is still ours: the app draws edge to edge.
   const insets = useSafeAreaInsets();
 
   return (
@@ -59,7 +60,7 @@ export function NewCareerScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: spacing.lg + insets.top, paddingBottom: spacing.xl * 2 + insets.bottom },
+        { paddingBottom: spacing.xl * 2 + insets.bottom },
       ]}
       showsVerticalScrollIndicator={false}
     >

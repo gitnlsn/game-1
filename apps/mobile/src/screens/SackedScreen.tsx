@@ -1,15 +1,11 @@
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { managedClub } from '@eleven-deep/engine';
 import { Button, Card, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
+import { ordinal } from '../format';
 import { useGame } from '../game/GameContext';
-import type { RootStackParamList } from '../nav/routes';
-
-type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * The end of a career.
@@ -19,7 +15,6 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * of it away at the moment it is most worth reading.
  */
 export function SackedScreen() {
-  const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { career, abandonCareer } = useGame();
 
@@ -98,21 +93,15 @@ export function SackedScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
-        <Button
-          label="Start a new career"
-          onPress={() => {
-            abandonCareer();
-            navigation.replace('tabs');
-          }}
-        />
+        {/*
+          * Just the one call: abandoning unmounts the whole game screen set,
+          * so the navigate that used to follow it was dispatching onto routes
+          * that were about to stop existing.
+          */}
+        <Button label="Back to the main menu" onPress={abandonCareer} />
       </View>
     </View>
   );
-}
-
-function ordinal(n: number): string {
-  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
-  return `${n}${suffix}`;
 }
 
 const styles = StyleSheet.create({

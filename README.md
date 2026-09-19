@@ -22,7 +22,7 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 153 tests (engine + app)
+pnpm test                               # 254 tests (engine + app)
 pnpm typecheck
 pnpm calibrate                          # fails if any benchmark has drifted
 ```
@@ -39,8 +39,17 @@ React Navigation stack, so player detail, team selection, the match and the seas
 review are all pushed screens with proper back behaviour.
 
 Pick a club, **pick your team**, play the season a round at a time, and watch the
-squad age around you. Careers save to device storage after every round and resume
-on launch.
+squad age around you. Careers save to device storage after every round.
+
+**It opens on a title screen**, every launch. There is one save, and Continue is
+one tap — but it carries the club, the division, where you are in the table and
+what you are being asked to do next, so you know what you are walking back into
+before you walk into it. A career is hours of someone's time; dropping them
+straight into it gave them no way to leave it on purpose, which is why abandoning
+one used to be buried in the settings of the very career you were trying to
+leave. Starting a new one now happens out here, and — this is the part worth
+getting right — **nothing is deleted until you pick a new club.** Backing out of
+the club picker costs you nothing.
 
 **Team selection** is the screen the rest of it exists for: a formation picker,
 the eleven laid out by line, tap-one-then-another to swap, the rest of the squad
@@ -395,7 +404,7 @@ twice in one "round".
 
 ## Tests and CI
 
-`pnpm test` runs both packages: 233 engine tests and 12 app tests. `pnpm calibrate`
+`pnpm test` runs both packages: 233 engine tests and 21 app tests. `pnpm calibrate`
 runs the real harnesses -- match, economy, tactics and pyramid -- and **exits non-zero if any benchmark has drifted or any setting has become dominant**, so CI
 gates on calibration rather than only on tests — the two catch different things,
 and the economy once failed on its own default seed while the suite stayed green.

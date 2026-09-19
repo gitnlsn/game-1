@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Card, ChipRow, SectionTitle } from '../components/ui';
+import { Button, Card, ChipRow, Divider, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -13,7 +13,8 @@ const MATCH_MODES = [
 ];
 
 export function SettingsScreen() {
-  const { settings, updateSettings, abandonCareer } = useGame();
+  const { settings, updateSettings, abandonCareer, career, started, live, returnToTitle } =
+    useGame();
   const insets = useSafeAreaInsets();
   const [confirming, setConfirming] = useState(false);
 
@@ -38,18 +39,38 @@ export function SettingsScreen() {
         </Text>
       </Card>
 
-      <SectionTitle>Career</SectionTitle>
-      <Card>
-        <Text style={styles.warning}>
-          Abandoning deletes this career permanently. There is only one save.
-        </Text>
-        <Button
-          label="Abandon career"
-          variant="danger"
-          onPress={() => setConfirming(true)}
-          style={styles.action}
-        />
-      </Card>
+      {/* Reached from the title screen too, where there may be no career to
+        * abandon and nothing to go back to. */}
+      {career ? (
+        <>
+          <SectionTitle>Career</SectionTitle>
+          <Card>
+            {started && !live ? (
+              <>
+                <Text style={styles.note}>
+                  The game saves after every action, so leaving now costs you nothing.
+                </Text>
+                <Button
+                  label="Main menu"
+                  variant="secondary"
+                  onPress={returnToTitle}
+                  style={styles.action}
+                />
+                <Divider style={styles.divider} />
+              </>
+            ) : null}
+            <Text style={styles.warning}>
+              Abandoning deletes this career permanently. There is only one save.
+            </Text>
+            <Button
+              label="Abandon career"
+              variant="danger"
+              onPress={() => setConfirming(true)}
+              style={styles.action}
+            />
+          </Card>
+        </>
+      ) : null}
 
       <ConfirmDialog
         visible={confirming}
@@ -73,4 +94,5 @@ const styles = StyleSheet.create({
   note: { color: colors.muted, fontSize: 12, marginTop: spacing.sm, lineHeight: 17 },
   warning: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   action: { marginTop: spacing.md },
+  divider: { marginVertical: spacing.md },
 });

@@ -27,16 +27,11 @@ import {
 import { Badge, Button, Card, Divider, KeyValue, SectionTitle, StatTile, textStyles } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, spacing } from '../theme';
+import { ordinal } from '../format';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-const ORDINAL_SUFFIX = ['th', 'st', 'nd', 'rd'];
-function ordinal(n: number): string {
-  const v = n % 100;
-  return `${n}${ORDINAL_SUFFIX[(v - 20) % 10] ?? ORDINAL_SUFFIX[v] ?? ORDINAL_SUFFIX[0]}`;
-}
 
 /** W/D/L from the managed club's point of view. */
 function outcomeFor(result: MatchResult, clubId: string): 'W' | 'D' | 'L' {

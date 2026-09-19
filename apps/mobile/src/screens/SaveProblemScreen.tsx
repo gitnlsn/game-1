@@ -38,7 +38,9 @@ export function SaveProblemScreen() {
           It has been kept aside rather than deleted, so a later version may still be able to read
           it.
         </Text>
-        <Button label="Start a new career" onPress={dismissSaveProblem} style={styles.action} />
+        {/* The title screen, not the club picker: with the save quarantined
+          * there is no career, so it will offer starting one and nothing else. */}
+        <Button label="Go to the main menu" onPress={dismissSaveProblem} style={styles.action} />
       </Card>
     </ScrollView>
   );
