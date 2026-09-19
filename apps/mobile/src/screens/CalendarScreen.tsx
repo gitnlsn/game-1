@@ -1,15 +1,20 @@
 import React, { useMemo } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { Badge, Card, Divider, OutcomeDot, SectionTitle } from '../components/ui';
+import { Badge, Card, Divider, OutcomeDot } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import {
   seasonCalendar,
   type CalendarEntry,
   type CalendarScore,
-  type SeasonCalendar,
   type WindowBand,
 } from '../game/calendar';
+
+/*
+ * The season, club and matchday this view used to head itself with are in the
+ * `SeasonScreen` header now, one row above. Repeating them here would have cost
+ * a row of fixtures to say the same thing twice.
+ */
 
 /**
  * Every row is the same height, which is what lets `getItemLayout` place the
@@ -43,12 +48,6 @@ export function CalendarScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerArea}>
-        <SectionTitle right={<Text style={styles.progress}>{progressLabel(calendar)}</Text>}>
-          {`Season ${calendar.season} · ${calendar.clubName}`}
-        </SectionTitle>
-      </View>
-
       <Card style={styles.listCard}>
         <FlatList
           data={calendar.entries}
@@ -68,12 +67,6 @@ export function CalendarScreen() {
       </Card>
     </View>
   );
-}
-
-function progressLabel(calendar: SeasonCalendar): string {
-  if (calendar.window.open) return 'Window open';
-  if (calendar.currentMatchday === undefined) return 'Season complete';
-  return `Matchday ${calendar.currentMatchday} of ${calendar.totalRounds}`;
 }
 
 function Row({ entry, current }: { entry: CalendarEntry; current: boolean }) {
@@ -241,13 +234,14 @@ function scoreSentence(entry: CalendarEntry): string {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  headerArea: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
-  progress: { color: colors.faint, fontSize: 11, fontVariant: ['tabular-nums'] },
   listCard: {
     flex: 1,
     padding: 0,
     overflow: 'hidden',
     marginHorizontal: spacing.lg,
+    // The header this view used to own supplied this gap; the view switcher
+    // above it does not.
+    marginTop: spacing.md,
     marginBottom: spacing.lg,
   },
   row: {

@@ -1,8 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { divisionTables, managedLeague } from '@eleven-deep/engine';
-import { ChipRow, Segmented } from '../components/ui';
+import {
+  divisionTables,
+  isSeasonComplete,
+  managedLeague,
+  transferWindow,
+  type Career,
+} from '@eleven-deep/engine';
+import { ChipRow, ScreenHeader, Segmented } from '../components/ui';
 import { colors, spacing } from '../theme';
+import { ordinal } from '../format';
 import { useGame } from '../game/GameContext';
 import { TableScreen } from './TableScreen';
 import { CalendarScreen } from './CalendarScreen';
@@ -41,8 +48,33 @@ export function SeasonScreen() {
 
   const showTiers = view === 'table' && divisions.length > 1;
 
+  /*
+   * The metrics describe the division on screen, not your own -- browsing
+   * another tier and being shown your position in a table you are not looking
+   * at would be a number attached to nothing. Your own row simply goes to a
+   * dash down there.
+   */
+  const shownTable = shown?.table ?? [];
+  const ownIndex = shownTable.findIndex((r) => r.clubId === career.managedClubId);
+
   return (
     <View style={styles.container}>
+      <View style={styles.headerArea}>
+        <ScreenHeader
+          title="Season"
+          subtitle={
+            view === 'table'
+              ? 'Green is a promotion place, red is the drop.'
+              : 'Your matchdays in order, with the transfer window.'
+          }
+          metrics={[
+            { label: 'Matchday', value: matchdayLabel(career) },
+            { label: 'Leader', value: shownTable[0]?.clubName ?? '—', name: true },
+            { label: 'You', value: ownIndex >= 0 ? ordinal(ownIndex + 1) : '—' },
+          ]}
+        />
+      </View>
+
       <View style={styles.selectors}>
         <Segmented options={VIEWS} value={view} onChange={setView} />
         {showTiers ? (
@@ -66,14 +98,25 @@ export function SeasonScreen() {
   );
 }
 
+/**
+ * Reads the same three states the calendar's own progress label used to, before
+ * that header was folded into this one: a season still running, one played out,
+ * and the window between them.
+ */
+function matchdayLabel(career: Career): string {
+  if (transferWindow(career) !== undefined) return 'Window open';
+  if (isSeasonComplete(career)) return 'Complete';
+  return `${career.season.nextRound} of ${career.season.totalRounds}`;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  headerArea: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   selectors: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
     // Wraps rather than overflowing: a pyramid deeper than two divisions puts
     // more chips on the right than a narrow phone can sit beside the view.
     flexWrap: 'wrap',

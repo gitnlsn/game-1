@@ -24,7 +24,7 @@ import {
   type Career,
   type MatchResult,
 } from '@eleven-deep/engine';
-import { Badge, Button, Card, Divider, KeyValue, OutcomeDot, SectionTitle, StatTile, textStyles } from '../components/ui';
+import { Badge, Button, Card, Divider, KeyValue, OutcomeDot, ScreenHeader, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, spacing } from '../theme';
 import { ordinal } from '../format';
@@ -66,6 +66,12 @@ export function ClubScreen() {
   // alphabetically. Showing a position then is meaningless.
   const seasonStarted = (row?.played ?? 0) > 0;
   const injured = club.squad.filter((p) => !isAvailable(p)).length;
+  /*
+   * Every club plays every other home and away. Not `season.totalRounds`, which
+   * counts matchdays -- with a cup those run past the end of the league
+   * programme, and the tile would read 30/42 in a 20-club division.
+   */
+  const leagueMatches = (managedLeague(career).clubs.length - 1) * 2;
   const squadValue = club.squad.reduce((sum, p) => sum + marketValue(p), 0);
 
   return (
@@ -74,45 +80,41 @@ export function ClubScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={textStyles.title} numberOfLines={1}>
-            {club.name}
-          </Text>
-          <Text style={textStyles.subtitle}>
-            Season {career.world.season} · {club.city} · Reputation {club.reputation}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => navigation.navigate('settings')}
-          accessibilityRole="button"
-          accessibilityLabel="Settings"
-          style={styles.gear}
-        >
-          <Text style={styles.gearIcon}>⚙</Text>
-        </Pressable>
-        <View style={styles.positionBox}>
-          <Text style={styles.positionValue}>{seasonStarted ? ordinal(position) : '—'}</Text>
-          <Text style={styles.positionLabel}>
-            {seasonStarted ? `${row?.points ?? 0} pts` : 'not started'}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.tiles}>
-        <StatTile label="Played" value={`${row?.played ?? 0}/38`} />
-        <View style={styles.tileGap} />
-        <StatTile
-          label="Record"
-          value={`${row?.won ?? 0}-${row?.drawn ?? 0}-${row?.lost ?? 0}`}
-        />
-        <View style={styles.tileGap} />
-        <StatTile
-          label="Goal diff"
-          value={row ? (row.goalDifference > 0 ? `+${row.goalDifference}` : `${row.goalDifference}`) : '0'}
-          tint={(row?.goalDifference ?? 0) >= 0 ? colors.accent : colors.danger}
-        />
-      </View>
+      <ScreenHeader
+        title={club.name}
+        subtitle="Your next match, recent form and how the board sees you."
+        right={
+          <>
+            <Pressable
+              onPress={() => navigation.navigate('settings')}
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              style={styles.gear}
+            >
+              <Text style={styles.gearIcon}>⚙</Text>
+            </Pressable>
+            <View style={styles.positionBox}>
+              <Text style={styles.positionValue}>{seasonStarted ? ordinal(position) : '—'}</Text>
+              <Text style={styles.positionLabel}>
+                {seasonStarted ? `${row?.points ?? 0} pts` : 'not started'}
+              </Text>
+            </View>
+          </>
+        }
+        metrics={[
+          { label: 'Played', value: `${row?.played ?? 0}/${leagueMatches}` },
+          { label: 'Record', value: `${row?.won ?? 0}-${row?.drawn ?? 0}-${row?.lost ?? 0}` },
+          {
+            label: 'Goal diff',
+            value: row
+              ? row.goalDifference > 0
+                ? `+${row.goalDifference}`
+                : `${row.goalDifference}`
+              : '0',
+            tint: (row?.goalDifference ?? 0) >= 0 ? colors.accent : colors.danger,
+          },
+        ]}
+      />
 
       {/*
         * Reached on relaunch as much as on the day it happens: without this a
@@ -298,6 +300,10 @@ export function ClubScreen() {
         <KeyValue label="Squad value" value={formatMoney(squadValue)} />
         <KeyValue label="Wage bill" value={`${formatMoney(effectiveWageBill(career.world, club))}/wk`} />
         <Divider />
+        <KeyValue label="Season" value={`${career.world.season}`} />
+        <KeyValue label="City" value={club.city} />
+        <KeyValue label="Reputation" value={`${club.reputation}`} />
+        <Divider />
         <KeyValue label="Squad size" value={`${club.squad.length}`} />
         <KeyValue
           label="Unavailable"
@@ -406,8 +412,6 @@ function HistoryCard({ career }: { career: Career }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
-  header: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.md },
-  headerText: { flex: 1, marginRight: spacing.sm },
   positionBox: { alignItems: 'flex-end' },
   positionValue: {
     color: colors.text,
@@ -416,8 +420,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   positionLabel: { color: colors.muted, fontSize: 11, fontWeight: '600' },
-  tiles: { flexDirection: 'row', marginBottom: spacing.lg },
-  tileGap: { width: spacing.sm },
   matchCard: { marginBottom: spacing.lg },
   roundLabel: { color: colors.faint, fontSize: 11, fontWeight: '600' },
   fixtureRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

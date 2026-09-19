@@ -33,19 +33,83 @@ export function StatTile({
   label,
   value,
   tint,
+  name,
 }: {
   label: string;
   value: string;
   tint?: string;
+  /**
+   * The value is a name rather than a figure. Club names run to eighteen
+   * characters here, and a third of a phone's width fits about nine of them at
+   * the figure size -- so a name gets a smaller type and a second line instead
+   * of being cut off mid-word.
+   */
+  name?: boolean;
 }) {
   return (
     <View style={styles.statTile}>
       <Text style={styles.statLabel} numberOfLines={1}>
         {label}
       </Text>
-      <Text style={[styles.statValue, tint ? { color: tint } : null]} numberOfLines={1}>
+      <Text
+        style={[styles.statValue, name ? styles.statValueName : null, tint ? { color: tint } : null]}
+        numberOfLines={name ? 2 : 1}
+      >
         {value}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * The standing head of a tab: what the screen is, what it is for, and the
+ * numbers that summarise whatever is underneath it.
+ *
+ * It does not scroll away. That is a real cost -- a pinned header is list height
+ * you never get back -- and it is the reason the subtitle is one sentence and
+ * the metrics are one row. Where a screen already had a heading of its own, it
+ * gives it up to pay for this one rather than stacking two.
+ */
+export function ScreenHeader({
+  title,
+  subtitle,
+  right,
+  metrics,
+}: {
+  title: string;
+  subtitle: string;
+  right?: React.ReactNode;
+  metrics?: readonly { label: string; value: string; tint?: string; name?: boolean }[];
+}) {
+  return (
+    <View style={styles.screenHeader}>
+      <View style={styles.screenHeaderTop}>
+        <View style={styles.screenHeaderText}>
+          <Text style={textStyles.title} accessibilityRole="header" numberOfLines={1}>
+            {title}
+          </Text>
+          {/* Wraps to a second line rather than clamping: a truncated
+              explanation is worse than no explanation. */}
+          <Text style={styles.screenHeaderSubtitle}>{subtitle}</Text>
+        </View>
+        {right}
+      </View>
+
+      {metrics && metrics.length > 0 ? (
+        <View style={styles.screenHeaderMetrics}>
+          {metrics.map((metric, index) => (
+            <React.Fragment key={metric.label}>
+              {index > 0 ? <View style={styles.screenHeaderGap} /> : null}
+              <StatTile
+                label={metric.label}
+                value={metric.value}
+                tint={metric.tint}
+                name={metric.name}
+              />
+            </React.Fragment>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -355,6 +419,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontVariant: ['tabular-nums'],
   },
+  statValueName: { fontSize: 12, lineHeight: 15, marginTop: 3 },
+  screenHeader: { marginBottom: spacing.lg },
+  screenHeaderTop: { flexDirection: 'row', alignItems: 'flex-start' },
+  screenHeaderText: { flex: 1, marginRight: spacing.sm },
+  screenHeaderSubtitle: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 3 },
+  screenHeaderMetrics: { flexDirection: 'row', marginTop: spacing.md },
+  screenHeaderGap: { width: spacing.sm },
   chip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,

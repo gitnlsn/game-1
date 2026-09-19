@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text } from 'react-native';
 import {
   effectiveWageBill,
   leagueOf,
@@ -11,7 +11,7 @@ import {
   recordIncome,
   wageBill,
 } from '@eleven-deep/engine';
-import { Card, Divider, KeyValue, SectionTitle, StatTile } from '../components/ui';
+import { Card, Divider, KeyValue, ScreenHeader, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 
@@ -38,26 +38,27 @@ export function FinancesScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <SectionTitle>Position</SectionTitle>
-      <View style={styles.tiles}>
-        <StatTile
-          label="Balance"
-          value={formatMoney(finances.balance)}
-          tint={finances.balance >= 0 ? colors.accent : colors.danger}
-        />
-        <View style={styles.tileGap} />
-        <StatTile
-          label="Season net"
-          value={formatMoney(net)}
-          tint={net >= 0 ? colors.accent : colors.danger}
-        />
-        <View style={styles.tileGap} />
-        <StatTile
-          label="Wages / rev"
-          value={`${wageRatio.toFixed(0)}%`}
-          tint={wageRatio > 75 ? colors.danger : wageRatio > 65 ? colors.warn : colors.accent}
-        />
-      </View>
+      <ScreenHeader
+        title="Money"
+        subtitle="What the club earns, what it spends, and what the board will let you spend."
+        metrics={[
+          {
+            label: 'Balance',
+            value: formatMoney(finances.balance),
+            tint: finances.balance >= 0 ? colors.accent : colors.danger,
+          },
+          {
+            label: 'Season net',
+            value: formatMoney(net),
+            tint: net >= 0 ? colors.accent : colors.danger,
+          },
+          {
+            label: 'Wages / rev',
+            value: `${wageRatio.toFixed(0)}%`,
+            tint: wageRatio > 75 ? colors.danger : wageRatio > 65 ? colors.warn : colors.accent,
+          },
+        ]}
+      />
 
       <SectionTitle>This season</SectionTitle>
       <Card>
@@ -101,8 +102,6 @@ export function FinancesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
-  tiles: { flexDirection: 'row', marginBottom: spacing.lg },
-  tileGap: { width: spacing.sm },
   groupLabel: {
     color: colors.muted,
     fontSize: 11,

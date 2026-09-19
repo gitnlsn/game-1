@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   currentAbility,
   formatMoney,
+  isAvailable,
   managedClub,
   marketValue,
   scoutReport,
@@ -12,7 +13,7 @@ import {
   type Player,
   type PotentialEstimate,
 } from '@eleven-deep/engine';
-import { Badge, Card, SectionTitle } from '../components/ui';
+import { Badge, Card, ScreenHeader } from '../components/ui';
 import { colors, conditionColor, positionColor, radius, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
@@ -56,10 +57,36 @@ export function SquadScreen() {
 
   if (!club) return null;
 
+  // Cheap enough on a squad of ~25 to sit in the render, which is how the club
+  // screen counts its injuries too.
+  const unavailable = club.squad.filter((p) => !isAvailable(p)).length;
+  const averageAge = club.squad.length
+    ? club.squad.reduce((sum, p) => sum + p.age, 0) / club.squad.length
+    : 0;
+
   return (
     <View style={styles.container}>
       <View style={styles.headerArea}>
-        <SectionTitle>Squad · {club.squad.length} players</SectionTitle>
+        {/*
+          * Pinned above the list rather than scrolling with it, so every row of
+          * it is list height paid for on every scroll position. Hence one line
+          * of subtitle, not two.
+          */}
+        <ScreenHeader
+          title="Squad"
+          subtitle="Every player at the club — tap one for the full report."
+          metrics={[
+            { label: 'Players', value: `${club.squad.length}` },
+            { label: 'Avg age', value: averageAge.toFixed(1) },
+            {
+              label: 'Unavailable',
+              value: unavailable === 0 ? 'None' : `${unavailable}`,
+              // Same thresholds the club screen reads injuries on.
+              tint:
+                unavailable > 3 ? colors.danger : unavailable > 0 ? colors.warn : colors.accent,
+            },
+          ]}
+        />
         <View style={styles.sortRow}>
           {SORTS.map((option) => (
             <Pressable

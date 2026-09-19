@@ -34,9 +34,22 @@ pnpm mobile          # Expo dev server: scan the QR code with Expo Go
 pnpm mobile:web      # or run it in a browser
 ```
 
-Expo / React Native. Four tabs — **Club**, **Squad**, **Table**, **Money** — over a
+Expo / React Native. Four tabs — **Club**, **Squad**, **Season**, **Money** — over a
 React Navigation stack, so player detail, team selection, the match and the season
 review are all pushed screens with proper back behaviour.
+
+**Every tab heads itself the same way**: a large title, one sentence saying what the
+screen is for, and a row of tiles summarising what is below. Before this the only
+thing naming the screen you were on was a 10px label at the bottom of the phone.
+The sentence is held to what you cannot read off the screen itself — the table's
+subtitle says green is promotion and red is the drop, because nothing else ever said
+so — rather than restating the obvious, which is the same bar the note at the foot of
+the Money tab is written to. On Club and Money the header scrolls away with the
+content; on Squad and Season it is pinned above a list, which is list height paid for
+at every scroll position, and why those two get one line of subtitle instead of two.
+Where a view already had a heading of its own it gives it up rather than stack two:
+the fixtures list used to head itself with the season, the club and the matchday, and
+all three are in the tab header now.
 
 Pick a club, **pick your team**, play the season a round at a time, and watch the
 squad age around you. Careers save to device storage after every round.
