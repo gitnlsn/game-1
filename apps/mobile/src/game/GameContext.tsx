@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   advanceRound,
@@ -25,8 +33,19 @@ import {
   type SaveProblem,
   type Settings,
 } from './saves';
+import {
+  emptyLifetime,
+  endCareer as closeLifetimeCareer,
+  loadLifetime,
+  newCareerKey,
+  recordProgress,
+  sameLifetime,
+  saveLifetime,
+  type LifetimeRecord,
+} from './lifetime';
+import { submitLifetime } from './playGames';
 
-export type { SaveProblem, Settings };
+export type { SaveProblem, Settings, LifetimeRecord };
 
 export interface RoundOutcome {
   /** The managed club's match, if they played this round. */
@@ -80,6 +99,12 @@ interface GameContextValue {
   refresh: () => void;
   abandonCareer: () => void;
   updateSettings: (patch: Partial<Settings>) => void;
+  /**
+   * What the manager has done across every career, not just this one. Kept
+   * here because it has to be updated on the same beats the save is, and it
+   * is what the Play Games leaderboards are posted from.
+   */
+  lifetime: LifetimeRecord;
 }
 
 const GameContext = createContext<GameContextValue | undefined>(undefined);
@@ -113,6 +138,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [live, setLive] = useState<LiveMatch | undefined>();
   const [resumed, setResumed] = useState(false);
+  const [lifetime, setLifetime] = useState<LifetimeRecord>(emptyLifetime);
+
+  /*
+   * The totals are also held in a ref. The effect that folds a career's
+   * progress into them has to read the value it wrote on the previous render,
+   * and depending on the state would make every sync re-run the effect that
+   * caused it.
+   */
+  const lifetimeRef = useRef<LifetimeRecord>(lifetime);
+  /*
+   * Which career the totals are currently counting. Minted here rather than
+   * taken from the world: two careers can share a seed and a club, and the
+   * second one still has to count.
+   */
+  const careerKey = useRef<string | undefined>(undefined);
 
   /*
    * Derived, not stored: the invariant "started implies there is a career" is
@@ -129,6 +169,19 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       try {
         const loadedSettings = await loadSettings(AsyncStorage);
         if (!cancelled) setSettings(loadedSettings);
+
+        /*
+         * Ahead of the career, so the sync effect below never runs against an
+         * empty record -- banking a career's progress onto zeroes and then
+         * having the load overwrite it would lose exactly one session's worth
+         * of matches every launch.
+         */
+        const loadedLifetime = await loadLifetime(AsyncStorage);
+        if (!cancelled) {
+          lifetimeRef.current = loadedLifetime;
+          careerKey.current = loadedLifetime.current?.key;
+          setLifetime(loadedLifetime);
+        }
 
         const result = await loadCareer(AsyncStorage);
         if (cancelled) return;
@@ -148,6 +201,28 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     saveCareer(AsyncStorage, next).catch((error) => console.warn('Could not save', error));
   }, []);
 
+  /*
+   * Folds whatever has happened into the lifetime totals and posts them.
+   *
+   * Driven off `version` rather than called from each action, so there is one
+   * place that can forget to do it rather than eight. `recordProgress` works in
+   * deltas and is idempotent, which is what makes running it on every render
+   * pass safe -- and `loading` gates it so it cannot run before the stored
+   * totals have arrived.
+   */
+  useEffect(() => {
+    if (loading || !career) return;
+
+    careerKey.current ??= newCareerKey();
+    const next = recordProgress(lifetimeRef.current, careerKey.current, career);
+    if (sameLifetime(next, lifetimeRef.current)) return;
+
+    lifetimeRef.current = next;
+    setLifetime(next);
+    saveLifetime(AsyncStorage, next).catch(() => {});
+    submitLifetime(next);
+  }, [career, version, loading]);
+
   const continueCareer = useCallback(() => setResumed(true), []);
 
   /*
@@ -166,6 +241,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const newCareer = useCallback(
     (seed: string, managedClubId: string) => {
       const next = startCareer({ seed, managedClubId });
+      // A new career counts from its own zero, whatever the last one did.
+      careerKey.current = newCareerKey();
       setCareer(next);
       // Picking a club is the same decision as pressing Continue.
       setResumed(true);
@@ -262,6 +339,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setLive(undefined);
     setVersion((v) => v + 1);
     clearCareer(AsyncStorage).catch(() => {});
+
+    /*
+     * The totals survive the save being deleted -- that is the whole point of
+     * them living in their own key. Only the delta bookkeeping is dropped, and
+     * with it the run at this club: getting sacked is what ends a streak.
+     */
+    const ended = closeLifetimeCareer(lifetimeRef.current);
+    lifetimeRef.current = ended;
+    careerKey.current = undefined;
+    setLifetime(ended);
+    saveLifetime(AsyncStorage, ended).catch(() => {});
   }, []);
 
   const refresh = useCallback(() => {
@@ -287,13 +375,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       sacked: !!career && isSacked(career),
       started, continueCareer, returnToTitle,
       newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
-      dismissSaveProblem, updateSettings, refresh,
+      dismissSaveProblem, updateSettings, refresh, lifetime,
     }),
     [
       career, version, loading, busy, saveProblem, settings, live, startLive, endLive,
       started, continueCareer, returnToTitle,
       newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,
-      dismissSaveProblem, updateSettings, refresh,
+      dismissSaveProblem, updateSettings, refresh, lifetime,
     ],
   );
 

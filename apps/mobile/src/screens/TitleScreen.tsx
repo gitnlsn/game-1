@@ -9,12 +9,14 @@ import { colors, spacing } from '../theme';
 import { ordinal } from '../format';
 import { useGame } from '../game/GameContext';
 import { careerSummary, type CareerSummary, type NextUp } from '../game/summary';
+import { playGamesAvailable, showLeaderboards } from '../game/playGames';
+import type { LifetimeRecord } from '../game/lifetime';
 import type { MenuStackParamList } from '../nav/routes';
 
 type Nav = NativeStackNavigationProp<MenuStackParamList>;
 
 export function TitleScreen() {
-  const { career, continueCareer } = useGame();
+  const { career, continueCareer, lifetime } = useGame();
   const navigation = useNavigation<Nav>();
   const [confirming, setConfirming] = useState(false);
   // No navigator header here: this screen owns its own edge-to-edge insets.
@@ -45,12 +47,34 @@ export function TitleScreen() {
         onPress={() => (summary ? setConfirming(true) : navigation.navigate('newCareer'))}
         style={styles.action}
       />
+      {/*
+        * Android with Play Games configured, and nothing anywhere else: this
+        * app is developed against react-native-web, and a button that could
+        * only ever do nothing is worse than no button.
+        */}
+      {playGamesAvailable() ? (
+        <Button
+          label="Leaderboards"
+          variant="secondary"
+          onPress={() => void showLeaderboards()}
+          style={styles.action}
+        />
+      ) : null}
       <Button
         label="Settings"
         variant="secondary"
         onPress={() => navigation.navigate('menuSettings')}
         style={styles.action}
       />
+
+      {/*
+        * The same three numbers the leaderboards rank, shown here because they
+        * are the manager's record across every career and the title screen is
+        * the only place that is about more than the current one. Shown on every
+        * platform: the totals are kept regardless of whether Google is there to
+        * receive them.
+        */}
+      <Record lifetime={lifetime} />
 
       {/*
         * Nothing is deleted here. Starting a career is what overwrites the one
@@ -75,6 +99,19 @@ export function TitleScreen() {
         onCancel={() => setConfirming(false)}
       />
     </ScrollView>
+  );
+}
+
+function Record({ lifetime }: { lifetime: LifetimeRecord }) {
+  // Nothing to boast about yet, and a row of zeroes reads as a bug.
+  if (lifetime.matches === 0) return null;
+
+  return (
+    <Text style={styles.record}>
+      {lifetime.matches} {lifetime.matches === 1 ? 'match' : 'matches'} ·{' '}
+      {lifetime.seasons} {lifetime.seasons === 1 ? 'season' : 'seasons'}
+      {lifetime.longestRun > 0 ? ` · best run ${lifetime.longestRun}` : ''}
+    </Text>
   );
 }
 
@@ -190,4 +227,11 @@ const styles = StyleSheet.create({
   nextLine: { color: colors.text, fontSize: 13, marginTop: spacing.xs, lineHeight: 18 },
   nextOver: { color: colors.danger },
   action: { marginTop: spacing.sm },
+  record: {
+    color: colors.faint,
+    fontSize: 11,
+    marginTop: spacing.lg,
+    textAlign: 'center',
+    letterSpacing: 0.4,
+  },
 });

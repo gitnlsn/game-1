@@ -9,6 +9,7 @@
     "build:engine": "pnpm --filter @eleven-deep/engine build",
     "mobile": "pnpm build:engine && pnpm --filter @eleven-deep/mobile exec expo start",
     "mobile:web": "pnpm build:engine && pnpm --filter @eleven-deep/mobile exec expo start --web",
+    "mobile:android": "pnpm build:engine && pnpm --filter @eleven-deep/mobile exec expo run:android",
     "calibrate": "pnpm --filter @eleven-deep/engine exec tsx src/cli.ts validate --seasons 25 && pnpm --filter @eleven-deep/engine exec tsx src/cli.ts economy --seasons 25 && pnpm --filter @eleven-deep/engine exec tsx src/cli.ts tactics --repeats 12 && pnpm --filter @eleven-deep/engine exec tsx src/cli.ts pyramid --seasons 20"
   },
   "pnpm": {

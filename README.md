@@ -22,7 +22,7 @@ pnpm sim squad    --club 2              # squad with abilities, values, wages
 pnpm sim career   --seasons 12          # year-by-year: champions, transfers, spend
 pnpm sim economy  --seasons 25          # multi-season economic health check
 
-pnpm test                               # 254 tests (engine + app)
+pnpm test                               # 284 tests (engine + app)
 pnpm typecheck
 pnpm calibrate                          # fails if any benchmark has drifted
 ```
@@ -415,9 +415,107 @@ stayed fit enough to play everything. The lever is a congested calendar, not mor
 competitions — and that is a change with a real UI cost, since a club would play
 twice in one "round".
 
+## Leaderboards
+
+Three Google Play Games leaderboards, and **no server anywhere**: Google hosts
+the boards, the client posts a number, and there is nothing of ours in between.
+
+- **Matches played** — every match the managed club has played, league and cup.
+- **Seasons played** — every season seen out.
+- **Longest run at one club** — the most seasons a single career has lasted.
+
+The first two are lifetime totals across *every* career; the third is the best
+single one. That split is the whole design. A career here is one club for its
+entire length — `managedClubId` is fixed at `startCareer` and there is no job
+market — so "seasons at this club" and "seasons in this career" are the same
+number, and three boards ranking two numbers would have been a waste of one.
+Counting the first two across careers makes them genuinely different things:
+two reward playing, the third rewards *not getting sacked*, and getting sacked
+is the only thing that ends a run.
+
+**The totals live in their own storage key**, `game1:lifetime:v1`, and not on
+the `Career`. Abandoning a career deletes the save, and a lifetime total that
+went with it would only ever have meant "this career" — which is precisely what
+the boards are not for.
+
+A few things that shaped `src/game/lifetime.ts`:
+
+- **The sync is a delta, and it is idempotent.** It runs on every mutation, off
+  the same `version` counter the screens re-render against, so there is one
+  place that can forget to count rather than eight. Syncing twice without a
+  match in between has to count nothing, and there is a test for it.
+- **Matches are counted off `season.results`, not the league table.** The table
+  is league only, and a cup run is matches played by any reading a player would
+  recognise.
+- **The season rollover is the trap.** `endSeason` banks the season while
+  leaving the finished `SeasonState` in place for the transfer window, and only
+  `startNextSeason` swaps in an empty one. Count matches off the season boundary
+  and the last season gets counted twice — 44 phantom matches a year. The sync
+  rebases when the results list *shrinks* instead, which is the moment the state
+  is actually replaced. That is the test worth having.
+- **An unrecognised career is adopted, not zeroed.** A save that predates all of
+  this gets its finished seasons banked in one go. Their cup matches are
+  unrecoverable — a `SeasonSummary` keeps tables and tables are league only — so
+  a backfilled total is slightly short. Short beats telling someone six seasons
+  of work never happened.
+
+### Where they show
+
+The **Options** tab lists all three boards, each with your number and your rank,
+and each tapping through to Google's own leaderboard UI for that board. The
+title screen carries a Leaderboards button and a one-line record beneath it.
+
+The split inside a row is deliberate: **the number is ours and the rank is
+Google's.** We hold the totals, so every row renders complete on the first
+frame, offline and signed out — only the rank arrives late, and only the rank
+can fail to arrive, in which case the row simply has no rank rather than an
+error. Reading ranks also uses a sign-in check that never *prompts*: opening
+the options tab must not put a Google sheet in front of someone. Asking is
+reserved for taps the player meant.
+
+Beyond that the standings are Google's UI, not ours. It already does the
+tabbing between boards, the daily/weekly/all-time spans, the friends filter and
+the avatars — none of which is reachable any other way, and all of which we
+would be rebuilding worse.
+
+### Wiring it up
+
+Android only, and optional even there. `apps/mobile/playgames.json` ships empty;
+`app.config.js` adds the Play Games config plugin **only once it holds a numeric
+app id**, because the plugin throws without one and wiring it in unconditionally
+would break every build — web and dev client included — until somebody pasted an
+id in. An unconfigured checkout builds exactly as it did before and the boards
+are inert. The button does not render, and `playGamesAvailable()` is false on
+web, on iOS and in Expo Go.
+
+```json
+{
+  "appId": "123456789012",
+  "leaderboards": {
+    "matches": "CgkI...",
+    "seasons": "CgkI...",
+    "longestRun": "CgkI..."
+  }
+}
+```
+
+Then in the Play Console, under **Play Games Services → Configuration**: create
+the PGS project, add an Android credential for the app, and **register the SHA-1
+of every keystore that will run it** — the EAS development, preview and upload
+keys, and the Play App Signing key. That last part is the one that bites: a
+fingerprint Google does not recognise fails sign-in *silently*, with no error the
+app can show. Create the three leaderboards, take their ids, and add yourself
+under **Testers** — none of it works from an unpublished build otherwise.
+
+**Scores are client-asserted.** There is no server-side validation and cannot be
+without the backend this deliberately does not have; a modified APK can post
+whatever it likes. The Play Console can reset a board or wipe one player's scores
+after the fact, and that is the whole of the defence. For three vanity counters
+on a single-player management sim, that is the right trade.
+
 ## Tests and CI
 
-`pnpm test` runs both packages: 233 engine tests and 21 app tests. `pnpm calibrate`
+`pnpm test` runs both packages: 233 engine tests and 51 app tests. `pnpm calibrate`
 runs the real harnesses -- match, economy, tactics and pyramid -- and **exits non-zero if any benchmark has drifted or any setting has become dominant**, so CI
 gates on calibration rather than only on tests — the two catch different things,
 and the economy once failed on its own default seed while the suite stayed green.

@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, ChipRow, Divider, ScreenHeader, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { LeaderboardsCard } from '../components/Leaderboards';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 
@@ -19,7 +20,7 @@ const MATCH_MODES = [
  * has one.
  */
 export function SettingsScreen({ header = false }: { header?: boolean }) {
-  const { settings, updateSettings, abandonCareer, career, started, live, returnToTitle } =
+  const { settings, updateSettings, abandonCareer, career, started, live, returnToTitle, lifetime } =
     useGame();
   const insets = useSafeAreaInsets();
   const [confirming, setConfirming] = useState(false);
@@ -51,6 +52,13 @@ export function SettingsScreen({ header = false }: { header?: boolean }) {
               : 'The full result appears straight away.'}
         </Text>
       </Card>
+
+      {/*
+        * Above Career on purpose. It is a record rather than a setting, and
+        * the section below it ends in a destructive button -- anything placed
+        * after that reads as an afterthought and gets scrolled past.
+        */}
+      <LeaderboardsCard lifetime={lifetime} />
 
       {/* Reached from the title screen too, where there may be no career to
         * abandon and nothing to go back to. */}
