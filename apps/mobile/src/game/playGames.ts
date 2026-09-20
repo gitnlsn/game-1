@@ -196,47 +196,71 @@ export async function loadRanks(): Promise<Ranks> {
 const lastSubmitted = new Map<Board, number>();
 
 /**
- * Posts the lifetime totals.
+ * The totals as of the last sync, kept so that signing in later can post them
+ * immediately rather than leaving the boards blank until the next match.
+ */
+let latest: LifetimeRecord | undefined;
+
+/**
+ * Hands the lifetime totals over to be posted.
  *
  * Fire and forget, the same bargain the career save makes: the game never waits
  * on Google. Play Services queues submissions it cannot deliver and sends them
  * when the device is next online, so a round played on a train still counts.
+ */
+export function submitLifetime(record: LifetimeRecord): void {
+  latest = record;
+  void flushScores();
+}
+
+/**
+ * Posts whatever has changed, **if the player is already signed in**.
+ *
+ * `authenticated` rather than `signIn`, and the distinction is the whole
+ * function. This runs after every round. Asking it to sign in means a player
+ * who is not signed in -- who declined, or whose sign-in is failing for any
+ * reason at all -- gets Google's account sheet in their face at the start of
+ * every single match. That is intolerable, and it is a leaderboard.
+ *
+ * Skipping costs nothing. The totals are ours and are already saved; they are
+ * kept in `latest` and posted the moment there is a session, which is what
+ * `showLeaderboards` calls this for. Signing in through the button therefore
+ * puts your existing record straight onto the boards.
  *
  * Zeroes are skipped. Submitting one would put a player who has done nothing on
  * the board on nought matches, which is worse than not being on it.
  */
-export function submitLifetime(record: LifetimeRecord): void {
-  if (!playGamesAvailable()) return;
+async function flushScores(): Promise<void> {
+  const record = latest;
+  if (!record || !playGamesAvailable()) return;
 
   const pending = BOARDS.filter(
     (board) => boardId(board) && record[board] > 0 && lastSubmitted.get(board) !== record[board],
   );
   if (pending.length === 0) return;
 
-  void (async () => {
-    try {
-      if (!(await signIn())) return;
+  try {
+    if (!(await authenticated())) return;
 
-      await Promise.all(
-        pending.map(async (board) => {
-          const score = record[board];
-          try {
-            await gameServices.leaderboards.submitScore(boardId(board), score);
-            lastSubmitted.set(board, score);
-            note('submitted', board, '=', score);
-          } catch (error) {
-            noteFailure(`could not submit ${board} = ${score}`, error);
-            /*
-             * Left out of `lastSubmitted`, so the next round retries it. One
-             * board failing is also no reason to drop the other two.
-             */
-          }
-        }),
-      );
-    } catch {
-      // Already the quiet path.
-    }
-  })();
+    await Promise.all(
+      pending.map(async (board) => {
+        const score = record[board];
+        try {
+          await gameServices.leaderboards.submitScore(boardId(board), score);
+          lastSubmitted.set(board, score);
+          note('submitted', board, '=', score);
+        } catch (error) {
+          noteFailure(`could not submit ${board} = ${score}`, error);
+          /*
+           * Left out of `lastSubmitted`, so the next round retries it. One
+           * board failing is also no reason to drop the other two.
+           */
+        }
+      }),
+    );
+  } catch {
+    // Already the quiet path.
+  }
 }
 
 /**
@@ -252,6 +276,14 @@ export async function showLeaderboards(board?: Board): Promise<void> {
 
   try {
     if (!(await signIn())) return;
+
+    /*
+     * Everything banked while signed out goes up now. Without this a player who
+     * signs in here would see their own boards empty until they happened to
+     * play another match.
+     */
+    void flushScores();
+
     const id = board ? boardId(board) : '';
     await gameServices.leaderboards.showUI(id ? { leaderboardId: id } : undefined);
   } catch (error) {
