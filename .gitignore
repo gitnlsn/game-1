@@ -15,3 +15,7 @@ client_secret_*.json
 # them by hand instead.
 /apps/mobile/android
 /apps/mobile/ios
+
+# Firebase CLI deploy cache. Records which files were last uploaded so a
+# redeploy can skip unchanged ones; it is local bookkeeping, not configuration.
+.firebase/
