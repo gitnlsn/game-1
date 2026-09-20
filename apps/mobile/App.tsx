@@ -112,7 +112,6 @@ function Game() {
         component={TransfersScreen}
         options={{ title: 'Transfer window' }}
       />
-      <Stack.Screen name="settings" component={SettingsScreen} options={{ title: 'Settings' }} />
       {/* No way back: the career is over, and the only move is to start another. */}
       <Stack.Screen
         name="sacked"

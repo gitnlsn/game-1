@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -84,22 +84,12 @@ export function ClubScreen() {
         title={club.name}
         subtitle="Your next match, recent form and how the board sees you."
         right={
-          <>
-            <Pressable
-              onPress={() => navigation.navigate('settings')}
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              style={styles.gear}
-            >
-              <Text style={styles.gearIcon}>⚙</Text>
-            </Pressable>
-            <View style={styles.positionBox}>
-              <Text style={styles.positionValue}>{seasonStarted ? ordinal(position) : '—'}</Text>
-              <Text style={styles.positionLabel}>
-                {seasonStarted ? `${row?.points ?? 0} pts` : 'not started'}
-              </Text>
-            </View>
-          </>
+          <View style={styles.positionBox}>
+            <Text style={styles.positionValue}>{seasonStarted ? ordinal(position) : '—'}</Text>
+            <Text style={styles.positionLabel}>
+              {seasonStarted ? `${row?.points ?? 0} pts` : 'not started'}
+            </Text>
+          </View>
         }
         metrics={[
           { label: 'Played', value: `${row?.played ?? 0}/${leagueMatches}` },
@@ -432,8 +422,6 @@ const styles = StyleSheet.create({
   },
   playButton: { marginTop: spacing.md },
   quickButton: { marginTop: spacing.sm },
-  gear: { padding: spacing.xs, marginRight: spacing.xs },
-  gearIcon: { color: colors.muted, fontSize: 18 },
   finishedText: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   noForm: { color: colors.faint, fontSize: 13, fontStyle: 'italic' },
   resultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3 },

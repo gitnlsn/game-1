@@ -10,10 +10,10 @@
  * is no route to navigate to until the other set mounts.
  *
  * Their names are disjoint on purpose. React Navigation drops routes whose
- * names disappear when the set changes, so a name in both sets would survive
- * the swap: leaving the game from the in-game Settings screen would land you on
- * a `settings` route inside the menu stack with nothing underneath it. Hence
- * `menuSettings`, which looks redundant and is not.
+ * names disappear when the set changes, so a name shared by both sets would
+ * survive the swap and strand you on a route with nothing underneath it. Hence
+ * `menuSettings`, which looks redundant and is not: in-game the same screen is
+ * a tab rather than a route, but the menu still needs one.
  */
 export type GameStackParamList = {
   tabs: undefined;
@@ -22,7 +22,6 @@ export type GameStackParamList = {
   matchResult: { round: number };
   seasonSummary: undefined;
   transfers: undefined;
-  settings: undefined;
   sacked: undefined;
   liveMatch: undefined;
 };

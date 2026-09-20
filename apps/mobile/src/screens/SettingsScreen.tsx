@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Card, ChipRow, Divider, SectionTitle } from '../components/ui';
+import { Button, Card, ChipRow, Divider, ScreenHeader, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -12,7 +12,13 @@ const MATCH_MODES = [
   { value: 'live' as const, label: 'Live' },
 ];
 
-export function SettingsScreen() {
+/**
+ * Both the Options tab in-game and the Settings screen off the title menu. The
+ * menu reaches it through the navigator, which draws its own header; the tab
+ * has none of its own, so it asks for one (`header`) the way every other tab
+ * has one.
+ */
+export function SettingsScreen({ header = false }: { header?: boolean }) {
   const { settings, updateSettings, abandonCareer, career, started, live, returnToTitle } =
     useGame();
   const insets = useSafeAreaInsets();
@@ -23,6 +29,13 @@ export function SettingsScreen() {
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingBottom: spacing.lg + insets.bottom }]}
     >
+      {header ? (
+        <ScreenHeader
+          title="Options"
+          subtitle="How matches are played, and what to do with this career."
+        />
+      ) : null}
+
       <SectionTitle>Matches</SectionTitle>
       <Card>
         <ChipRow
