@@ -9,7 +9,7 @@ import { colors, spacing } from '../theme';
 import { ordinal } from '../format';
 import { useGame } from '../game/GameContext';
 import { careerSummary, type CareerSummary, type NextUp } from '../game/summary';
-import { playGamesAvailable, showLeaderboards } from '../game/playGames';
+import { leaderboardProblem, playGamesAvailable, showLeaderboards } from '../game/playGames';
 import type { LifetimeRecord } from '../game/lifetime';
 import type { MenuStackParamList } from '../nav/routes';
 
@@ -19,6 +19,8 @@ export function TitleScreen() {
   const { career, continueCareer, lifetime } = useGame();
   const navigation = useNavigation<Nav>();
   const [confirming, setConfirming] = useState(false);
+  // Set only when a tap came to nothing, so the button is never silent.
+  const [problem, setProblem] = useState<string | undefined>();
   // No navigator header here: this screen owns its own edge-to-edge insets.
   const insets = useSafeAreaInsets();
 
@@ -53,12 +55,17 @@ export function TitleScreen() {
         * only ever do nothing is worse than no button.
         */}
       {playGamesAvailable() ? (
-        <Button
-          label="Leaderboards"
-          variant="secondary"
-          onPress={() => void showLeaderboards()}
-          style={styles.action}
-        />
+        <>
+          <Button
+            label="Leaderboards"
+            variant="secondary"
+            onPress={() => {
+              void showLeaderboards().then((outcome) => setProblem(leaderboardProblem(outcome)));
+            }}
+            style={styles.action}
+          />
+          {problem ? <Text style={styles.problem}>{problem}</Text> : null}
+        </>
       ) : null}
       <Button
         label="Settings"
@@ -227,6 +234,12 @@ const styles = StyleSheet.create({
   nextLine: { color: colors.text, fontSize: 13, marginTop: spacing.xs, lineHeight: 18 },
   nextOver: { color: colors.danger },
   action: { marginTop: spacing.sm },
+  problem: {
+    color: colors.warn,
+    fontSize: 12,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
   record: {
     color: colors.faint,
     fontSize: 11,

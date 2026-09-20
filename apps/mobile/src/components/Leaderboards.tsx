@@ -6,6 +6,7 @@ import { ordinal } from '../format';
 import {
   BOARDS,
   boardConfigured,
+  leaderboardProblem,
   loadRanks,
   playGamesAvailable,
   showLeaderboards,
@@ -35,6 +36,11 @@ const LABELS: Record<Board, string> = {
 
 export function LeaderboardsCard({ lifetime }: { lifetime: LifetimeRecord }) {
   const [ranks, setRanks] = useState<Ranks>({});
+  /*
+   * Only ever set by a tap. A board that cannot be reached is worth saying out
+   * loud here, where somebody asked for it, and worth saying nowhere else.
+   */
+  const [problem, setProblem] = useState<string | undefined>();
   /*
    * Read once, during render: this cannot change for the life of the process,
    * and a hook would only invite a re-render that can never happen.
@@ -70,10 +76,12 @@ export function LeaderboardsCard({ lifetime }: { lifetime: LifetimeRecord }) {
             value={lifetime[board]}
             rank={ranks[board]}
             first={index === 0}
+            onOpen={setProblem}
           />
         ))}
-        <Text style={styles.note}>
-          Your record across every career, not just this one. Getting sacked ends a run.
+        <Text style={problem ? styles.problem : styles.note}>
+          {problem ??
+            'Your record across every career, not just this one. Getting sacked ends a run.'}
         </Text>
       </Card>
     </>
@@ -85,15 +93,19 @@ function BoardRow({
   value,
   rank,
   first,
+  onOpen,
 }: {
   board: Board;
   value: number;
   rank: number | undefined;
   first: boolean;
+  onOpen: (problem: string | undefined) => void;
 }) {
   return (
     <Pressable
-      onPress={() => void showLeaderboards(board)}
+      onPress={() => {
+        void showLeaderboards(board).then((outcome) => onOpen(leaderboardProblem(outcome)));
+      }}
       accessibilityRole="button"
       accessibilityLabel={
         `${LABELS[board]}: ${value}.` +
@@ -155,6 +167,14 @@ const styles = StyleSheet.create({
   chevron: { color: colors.faint, fontSize: 20, marginLeft: spacing.xs },
   note: {
     color: colors.faint,
+    fontSize: 11,
+    lineHeight: 16,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  problem: {
+    color: colors.warn,
     fontSize: 11,
     lineHeight: 16,
     paddingTop: spacing.md,

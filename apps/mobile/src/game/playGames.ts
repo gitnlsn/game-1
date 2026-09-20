@@ -63,6 +63,32 @@ export function boardConfigured(board: Board): boolean {
 export type Ranks = Partial<Record<Board, number>>;
 
 /**
+ * How an attempt to open the boards ended.
+ *
+ * Silence is right for a submission nobody asked for and wrong for a button
+ * somebody pressed: a tap that does nothing at all reads as a broken app. So
+ * the interactive path reports back, and the screens say something.
+ *
+ * `declined` is deliberately separate from `failed`. Backing out of the
+ * sign-in sheet is a decision, and being told your decision did not work would
+ * be absurd.
+ */
+export type LeaderboardOutcome = 'opened' | 'declined' | 'unavailable' | 'failed';
+
+/** What to tell the player, or nothing when there is nothing worth saying. */
+export function leaderboardProblem(outcome: LeaderboardOutcome): string | undefined {
+  switch (outcome) {
+    case 'opened':
+    case 'declined':
+      return undefined;
+    case 'unavailable':
+      return 'Play Games is not available on this device.';
+    case 'failed':
+      return 'Could not sign in to Play Games.';
+  }
+}
+
+/**
  * Whether there is any point calling the rest of this.
  *
  * Synchronous on purpose: the title screen decides whether to render the
@@ -98,15 +124,20 @@ if (__DEV__ && !playGamesAvailable()) {
  * declined once should not be nagged -- Play Games itself remembers that, which
  * is why this asks rather than deciding.
  */
-export async function signIn(): Promise<boolean> {
-  if (!playGamesAvailable()) return false;
+export async function signIn(): Promise<LeaderboardOutcome> {
+  /*
+   * Not available is not the same as broken, and a device with no Google Play
+   * services -- a Huawei, a Fire tablet, a de-Googled ROM -- can never sign in
+   * however many times it is asked.
+   */
+  if (!playGamesAvailable()) return 'unavailable';
 
   try {
     const state = await gameServices.authentication.getState();
-    if (state.status === 'authenticated') return true;
+    if (state.status === 'authenticated') return 'opened';
     if (state.status === 'unavailable') {
       note('sign-in unavailable:', state.reason);
-      return false;
+      return 'unavailable';
     }
 
     note('signing in, current status:', state.status);
@@ -118,13 +149,15 @@ export async function signIn(): Promise<boolean> {
        * on PlayGamesServices for the fingerprint it actually saw.
        */
       note('sign-in did not complete, status:', signedIn.status);
-      return false;
+      return 'failed';
     }
     note('signed in as', signedIn.player.displayName);
-    return true;
+    return 'opened';
   } catch (error) {
     noteFailure('sign-in failed', error);
-    return false;
+    // Backing out of Google's sheet arrives here as a cancellation.
+    const code = (error as { code?: string } | undefined)?.code;
+    return code === 'cancelled' ? 'declined' : 'failed';
   }
 }
 
@@ -271,11 +304,12 @@ async function flushScores(): Promise<void> {
  * that is reachable any other way. Building a worse copy of it over
  * `loadScores` would be work spent going backwards.
  */
-export async function showLeaderboards(board?: Board): Promise<void> {
-  if (!playGamesAvailable()) return;
+export async function showLeaderboards(board?: Board): Promise<LeaderboardOutcome> {
+  if (!playGamesAvailable()) return 'unavailable';
 
   try {
-    if (!(await signIn())) return;
+    const outcome = await signIn();
+    if (outcome !== 'opened') return outcome;
 
     /*
      * Everything banked while signed out goes up now. Without this a player who
@@ -286,8 +320,9 @@ export async function showLeaderboards(board?: Board): Promise<void> {
 
     const id = board ? boardId(board) : '';
     await gameServices.leaderboards.showUI(id ? { leaderboardId: id } : undefined);
+    return 'opened';
   } catch (error) {
-    // Includes the player backing out of the sign-in sheet, which is not an error.
     noteFailure('could not open the leaderboard UI', error);
+    return 'failed';
   }
 }
