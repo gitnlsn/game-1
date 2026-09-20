@@ -1,0 +1,68 @@
+/*
+ * The app's own palette, from apps/mobile/src/theme.ts. The consent screen
+ * sends people here straight out of the game, so the two should not look like
+ * different products.
+ */
+:root {
+  --bg: #0E1116;
+  --surface: #161B22;
+  --border: #2A3340;
+  --text: #E6EDF3;
+  --muted: #8B98A9;
+  --faint: #5A6673;
+  --gold: #E3B341;
+  --green: #3FB950;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 720px; margin: 0 auto; padding: 56px 20px 80px; }
+
+header { margin-bottom: 48px; }
+
+.mark {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 2px;
+  line-height: 1;
+}
+.mark-rule { width: 64px; height: 4px; background: var(--green); margin-top: 8px; border-radius: 2px; }
+
+h1 { font-size: 30px; font-weight: 800; letter-spacing: 1px; margin: 28px 0 6px; }
+h2 { font-size: 17px; font-weight: 700; margin: 36px 0 10px; color: var(--text); }
+.tagline { color: var(--muted); margin: 0 0 8px; }
+
+p, li { color: var(--muted); }
+p strong, li strong { color: var(--text); }
+ul { padding-left: 20px; }
+li { margin-bottom: 8px; }
+
+a { color: var(--green); }
+a:hover { color: var(--gold); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  margin: 24px 0;
+}
+
+.shot { width: 100%; border-radius: 12px; border: 1px solid var(--border); display: block; margin: 32px 0; }
+
+.updated { color: var(--faint); font-size: 13px; margin-top: 4px; }
+
+nav { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 14px; }
+nav a { margin-right: 18px; }
+
+footer { color: var(--faint); font-size: 13px; margin-top: 12px; }
