@@ -6,6 +6,23 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LeaderboardsCard } from '../components/Leaderboards';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+import appConfig from '../../app.json';
+
+/**
+ * Which build this is, for anyone testing one.
+ *
+ * Read from app.json rather than through expo-constants: the values live there,
+ * EAS bumps `versionCode` there before it builds, and the bundle that ships
+ * inside a binary is therefore the one that names it. It is also one fewer
+ * dependency for two strings.
+ *
+ * This would stop being true the day over-the-air updates are switched on,
+ * because the JS could then be newer than the binary carrying it. They are off
+ * (`expo.modules.updates.ENABLED=false` in the generated manifest), and if they
+ * are ever turned on this should move to expo-application, which reads the
+ * installed package rather than the bundle.
+ */
+const BUILD = `${appConfig.expo.version} (${appConfig.expo.android.versionCode})`;
 
 const MATCH_MODES = [
   { value: 'instant' as const, label: 'Instant' },
@@ -105,6 +122,17 @@ export function SettingsScreen({ header = false }: { header?: boolean }) {
         }}
         onCancel={() => setConfirming(false)}
       />
+
+      {/*
+        * `dev` is the useful half of this. A debug build served by Metro and a
+        * release build installed from Play look identical on screen, behave
+        * differently, and are signed by different keys -- which is exactly the
+        * distinction that is hard to make from the outside.
+        */}
+      <Text style={styles.build}>
+        Eleven Deep {BUILD}
+        {__DEV__ ? ' · dev' : ''}
+      </Text>
     </ScrollView>
   );
 }
@@ -116,4 +144,11 @@ const styles = StyleSheet.create({
   warning: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   action: { marginTop: spacing.md },
   divider: { marginVertical: spacing.md },
+  build: {
+    color: colors.faint,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: spacing.xl,
+    fontVariant: ['tabular-nums'],
+  },
 });
