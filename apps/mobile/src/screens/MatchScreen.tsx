@@ -17,7 +17,7 @@ const NOTABLE: MatchEvent['type'][] = ['goal', 'red_card', 'yellow_card', 'injur
 
 const FULL_TIME = 96;
 /** Real seconds a replayed match takes end to end. */
-const REPLAY_DURATION_MS = 6000;
+const REPLAY_DURATION_MS = 10_000;
 
 export function MatchScreen({ route }: Props) {
   const navigation = useNavigation<Nav>();
