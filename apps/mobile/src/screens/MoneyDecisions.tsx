@@ -145,6 +145,7 @@ export function MoneyDecisions({
           <Card key={line.key} style={styles.card}>
             <Text style={styles.cardTitle}>{line.title}</Text>
             <Segmented
+              fill
               style={styles.segmented}
               options={LEVELS}
               value={String(current) as (typeof LEVELS)[number]['value']}

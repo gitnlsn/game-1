@@ -156,11 +156,14 @@ export function Segmented<T extends string>({
   value,
   onChange,
   style,
+  fill,
 }: {
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
   style?: StyleProp<ViewStyle>;
+  /** Share the full width equally, rather than sizing each segment to its label. */
+  fill?: boolean;
 }) {
   return (
     <View style={[styles.segmented, style]}>
@@ -175,6 +178,7 @@ export function Segmented<T extends string>({
             accessibilityState={{ selected }}
             style={[
               styles.segment,
+              fill ? styles.segmentFill : null,
               index > 0 ? styles.segmentDivided : null,
               selected ? styles.segmentSelected : null,
             ]}
@@ -448,6 +452,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   segment: { paddingHorizontal: spacing.md, paddingVertical: 5 },
+  segmentFill: { flex: 1, alignItems: 'center' },
   segmentDivided: { borderLeftWidth: 1, borderLeftColor: colors.border },
   segmentSelected: { backgroundColor: colors.accentDim },
   statBarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
