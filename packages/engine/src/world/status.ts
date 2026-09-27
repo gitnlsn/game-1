@@ -40,13 +40,17 @@ export function isAvailable(player: Player): boolean {
  * One week on: fitness comes back, and a player sitting out an injury or a ban
  * ticks one match closer to being available.
  */
-export function advancePlayerWeek(player: Player): void {
+/** `recovery` scales how much comes back: the club's medical staff, 1 as standard. */
+export function advancePlayerWeek(player: Player, recovery = 1): void {
   const S = STATUS_TUNING;
   const status = player.status;
 
   // Fitter players recover faster.
   const rate = S.recoveryRate * (0.7 + player.attributes.stamina / 200);
-  status.condition = Math.min(100, status.condition + S.recoveryBase + (100 - status.condition) * rate);
+  status.condition = Math.min(
+    100,
+    status.condition + (S.recoveryBase + (100 - status.condition) * rate) * recovery,
+  );
 
   if (status.injuryMatches > 0) status.injuryMatches -= 1;
   if (status.suspensionMatches > 0) status.suspensionMatches -= 1;

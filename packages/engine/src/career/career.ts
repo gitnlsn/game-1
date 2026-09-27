@@ -12,6 +12,7 @@ import {
 } from '../economy/finances.js';
 import { recordExpense, recordIncome } from '../economy/finances.js';
 import { settleSponsorDeals } from '../economy/sponsors.js';
+import { coachingFactor, finishGroundWorks } from '../economy/levers.js';
 import { simulateSeason } from '../league/season.js';
 import {
   createTransferWindow,
@@ -189,7 +190,14 @@ export function closeSeason(
   // After the swap, so a promoted club spends like a top-flight club.
   for (const league of world.leagues) {
     for (const club of league.clubs) {
-      applyCloseSeasonSpending(club, league.clubs.length, league.tier);
+      // Building still under way when the season ends is finished over the summer.
+      finishGroundWorks(club);
+      applyCloseSeasonSpending(
+        club,
+        league.clubs.length,
+        league.tier,
+        club.id !== options.managedClubId,
+      );
     }
   }
   processContracts(rng, world);
@@ -343,7 +351,8 @@ function ageAndRetire(
   let retirements = 0;
 
   for (const club of allClubs(world)) {
-    const coaching = coachingQuality(club.reputation);
+    // What the club spent on coaching over the season, not on its last day.
+    const coaching = coachingQuality(club.reputation) * coachingFactor(club);
     const staying: Player[] = [];
 
     for (const player of club.squad) {

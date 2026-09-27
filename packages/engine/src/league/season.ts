@@ -27,7 +27,14 @@ import {
 } from './cup.js';
 import { advancePlayerWeek } from '../world/status.js';
 import {
+  advanceGroundWorks,
+  payWeeklyStaffCosts,
+  recordStaffWeek,
+  recoveryFactor,
+} from '../economy/levers.js';
+import {
   applyMatchdayIncome,
+  crowdEffect,
   payWeeklyOperatingCosts,
   payWeeklySponsorship,
   payWeeklyWages,
@@ -198,6 +205,14 @@ export function upcomingRound(state: SeasonState): Fixture[] {
 }
 
 /** True when this matchday is a midweek one, played without a week's rest. */
+/** The crowd effect for a fixture about to be played, for a match run elsewhere. */
+export function fixtureCrowd(state: SeasonState, home: Club, away: Club): number {
+  if (!state.options.economy) return 1;
+  const games = state.played.get(home.id) ?? 0;
+  const pointsPerGame = games === 0 ? 1.3 : (state.points.get(home.id) ?? 0) / games;
+  return crowdEffect(home, away, pointsPerGame);
+}
+
 export function isMidweek(state: SeasonState, round: number): boolean {
   return state.cup !== undefined && CUP_TUNING.rounds.includes(round);
 }
@@ -255,6 +270,9 @@ export function playRound(state: SeasonState, round: PlayRoundOptions = {}): Mat
         payWeeklySponsorship(club);
         payWeeklyWages(club, effectiveWageBill(world, club));
         payWeeklyOperatingCosts(club, league.clubs.length, league.tier);
+        payWeeklyStaffCosts(club, league.clubs.length, league.tier);
+        recordStaffWeek(club);
+        advanceGroundWorks(club);
       }
     }
   }
@@ -262,7 +280,8 @@ export function playRound(state: SeasonState, round: PlayRoundOptions = {}): Mat
   // A week passes between rounds: everyone recovers, bans and lay-offs tick.
   if (options.playerState && !midweek) {
     for (const club of clubs) {
-      for (const player of club.squad) advancePlayerWeek(player);
+      const recovery = recoveryFactor(club);
+      for (const player of club.squad) advancePlayerWeek(player, recovery);
     }
   }
 
@@ -288,15 +307,18 @@ export function playRound(state: SeasonState, round: PlayRoundOptions = {}): Mat
       throw new Error(`playRound: unknown club in fixture round ${fixture.round}`);
     }
 
+    let homeCrowd = 1;
     if (options.economy) {
       const games = state.played.get(home.id) ?? 0;
       const pointsPerGame = games === 0 ? 1.3 : (state.points.get(home.id) ?? 0) / games;
       applyMatchdayIncome(home, away, pointsPerGame);
+      homeCrowd = crowdEffect(home, away, pointsPerGame);
     }
 
     const homeSheet = state.teamSheets.get(home.id);
     const awaySheet = state.teamSheets.get(away.id);
     const matchOptions = {
+      ...(homeCrowd !== 1 ? { homeCrowd } : {}),
       ...(options.playerState ? { updatePlayerState: true } : {}),
       ...(homeSheet ? { homeSheet } : {}),
       ...(awaySheet ? { awaySheet } : {}),

@@ -1,6 +1,7 @@
 import { Rng, clamp } from '../rng/index.js';
 import type { Club, MatchEvent, MatchResult, Player, Position, TeamSheet } from '../types.js';
 import { STATUS_TUNING } from '../world/status.js';
+import { injuryLengthFactor } from '../economy/levers.js';
 import {
   computeTeamRating,
   effectiveness,
@@ -145,6 +146,12 @@ export interface SimulateMatchOptions {
   /** Neutral venue: no home advantage or crowd possession bias. */
   neutral?: boolean;
   /**
+   * The home crowd against what the normal ticket price would draw: above 1 a
+   * fuller ground than usual, below 1 an emptier one. Scales home advantage.
+   * Absent means 1, which is every AI club and every match without an economy.
+   */
+  homeCrowd?: number;
+  /**
    * A manager's team sheet. Omitted for a club the engine picks for, which is
    * every AI club and any human club that has not set one.
    */
@@ -244,7 +251,8 @@ export function startMatch(
   options: SimulateMatchOptions = {},
 ): MatchInProgress {
   const T = MATCH_TUNING;
-  const venueBoost = options.neutral ? 1 : T.homeAdvantage;
+  const crowd = clamp(options.homeCrowd ?? 1, 0.5, 1.5);
+  const venueBoost = options.neutral ? 1 : 1 + (T.homeAdvantage - 1) * crowd;
 
   // Form on the day, rolled once per team per match.
   const homeForm = clamp(rng.gaussian(1, T.performanceVariance), T.formFloor, T.formCeiling);
@@ -1096,7 +1104,10 @@ function applyInjuries(rng: Rng, team: TeamState): void {
   for (const playerId of team.injured) {
     const player = squad.get(playerId);
     if (!player) continue;
-    player.status.injuryMatches += rollInjuryLength(rng);
+    // Better medical staff get a player back sooner; never sooner than a week.
+    const length = rollInjuryLength(rng);
+    const factor = injuryLengthFactor(team.club);
+    player.status.injuryMatches += factor === 1 ? length : Math.max(1, Math.round(length * factor));
     player.status.morale = clamp(player.status.morale - 4, 0, 100);
   }
 }

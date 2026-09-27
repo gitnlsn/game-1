@@ -135,6 +135,39 @@ export interface ClubFinances {
   sponsorDeals?: SponsorDeal[];
   /** League round of this season's last sponsor offer, for the cooldown. */
   lastSponsorOfferRound?: number;
+  /**
+   * Ticket price as a multiple of the club's normal price. Absent means 1: the
+   * AI never touches it, and a club that has never been told otherwise charges
+   * what it always did.
+   */
+  ticketPriceLevel?: number;
+  /** Spending on staff. Absent means standard across the board. */
+  staff?: StaffLevels;
+  /**
+   * Weeks spent at each coaching and academy level this season, summed. Their
+   * payoff comes at season end, and is judged on the season's average rather
+   * than the level on the last day -- otherwise going elite for one week buys a
+   * whole season's development.
+   */
+  staffWeeks?: { coaching: number; academy: number; weeks: number };
+  /** Ground expansion under way, if any. */
+  groundWorks?: GroundWorks;
+}
+
+/** -1 basic, 0 standard, 1 elite. */
+export type StaffLevel = -1 | 0 | 1;
+
+export interface StaffLevels {
+  medical: StaffLevel;
+  coaching: StaffLevel;
+  academy: StaffLevel;
+}
+
+export interface GroundWorks {
+  /** Seats added when the work is finished. */
+  seats: number;
+  /** League weeks until it is. */
+  weeksLeft: number;
 }
 
 export type SponsorOfferKind = 'advance' | 'performance' | 'tour';

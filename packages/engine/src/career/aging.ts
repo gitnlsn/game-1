@@ -2,6 +2,7 @@ import { joinSquad } from '../world/squads.js';
 import { Rng, clamp } from '../rng/index.js';
 import type { AttributeKey, Club, Player } from '../types.js';
 import { expectedWage } from '../economy/valuation.js';
+import { academyBoost } from '../economy/levers.js';
 import { NAME_POOL_BY_CODE } from '../world/names.js';
 import { calibrateAbility, currentAbility, developmentFactor, generatePlayer } from '../world/players.js';
 import { abilityIn, SQUAD_SHAPE } from '../world/positions.js';
@@ -199,7 +200,8 @@ export function promoteYouth(
       // Academy players must be generated at the standard the club plays to.
       // Pitch them below it and every intake is worse than the players it
       // replaces, so the whole league quietly decays over a career.
-      potentialTarget: clamp(targetAbility(club.reputation) - 2, 25, 88),
+      // An academy the club has spent more on turns out better players.
+      potentialTarget: clamp(targetAbility(club.reputation) - 2 + academyBoost(club), 25, 88),
       age: rng.int(16, 19),
       domesticPool,
       takenNames,

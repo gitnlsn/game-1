@@ -76,6 +76,18 @@ export const ECONOMY_TUNING = {
   austerityFactor: 0.82,
   /** A season is this many wage payments. */
   wageWeeksPerSeason: 42,
+  /**
+   * How hard gate demand falls as a manager raises the price: demand scales by
+   * exp(-sensitivity * (level - 1)). At 1, gate revenue for a ground with seats
+   * to spare peaks at the normal price -- dearer loses more fans than it earns,
+   * cheaper fills seats but earns less. Only a ground with more demand than
+   * seats can charge more for free, which is what a sell-out should mean.
+   */
+  priceSensitivity: 1,
+  /** Demand above capacity a sell-out can hold before a price rise bites. */
+  maxDemand: 1.3,
+  /** Share of the ground closed while it is being rebuilt. */
+  groundWorksClosedShare: 0.15,
 } as const;
 
 export function emptyFinancialRecord(): FinancialRecord {
@@ -180,6 +192,29 @@ export function createClubFinances(
   };
 }
 
+/** Ticket price as a multiple of normal. The AI never moves it off 1. */
+export function ticketLevel(club: Club): number {
+  return club.finances.ticketPriceLevel ?? 1;
+}
+
+/** What the gate actually charges. */
+export function effectiveTicketPrice(club: Club): number {
+  return Math.round(club.finances.ticketPrice * ticketLevel(club));
+}
+
+/** How demand responds to the price. 1 at the normal price. */
+export function priceDemandFactor(level: number): number {
+  return Math.exp(-ECONOMY_TUNING.priceSensitivity * (level - 1));
+}
+
+/** Seats on sale this week: fewer while part of the ground is being rebuilt. */
+export function availableCapacity(club: Club): number {
+  const capacity = club.finances.stadiumCapacity;
+  return club.finances.groundWorks
+    ? Math.round(capacity * (1 - ECONOMY_TUNING.groundWorksClosedShare))
+    : capacity;
+}
+
 /**
  * Gate receipts for one home match. Attendance responds to how the season is
  * going and to who the visitors are, which is what makes a good run pay for
@@ -189,16 +224,34 @@ export function matchdayIncome(
   home: Club,
   away: Club,
   homePointsPerGame: number,
-): { attendance: number; revenue: number } {
+  /** Ticket level to price at; the club's own unless asked what-if. */
+  level = ticketLevel(home),
+): { attendance: number; revenue: number; fill: number } {
   const E = ECONOMY_TUNING;
   const baseFill = E.baseFillFloor + ((home.reputation - 40) / 100) * E.baseFillScale;
   const formBonus = (homePointsPerGame - 1.3) * E.formFillWeight;
   const opponentBonus = ((away.reputation - 60) / 100) * E.opponentFillWeight;
 
-  const fill = clamp(baseFill + formBonus + opponentBonus, 0.35, 1);
-  const attendance = Math.round(home.finances.stadiumCapacity * fill);
+  // Demand can exceed the seats, which is what lets a sell-out raise its prices;
+  // at the normal price this is exactly the old clamp to a full ground.
+  const demand = clamp(baseFill + formBonus + opponentBonus, 0.35, E.maxDemand);
+  const fill = clamp(demand * priceDemandFactor(level), 0.1, 1);
+  const attendance = Math.round(availableCapacity(home) * fill);
+  const price = Math.round(home.finances.ticketPrice * level);
 
-  return { attendance, revenue: attendance * home.finances.ticketPrice };
+  return { attendance, revenue: attendance * price, fill };
+}
+
+/**
+ * The crowd a match draws against the one it would at the normal price. Cheap
+ * tickets pack the ground and lift the side; dear ones thin it out. Exactly 1 for
+ * any club charging the normal price, so the AI plays the game it always did.
+ */
+export function crowdEffect(home: Club, away: Club, homePointsPerGame: number): number {
+  if (ticketLevel(home) === 1) return 1;
+  const { fill } = matchdayIncome(home, away, homePointsPerGame);
+  const normal = matchdayIncome(home, away, homePointsPerGame, 1).fill;
+  return normal > 0 ? fill / normal : 1;
 }
 
 export function applyMatchdayIncome(home: Club, away: Club, homePointsPerGame: number): number {
@@ -297,18 +350,27 @@ export function setTransferBudgets(clubs: readonly Club[], clubCount: number, ti
  * expands it, which raises future gate income -- the reward for running a club
  * well. Anything left far above the reserve target is drawn out by the owners.
  */
-export function applyCloseSeasonSpending(club: Club, clubCount: number, tier = 1): void {
+/**
+ * `autoExpand` is off for a club a person runs: they decide when to build, and
+ * the board expanding the ground behind their back would take the decision away.
+ */
+export function applyCloseSeasonSpending(
+  club: Club,
+  clubCount: number,
+  tier = 1,
+  autoExpand = true,
+): void {
   const E = ECONOMY_TUNING;
   const revenue = expectedAnnualRevenue(club.reputation, clubCount, tier);
   const reserveTarget = revenue * E.cashReserveShare;
 
   const homeMatches = Math.max(1, clubCount - 1);
-  const attendance = club.finances.season.gateReceipts / Math.max(1, club.finances.ticketPrice);
+  const attendance = club.finances.season.gateReceipts / Math.max(1, effectiveTicketPrice(club));
   const fill = attendance / (homeMatches * club.finances.stadiumCapacity);
 
   let surplus = club.finances.balance - reserveTarget;
 
-  if (surplus > 0 && fill >= E.expansionFillThreshold) {
+  if (autoExpand && surplus > 0 && fill >= E.expansionFillThreshold) {
     const naturalCapacity = stadiumCapacity(club.reputation);
     const maxCapacity = Math.round(naturalCapacity * E.maxStadiumMultiple);
     const room = maxCapacity - club.finances.stadiumCapacity;

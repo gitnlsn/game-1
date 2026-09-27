@@ -34,10 +34,19 @@ import {
   currentTable,
   playFixture,
   isMidweek,
+  fixtureCrowd,
   sponsorContext,
   type SeasonState,
 } from '../league/season.js';
 import { acceptSponsorOffer, rollSponsorOffer } from '../economy/sponsors.js';
+import { availableCapacity, matchdayIncome } from '../economy/finances.js';
+import {
+  clampTicketLevel,
+  staffLevels,
+  startGroundWorks,
+  type ExpansionOutcome,
+} from '../economy/levers.js';
+import type { StaffLevel, StaffLevels } from '../types.js';
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
 import {
@@ -259,6 +268,63 @@ export function answerSponsorOffer(
   career.sponsorOffers = career.sponsorOffers.filter((o) => o.id !== offerId);
   if (response === 'accept') acceptSponsorOffer(managedClub(career), offer);
   return true;
+}
+
+// --- Running the club's money ---------------------------------------------
+
+/** Sets the ticket price, as a multiple of normal. Returns the level applied. */
+export function setTicketLevel(career: Career, level: number): number {
+  const applied = clampTicketLevel(level);
+  const finances = managedClub(career).finances;
+  if (applied === 1) delete finances.ticketPriceLevel;
+  else finances.ticketPriceLevel = applied;
+  return applied;
+}
+
+export interface GateForecast {
+  attendance: number;
+  capacity: number;
+  revenue: number;
+  /** Same match at the normal price, for comparison. */
+  normalAttendance: number;
+  normalRevenue: number;
+}
+
+/**
+ * What the next home match would draw and earn at a given price. Priced against
+ * a typical visitor so the forecast does not jump about with the fixture list.
+ */
+export function gateForecast(career: Career, level: number): GateForecast {
+  const club = managedClub(career);
+  const games = career.season.played.get(club.id) ?? 0;
+  const pointsPerGame = games === 0 ? 1.3 : (career.season.points.get(club.id) ?? 0) / games;
+  const typical = { ...club, reputation: 60 };
+  const at = matchdayIncome(club, typical, pointsPerGame, clampTicketLevel(level));
+  const normal = matchdayIncome(club, typical, pointsPerGame, 1);
+  return {
+    attendance: at.attendance,
+    // The seats on sale, which is fewer than the ground holds while it is being rebuilt.
+    capacity: availableCapacity(club),
+    revenue: at.revenue,
+    normalAttendance: normal.attendance,
+    normalRevenue: normal.revenue,
+  };
+}
+
+/** Sets how much the club spends on one line of staff. */
+export function setStaffLevel(career: Career, key: keyof StaffLevels, level: StaffLevel): void {
+  const finances = managedClub(career).finances;
+  const next = { ...staffLevels(managedClub(career)), [key]: level };
+  if (next.medical === 0 && next.coaching === 0 && next.academy === 0) delete finances.staff;
+  else finances.staff = next;
+}
+
+/**
+ * Starts expanding the ground. During the season part of it closes while the
+ * work goes on; between seasons it is done before the next one starts.
+ */
+export function expandGround(career: Career, seats: number): ExpansionOutcome {
+  return startGroundWorks(managedClub(career), seats, !isSeasonComplete(career));
 }
 
 /** Signed deals still to settle: bonuses to earn, advances to pay back. */
@@ -567,9 +633,11 @@ export function beginLiveMatch(career: Career): LiveMatch | undefined {
   const ownSheet = career.season.teamSheets.get(career.managedClubId);
   const opponentSheet = career.season.teamSheets.get(upcoming.opponent.id);
 
+  const homeCrowd = fixtureCrowd(career.season, home, away);
   const match = startMatch(career.rng, home, away, {
     updatePlayerState: true,
     manualSide: side,
+    ...(homeCrowd !== 1 ? { homeCrowd } : {}),
     ...(upcoming.home
       ? {
           ...(ownSheet ? { homeSheet: ownSheet } : {}),

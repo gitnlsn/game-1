@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   answerSponsorOffer,
+  effectiveTicketPrice,
   effectiveWageBill,
   leagueOf,
   ECONOMY_TUNING,
@@ -18,6 +19,7 @@ import {
 import { Button, Card, Divider, KeyValue, ScreenHeader, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ordinal } from '../format';
+import { MoneyDecisions } from './MoneyDecisions';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 
@@ -110,6 +112,8 @@ export function FinancesScreen() {
         );
       })}
 
+      <MoneyDecisions career={career} onChange={refresh} onMessage={setMessage} />
+
       <SectionTitle>This season</SectionTitle>
       <Card>
         <Text style={styles.groupLabel}>Income</Text>
@@ -138,7 +142,7 @@ export function FinancesScreen() {
         <KeyValue label="Transfer budget" value={formatMoney(finances.transferBudget)} />
         <Divider />
         <KeyValue label="Stadium" value={`${finances.stadiumCapacity.toLocaleString()} seats`} />
-        <KeyValue label="Ticket price" value={`${finances.ticketPrice}`} />
+        <KeyValue label="Ticket price" value={`${effectiveTicketPrice(club)}`} />
         <KeyValue label="Sponsorship / season" value={formatMoney(finances.sponsorshipPerSeason)} />
         {sponsorDeals(career).map((deal, index) =>
           deal.kind === 'performance' ? (
