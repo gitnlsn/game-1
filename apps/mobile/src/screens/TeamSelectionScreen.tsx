@@ -52,6 +52,51 @@ const AXIS_OPTIONS = TACTIC_AXES.map((axis) => ({
 }));
 const GROUP_ORDER: Record<string, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
 
+/** Left to right across the pitch: anything not on a flank sits in the middle. */
+const SIDE: Partial<Record<Position, number>> = { LB: 0, LW: 0, RB: 2, RW: 2 };
+
+type PitchEntry<S> = { slot: S; index: number };
+
+/**
+ * The eleven laid out as the formation reads, forwards at the top and the keeper
+ * at the bottom. Rows come from the formation's own numbers rather than from
+ * position groups: a 4-4-2's wide men are wingers by position but midfielders in
+ * the shape, and grouping by position drew it as 4-2-4.
+ */
+function pitchRows<S extends { position: Position }>(
+  slots: readonly S[],
+  formation: string,
+): { key: string; entries: PitchEntry<S>[] }[] {
+  const entries = slots.map((slot, index) => ({ slot, index }));
+  const keeper = entries.filter((e) => e.slot.position === 'GK');
+  const outfield = entries.filter((e) => e.slot.position !== 'GK');
+  const lines = formation.split('-').map(Number);
+  const bySide = (a: PitchEntry<S>, b: PitchEntry<S>) =>
+    (SIDE[a.slot.position] ?? 1) - (SIDE[b.slot.position] ?? 1);
+
+  // A shape that does not add up to the outfield falls back to position groups.
+  if (lines.some((n) => !Number.isInteger(n) || n <= 0) ||
+      lines.reduce((a, b) => a + b, 0) !== outfield.length) {
+    const groups = new Map<string, PitchEntry<S>[]>();
+    for (const entry of entries) {
+      const group = POSITION_GROUP[entry.slot.position];
+      groups.set(group, [...(groups.get(group) ?? []), entry]);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => (GROUP_ORDER[b] ?? 0) - (GROUP_ORDER[a] ?? 0))
+      .map(([key, row]) => ({ key, entries: [...row].sort(bySide) }));
+  }
+
+  // Slots run from the back line forwards, in the order the formation lists them.
+  const rows: { key: string; entries: PitchEntry<S>[] }[] = [];
+  let at = 0;
+  lines.forEach((count, line) => {
+    rows.push({ key: `line-${line}`, entries: outfield.slice(at, at + count).sort(bySide) });
+    at += count;
+  });
+  return [...rows.reverse(), { key: 'GK', entries: keeper }];
+}
+
 /** Keeps the manager's players when the shape changes, re-slotting them by best fit. */
 function reslot(career: Career, sheet: TeamSheet, formation: string): TeamSheet {
   const club = managedClub(career);
@@ -202,20 +247,7 @@ export function TeamSelectionScreen() {
     }
   };
 
-  // Group the eleven into pitch rows, keepers at the bottom of the screen.
-  const rows = lineup.slots
-    .map((slot, index) => ({ slot, index }))
-    .reduce<{ group: string; entries: { slot: (typeof lineup.slots)[number]; index: number }[] }[]>(
-      (acc, entry) => {
-        const group = POSITION_GROUP[entry.slot.position];
-        const row = acc.find((r) => r.group === group);
-        if (row) row.entries.push(entry);
-        else acc.push({ group, entries: [entry] });
-        return acc;
-      },
-      [],
-    )
-    .sort((a, b) => (GROUP_ORDER[b.group] ?? 0) - (GROUP_ORDER[a.group] ?? 0));
+  const rows = pitchRows(lineup.slots, sheet.formation);
 
   return (
     <View style={styles.container}>
@@ -271,7 +303,7 @@ export function TeamSelectionScreen() {
 
         <SectionTitle>Starting eleven</SectionTitle>
         {rows.map((row) => (
-          <View key={row.group} style={styles.pitchRow}>
+          <View key={row.key} style={styles.pitchRow}>
             {row.entries.map(({ slot, index }) => (
               <SlotChip
                 key={index}
