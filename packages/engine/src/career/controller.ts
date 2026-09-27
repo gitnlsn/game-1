@@ -5,6 +5,8 @@ import type {
   MatchResult,
   League,
   Loan,
+  SponsorDeal,
+  SponsorOffer,
   TableRow,
   TeamSheet,
   TeamSheetIssue,
@@ -31,8 +33,11 @@ import {
   upcomingRound,
   currentTable,
   playFixture,
+  isMidweek,
+  sponsorContext,
   type SeasonState,
 } from '../league/season.js';
+import { acceptSponsorOffer, rollSponsorOffer } from '../economy/sponsors.js';
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
 import {
@@ -103,6 +108,11 @@ export interface Career {
   scouting: ScoutingState;
   /** What the board makes of you. */
   board: BoardState;
+  /**
+   * Sponsor offers waiting for the manager's answer. Every other club's are
+   * answered by the AI inside the season loop; only this club's wait here.
+   */
+  sponsorOffers: SponsorOffer[];
 }
 
 /** What a career plays, as opposed to what the harnesses measure. */
@@ -152,6 +162,7 @@ export function startCareer(options: StartCareerOptions): Career {
     history: [],
     scouting: createScoutingState(),
     board: createBoardState(world, managedClubId),
+    sponsorOffers: [],
   };
 
   // You start knowing your own squad reasonably well: your coaches have watched
@@ -168,7 +179,7 @@ export function managedClub(career: Career): Club {
 
 /** Plays the next round of fixtures. Returns every result, across all clubs. */
 export function advanceRound(career: Career): MatchResult[] {
-  const results = playRound(career.season);
+  const results = playRound(career.season, { humanClubId: career.managedClubId });
 
   // Facing a side teaches you about it. Done here rather than inside the season
   // loop so the headless path stays free of scouting entirely.
@@ -186,7 +197,73 @@ export function advanceRound(career: Career): MatchResult[] {
     }
   }
 
+  offerManagedSponsor(career, results);
   return results;
+}
+
+/**
+ * Once a round is over: drops offers that have run out, and rolls for a new one
+ * for the managed club, which is left waiting for the manager to answer.
+ */
+function offerManagedSponsor(career: Career, roundResults: readonly MatchResult[]): void {
+  const state = career.season;
+  const round = state.nextRound - 1;
+  career.sponsorOffers = career.sponsorOffers.filter(
+    (offer) => offer.season === career.world.season && offer.expiresRound >= state.nextRound,
+  );
+  if (!state.options.economy || isMidweek(state, round)) return;
+
+  const club = managedClub(career);
+  const league = managedLeague(career);
+  const ctx = sponsorContext(
+    state,
+    club,
+    league,
+    currentTable(state, league.id),
+    round,
+    roundResults,
+    career.sponsorOffers.length > 0,
+  );
+  const offer = rollSponsorOffer(new Rng(`sponsor:${state.rng.getState()}:${club.id}`), club, ctx);
+  if (!offer) return;
+
+  club.finances.lastSponsorOfferRound = round;
+  career.sponsorOffers.push(offer);
+}
+
+/** Sponsor offers the manager has yet to answer. */
+export function pendingSponsorOffers(career: Career): SponsorOffer[] {
+  return career.sponsorOffers.filter(
+    (offer) =>
+      offer.season === career.world.season && offer.expiresRound >= career.season.nextRound,
+  );
+}
+
+/** Rounds left to answer an offer, counting the one about to be played. */
+export function sponsorOfferWeeksLeft(career: Career, offer: SponsorOffer): number {
+  return Math.max(0, offer.expiresRound - career.season.nextRound + 1);
+}
+
+/**
+ * Signs or turns down a sponsor offer. Returns false when the offer is no longer
+ * on the table -- it ran out, or it has already been answered.
+ */
+export function answerSponsorOffer(
+  career: Career,
+  offerId: string,
+  response: 'accept' | 'decline',
+): boolean {
+  const offer = pendingSponsorOffers(career).find((o) => o.id === offerId);
+  if (!offer) return false;
+
+  career.sponsorOffers = career.sponsorOffers.filter((o) => o.id !== offerId);
+  if (response === 'accept') acceptSponsorOffer(managedClub(career), offer);
+  return true;
+}
+
+/** Signed deals still to settle: bonuses to earn, advances to pay back. */
+export function sponsorDeals(career: Career): SponsorDeal[] {
+  return managedClub(career).finances.sponsorDeals ?? [];
 }
 
 /** Your scouts' read on how good a player might become. Never an exact number. */
@@ -358,6 +435,8 @@ export function endSeason(career: Career): SeasonSummary {
   }
 
   const result = finaliseSeason(career.season);
+  // An offer cannot outlive the season it was made in.
+  career.sponsorOffers = [];
 
   // Credit a season of watching your own players before closeSeason clears their
   // minutes.
@@ -475,7 +554,10 @@ export function beginLiveMatch(career: Career): LiveMatch | undefined {
   const upcoming = nextFixture(career);
   if (!upcoming) return undefined;
 
-  const otherResults = playRound(career.season, { skipClubId: career.managedClubId });
+  const otherResults = playRound(career.season, {
+    skipClubId: career.managedClubId,
+    humanClubId: career.managedClubId,
+  });
 
   const home = findClub(career.world, upcoming.fixture.homeClubId);
   const away = findClub(career.world, upcoming.fixture.awayClubId);
@@ -505,7 +587,9 @@ export function beginLiveMatch(career: Career): LiveMatch | undefined {
 /** Blows the whistle, books the result and closes the round. */
 export function endLiveMatch(live: LiveMatch, career: Career): MatchResult {
   while (!matchComplete(live.match)) stepMatch(live.match);
-  return playFixture(career.season, live.fixture, finishMatch(live.match));
+  const result = playFixture(career.season, live.fixture, finishMatch(live.match));
+  offerManagedSponsor(career, [result]);
+  return result;
 }
 
 /** Players the manager could send out to get football. */

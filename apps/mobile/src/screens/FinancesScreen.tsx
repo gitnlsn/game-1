@@ -1,22 +1,31 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
+  answerSponsorOffer,
   effectiveWageBill,
   leagueOf,
   ECONOMY_TUNING,
   expectedAnnualRevenue,
   formatMoney,
   managedClub,
+  pendingSponsorOffers,
   recordExpense,
   recordIncome,
-  wageBill,
+  sponsorDeals,
+  sponsorOfferWeeksLeft,
+  type SponsorOffer,
 } from '@eleven-deep/engine';
-import { Card, Divider, KeyValue, ScreenHeader, SectionTitle } from '../components/ui';
+import { Button, Card, Divider, KeyValue, ScreenHeader, SectionTitle } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ordinal } from '../format';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 
 export function FinancesScreen() {
-  const { career } = useGame();
+  const { career, version, refresh } = useGame();
+  const [message, setMessage] = useState<string | undefined>();
+  const [signing, setSigning] = useState<SponsorOffer | undefined>();
+  const offers = useMemo(() => (career ? pendingSponsorOffers(career) : []), [career, version]);
   if (!career) return null;
 
   const club = managedClub(career);
@@ -60,6 +69,47 @@ export function FinancesScreen() {
         ]}
       />
 
+      {message ? (
+        <Card style={styles.message}>
+          <Text style={styles.messageText}>{message}</Text>
+        </Card>
+      ) : null}
+
+      {offers.length > 0 ? <SectionTitle>Sponsor offers</SectionTitle> : null}
+      {offers.map((offer) => {
+        const weeks = sponsorOfferWeeksLeft(career, offer);
+        return (
+          <Card key={offer.id} style={styles.card}>
+            <Text style={styles.cardTitle}>{offer.sponsorName}</Text>
+            <Text style={styles.cardMeta}>
+              {offerHeadline(offer)} · expires in {weeks} {weeks === 1 ? 'week' : 'weeks'}
+            </Text>
+            <Divider />
+            <KeyValue label="Paid now" value={formatMoney(offer.upfront)} bold tint={colors.accent} />
+            {offer.bonus && offer.targetPosition ? (
+              <KeyValue
+                label={`Bonus for finishing ${ordinal(offer.targetPosition)} or better`}
+                value={formatMoney(offer.bonus)}
+              />
+            ) : null}
+            <Text style={styles.catch}>{offerCatch(offer)}</Text>
+            <View style={styles.actions}>
+              <Button
+                label="Decline"
+                variant="secondary"
+                style={styles.action}
+                onPress={() => {
+                  answerSponsorOffer(career, offer.id, 'decline');
+                  setMessage(`You turn down ${offer.sponsorName}.`);
+                  refresh();
+                }}
+              />
+              <Button label="Sign" style={styles.action} onPress={() => setSigning(offer)} />
+            </View>
+          </Card>
+        );
+      })}
+
       <SectionTitle>This season</SectionTitle>
       <Card>
         <Text style={styles.groupLabel}>Income</Text>
@@ -67,6 +117,7 @@ export function FinancesScreen() {
         <KeyValue label="Sponsorship" value={formatMoney(season.sponsorship)} />
         <KeyValue label="Prize money" value={formatMoney(season.prizeMoney)} />
         <KeyValue label="Player sales" value={formatMoney(season.playerSales)} />
+        <KeyValue label="Sponsor deals" value={formatMoney(season.sponsorDeals ?? 0)} />
         <KeyValue label="Total" value={formatMoney(income)} bold tint={colors.accent} />
 
         <Divider />
@@ -89,7 +140,42 @@ export function FinancesScreen() {
         <KeyValue label="Stadium" value={`${finances.stadiumCapacity.toLocaleString()} seats`} />
         <KeyValue label="Ticket price" value={`${finances.ticketPrice}`} />
         <KeyValue label="Sponsorship / season" value={formatMoney(finances.sponsorshipPerSeason)} />
+        {sponsorDeals(career).map((deal, index) =>
+          deal.kind === 'performance' ? (
+            <KeyValue
+              key={index}
+              label={`${deal.sponsorName} bonus, if ${ordinal(deal.targetPosition ?? 1)} or better`}
+              value={formatMoney(deal.bonus ?? 0)}
+            />
+          ) : (
+            <KeyValue
+              key={index}
+              label={`${deal.sponsorName} advance, off next season`}
+              value={formatMoney(-(deal.nextSeasonCut ?? 0))}
+              tint={colors.warn}
+            />
+          ),
+        )}
       </Card>
+
+      <ConfirmDialog
+        visible={!!signing}
+        title={signing ? `Sign with ${signing.sponsorName}?` : ''}
+        message={signing ? `${formatMoney(signing.upfront)} now. ${offerCatch(signing)}` : ''}
+        confirmLabel="Sign the deal"
+        onConfirm={() => {
+          if (!signing) return;
+          const signed = answerSponsorOffer(career, signing.id, 'accept');
+          setMessage(
+            signed
+              ? `You sign with ${signing.sponsorName}. ${formatMoney(signing.upfront)} is in the bank.`
+              : 'That offer is no longer on the table.',
+          );
+          setSigning(undefined);
+          refresh();
+        }}
+        onCancel={() => setSigning(undefined)}
+      />
 
       <Text style={styles.footnote}>
         Money is in neutral units. Clubs run close to break-even: wages and running costs together
@@ -99,9 +185,40 @@ export function FinancesScreen() {
   );
 }
 
+function offerHeadline(offer: SponsorOffer): string {
+  switch (offer.kind) {
+    case 'advance':
+      return 'Money up front';
+    case 'performance':
+      return 'Paid on results';
+    case 'tour':
+      return 'A friendly tour';
+  }
+}
+
+/** The catch, in words, because every deal has one. */
+function offerCatch(offer: SponsorOffer): string {
+  switch (offer.kind) {
+    case 'advance':
+      return `Next season's sponsorship falls by ${formatMoney(offer.nextSeasonCut ?? 0)}.`;
+    case 'performance':
+      return `Miss ${ordinal(offer.targetPosition ?? 1)} and the bonus is not paid.`;
+    case 'tour':
+      return `The tour takes it out of the squad: every player loses ${offer.conditionCost ?? 0} condition.`;
+  }
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  message: { marginBottom: spacing.md, borderColor: colors.accent },
+  messageText: { color: colors.text, fontSize: 13 },
+  card: { marginBottom: spacing.sm },
+  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  cardMeta: { color: colors.faint, fontSize: 12, marginTop: 2 },
+  catch: { color: colors.warn, fontSize: 12, marginTop: spacing.sm },
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  action: { flex: 1 },
   groupLabel: {
     color: colors.muted,
     fontSize: 11,

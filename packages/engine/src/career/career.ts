@@ -1,6 +1,6 @@
 import { Rng, clamp } from '../rng/index.js';
 import type { BoardVerdict } from './board.js';
-import { allClubs } from '../world/index.js';
+import { allClubs, findClub } from '../world/index.js';
 import { setSquad } from '../world/squads.js';
 import { recallLoans, runLoanWindow } from '../transfers/loans.js';
 import type { Club, Player, SeasonResult, TableRow, Transfer, World } from '../types.js';
@@ -11,6 +11,7 @@ import {
   setTransferBudgets,
 } from '../economy/finances.js';
 import { recordExpense, recordIncome } from '../economy/finances.js';
+import { settleSponsorDeals } from '../economy/sponsors.js';
 import { simulateSeason } from '../league/season.js';
 import {
   createTransferWindow,
@@ -159,6 +160,7 @@ export function closeSeason(
 ): SeasonSummary {
   const clubs = allClubs(world);
   distributeSeasonIncome(clubs, season.tables ?? [season.table]);
+  settleAllSponsorDeals(world, season.tables ?? [season.table]);
 
   const finances = clubs.map((club) => toClubSeasonFinance(club));
 
@@ -251,6 +253,16 @@ export function closeSeason(
     finances,
     returningFromLoan: returningFromLoan.length,
   };
+}
+
+/** Performance bonuses, judged on the division each club actually played in. */
+function settleAllSponsorDeals(world: World, tables: readonly (readonly TableRow[])[]): void {
+  for (const table of tables) {
+    table.forEach((row, index) => {
+      const club = findClub(world, row.clubId);
+      if (club) settleSponsorDeals(club, index + 1);
+    });
+  }
 }
 
 function toClubSeasonFinance(club: Club): ClubSeasonFinance {

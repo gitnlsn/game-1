@@ -8,6 +8,7 @@ import type {
   MatchResult,
   Player,
   ScoutingState,
+  SponsorOffer,
   TeamSheet,
   TransferWindowState,
 } from '../types.js';
@@ -19,7 +20,7 @@ import type { BoardState } from './board.js';
 import { BOARD_TUNING, createBoardState, refreshExpectation } from './board.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -56,7 +57,10 @@ export interface SavedCareer {
   leagues: { id: string; name: string; nationality: string; tier: number; clubIds: string[] }[];
   clubs: Club[];
   freeAgents: Player[];
-  /** Added in save version 9. */
+  /**
+   * Added without a version bump: saves from before it load with no loans
+   * through the `?? []` default in `fromSavedCareer`.
+   */
   loans: Loan[];
   /** Added in save version 4: an open close-season window. */
   transferWindow: TransferWindowState | undefined;
@@ -77,6 +81,8 @@ export interface SavedCareer {
   scouting: ScoutingState;
   /** Added in save version 7. */
   board: BoardState;
+  /** Added in save version 9: sponsor offers waiting for an answer. */
+  sponsorOffers: SponsorOffer[];
 }
 
 export function toSavedCareer(career: Career): SavedCareer {
@@ -112,6 +118,7 @@ export function toSavedCareer(career: Career): SavedCareer {
     history: career.history,
     scouting: career.scouting,
     board: career.board,
+    sponsorOffers: career.sponsorOffers,
   };
 }
 
@@ -247,6 +254,11 @@ const MIGRATIONS: Record<number, Migration> = {
     version: 8,
     season: { ...((saved.season as Record<string, unknown>) ?? {}), cup: undefined },
   }),
+  /**
+   * v9 adds mid-season sponsor offers. An older career simply has none waiting;
+   * its clubs' finances pick the new fields up as optional defaults.
+   */
+  8: (saved) => ({ ...saved, version: 9, sponsorOffers: [] }),
 };
 
 /** Raised when a save cannot be brought up to the current format. */
@@ -358,6 +370,7 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     history: saved.history,
     scouting: saved.scouting ?? { reports: {}, capacityUsed: 0 },
     board,
+    sponsorOffers: saved.sponsorOffers ?? [],
   };
 }
 

@@ -89,11 +89,18 @@ export function emptyFinancialRecord(): FinancialRecord {
     infrastructure: 0,
     ownerDrawings: 0,
     playerPurchases: 0,
+    sponsorDeals: 0,
   };
 }
 
 export function recordIncome(record: FinancialRecord): number {
-  return record.gateReceipts + record.sponsorship + record.prizeMoney + record.playerSales;
+  return (
+    record.gateReceipts +
+    record.sponsorship +
+    record.prizeMoney +
+    record.playerSales +
+    (record.sponsorDeals ?? 0)
+  );
 }
 
 export function recordExpense(record: FinancialRecord): number {
@@ -331,10 +338,23 @@ export function applyCloseSeasonSpending(club: Club, clubCount: number, tier = 1
   // alone: it only ever changes through expansion above.
   club.finances.ticketPrice = ticketPrice(club.reputation);
   club.finances.sponsorshipPerSeason = sponsorshipIncome(club.reputation);
+
+  // An advance taken last season is paid back out of this one's deal.
+  const deals = club.finances.sponsorDeals ?? [];
+  for (const deal of deals) {
+    if (deal.kind === 'advance' && deal.nextSeasonCut) {
+      club.finances.sponsorshipPerSeason = Math.max(
+        0,
+        club.finances.sponsorshipPerSeason - deal.nextSeasonCut,
+      );
+    }
+  }
+  club.finances.sponsorDeals = deals.filter((deal) => deal.kind !== 'advance');
 }
 
 export function resetSeasonRecord(club: Club): void {
   club.finances.season = emptyFinancialRecord();
+  delete club.finances.lastSponsorOfferRound;
 }
 
 /**

@@ -112,6 +112,12 @@ export interface FinancialRecord {
   /** Profit taken out by the owners once reserves are comfortable. */
   ownerDrawings: number;
   playerPurchases: number;
+  /**
+   * Money from sponsor deals signed during the season, kept apart from the
+   * regular sponsorship so the books show what the deals actually brought in.
+   * Optional because saves from before the deals existed do not have it.
+   */
+  sponsorDeals?: number;
 }
 
 export interface ClubFinances {
@@ -125,6 +131,50 @@ export interface ClubFinances {
   /** Weekly wage ceiling the club will not knowingly exceed. */
   wageBudget: number;
   season: FinancialRecord;
+  /** Sponsor deals signed but not settled yet: a bonus to earn, a cut to take. */
+  sponsorDeals?: SponsorDeal[];
+  /** League round of this season's last sponsor offer, for the cooldown. */
+  lastSponsorOfferRound?: number;
+}
+
+export type SponsorOfferKind = 'advance' | 'performance' | 'tour';
+
+/**
+ * A sponsor's proposal made during the season. Every kind has a catch: money
+ * now is paid back from next season, a bonus has to be earned, and a tour
+ * costs the squad its legs.
+ */
+export interface SponsorOffer {
+  /** Built from saved data, so ids stay unique across a restart. */
+  id: string;
+  kind: SponsorOfferKind;
+  clubId: string;
+  sponsorName: string;
+  /** Paid the moment the deal is signed. */
+  upfront: number;
+  /** performance: paid at season end if the club finishes `targetPosition` or better. */
+  bonus?: number;
+  targetPosition?: number;
+  /** advance: taken off next season's sponsorship. */
+  nextSeasonCut?: number;
+  /** tour: condition every player in the squad loses. */
+  conditionCost?: number;
+  /** Season and round the offer was made in. */
+  season: number;
+  offeredRound: number;
+  /** Last round the offer can still be accepted before. */
+  expiresRound: number;
+}
+
+/** What is left to settle of a signed sponsor offer. */
+export interface SponsorDeal {
+  kind: 'performance' | 'advance';
+  sponsorName: string;
+  /** performance: the bonus and the place that earns it. */
+  bonus?: number;
+  targetPosition?: number;
+  /** advance: what comes off next season's sponsorship. */
+  nextSeasonCut?: number;
 }
 
 /** What a manager has learned about one player. */

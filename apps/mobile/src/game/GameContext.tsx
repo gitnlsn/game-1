@@ -15,6 +15,7 @@ import {
   endSeason,
   isSacked,
   isSeasonComplete,
+  pendingSponsorOffers,
   startCareer,
   startNextSeason,
   transferWindow,
@@ -78,6 +79,8 @@ interface GameContextValue {
   beginNextSeason: () => Promise<void>;
   /** True while the close-season window is open and waiting on you. */
   windowOpen: boolean;
+  /** Sponsor offers waiting for an answer, for the Money tab to flag. */
+  sponsorOffersWaiting: number;
   /** True once the board has dismissed you. The career is over. */
   sacked: boolean;
   /**
@@ -372,6 +375,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     () => ({
       career, version, loading, busy, saveProblem, settings, live, startLive, endLive,
       windowOpen: !!career && !!transferWindow(career),
+      sponsorOffersWaiting: career ? pendingSponsorOffers(career).length : 0,
       sacked: !!career && isSacked(career),
       started, continueCareer, returnToTitle,
       newCareer, playRound, finishSeason, beginNextSeason, abandonCareer,

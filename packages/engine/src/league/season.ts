@@ -1,5 +1,14 @@
 import { Rng } from '../rng/index.js';
-import type { Fixture, MatchResult, SeasonResult, TableRow, TeamSheet, World } from '../types.js';
+import type {
+  Club,
+  Fixture,
+  League,
+  MatchResult,
+  SeasonResult,
+  TableRow,
+  TeamSheet,
+  World,
+} from '../types.js';
 import { simulateMatch } from '../match/engine.js';
 import { generateFixtures } from './fixtures.js';
 import { buildTable } from './table.js';
@@ -23,6 +32,13 @@ import {
   payWeeklySponsorship,
   payWeeklyWages,
 } from '../economy/finances.js';
+import {
+  acceptSponsorOffer,
+  aiAcceptsSponsor,
+  rollSponsorOffer,
+  SPONSOR_TUNING,
+  type SponsorContext,
+} from '../economy/sponsors.js';
 
 export interface SimulateSeasonOptions {
   fixtures?: Fixture[];
@@ -195,6 +211,12 @@ export interface PlayRoundOptions {
    * manager is done with it.
    */
   skipClubId?: string;
+  /**
+   * The club a person is running. The AI answers every other club's sponsor
+   * offers on the spot; this one's are left for the manager, who is offered
+   * them by the career rather than here.
+   */
+  humanClubId?: string;
 }
 
 /**
@@ -304,6 +326,8 @@ export function playRound(state: SeasonState, round: PlayRoundOptions = {}): Mat
     state.played.set(away.id, (state.played.get(away.id) ?? 0) + 1);
   }
 
+  if (options.economy && !midweek) signAiSponsorDeals(state, roundResults, round.humanClubId);
+
   // Held back for the manager: the round is not over and the cup cannot move on
   // until his match has been played.
   if (round.skipClubId) return roundResults;
@@ -362,6 +386,79 @@ export function playFixture(
   state.options.onMatch?.(stamped, fixture);
   closeRound(state);
   return stamped;
+}
+
+/**
+ * Mid-season sponsor offers for every club the AI runs, answered as they come.
+ * Each club rolls on its own generator, seeded from the season's, so the offers
+ * never draw from the stream the matches are played on.
+ */
+function signAiSponsorDeals(
+  state: SeasonState,
+  roundResults: readonly MatchResult[],
+  humanClubId: string | undefined,
+): void {
+  for (const league of state.world.leagues) {
+    const table = currentTable(state, league.id);
+    for (const club of league.clubs) {
+      if (club.id === humanClubId) continue;
+      const ctx = sponsorContext(state, club, league, table, state.nextRound, roundResults, false);
+      const rng = new Rng(`sponsor:${state.rng.getState()}:${club.id}`);
+      const offer = rollSponsorOffer(rng, club, ctx);
+      if (!offer) continue;
+      club.finances.lastSponsorOfferRound = ctx.round;
+      if (aiAcceptsSponsor(club, offer, ctx)) acceptSponsorOffer(club, offer);
+    }
+  }
+}
+
+/** Where a club's season stands, as a sponsor would read it. */
+export function sponsorContext(
+  state: SeasonState,
+  club: Club,
+  league: League,
+  table: readonly TableRow[],
+  round: number,
+  roundResults: readonly MatchResult[],
+  pending: boolean,
+): SponsorContext {
+  const games = state.played.get(club.id) ?? 0;
+  const index = table.findIndex((row) => row.clubId === club.id);
+
+  const own = roundResults.find((r) => r.homeClubId === club.id || r.awayClubId === club.id);
+  let beatBiggerClub = false;
+  if (own) {
+    const home = own.homeClubId === club.id;
+    const opponent = findClub(state.world, home ? own.awayClubId : own.homeClubId);
+    const scored = home ? own.home.goals : own.away.goals;
+    const conceded = home ? own.away.goals : own.home.goals;
+    // A cup tie can be won on penalties, so the bracket says who went through.
+    // The latest tie with that pairing: the same two can meet in more than one season.
+    const tie = [...(state.cup?.ties ?? [])].reverse().find(
+      (t) => t.homeClubId === own.homeClubId && t.awayClubId === own.awayClubId,
+    );
+    const won =
+      own.competitionId === state.cup?.competitionId
+        ? tie?.winnerClubId === club.id
+        : scored > conceded;
+    beatBiggerClub =
+      won &&
+      opponent !== undefined &&
+      opponent.reputation - club.reputation >= SPONSOR_TUNING.giantKillingGap;
+  }
+
+  return {
+    season: state.world.season,
+    round,
+    totalRounds: state.totalRounds,
+    pointsPerGame: games === 0 ? 1.3 : (state.points.get(club.id) ?? 0) / games,
+    stillInCup: state.cup?.remaining.includes(club.id) ?? false,
+    beatBiggerClub,
+    position: index < 0 ? table.length : index + 1,
+    divisionSize: league.clubs.length,
+    tier: league.tier,
+    pending,
+  };
 }
 
 /** Moves the cup on and turns the page. */

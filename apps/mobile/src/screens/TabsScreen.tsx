@@ -19,6 +19,7 @@ import { SeasonScreen } from './SeasonScreen';
 import { FinancesScreen } from './FinancesScreen';
 import { SettingsScreen } from './SettingsScreen';
 import { colors } from '../theme';
+import { useGame } from '../game/GameContext';
 
 type TabKey = 'club' | 'squad' | 'season' | 'finances' | 'options';
 
@@ -41,6 +42,7 @@ export function TabsScreen() {
   // The app draws edge to edge, so the status bar and the system navigation
   // bar are ours to keep clear of.
   const insets = useSafeAreaInsets();
+  const { sponsorOffersWaiting } = useGame();
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -62,16 +64,21 @@ export function TabsScreen() {
         {TABS.map((item) => {
           const active = item.key === tab;
           const Icon = item.icon;
+          // A sponsor offer runs out if nobody looks, so the tab says one is waiting.
+          const flagged = item.key === 'finances' && sponsorOffersWaiting > 0;
           return (
             <Pressable
               key={item.key}
               onPress={() => setTab(item.key)}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={item.label}
+              accessibilityLabel={flagged ? `${item.label}, sponsor offer waiting` : item.label}
               style={styles.tab}
             >
-              <Icon size={20} strokeWidth={2} color={active ? colors.accent : colors.faint} />
+              <View>
+                <Icon size={20} strokeWidth={2} color={active ? colors.accent : colors.faint} />
+                {flagged ? <View style={styles.dot} /> : null}
+              </View>
               <Text style={[styles.tabLabel, active ? styles.tabLabelActive : null]}>
                 {item.label}
               </Text>
@@ -98,4 +105,15 @@ const styles = StyleSheet.create({
   tab: { flex: 1, alignItems: 'center', paddingVertical: 4 },
   tabLabel: { fontSize: 10, color: colors.faint, fontWeight: '600', marginTop: 3 },
   tabLabelActive: { color: colors.accent },
+  dot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.gold,
+    borderWidth: 1,
+    borderColor: colors.surface,
+  },
 });
