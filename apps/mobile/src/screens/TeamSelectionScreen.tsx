@@ -6,6 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   abilityIn,
   computeTeamRating,
+  currentAbility,
   currentTeamSheet,
   isAvailable,
   managedClub,
@@ -344,30 +345,40 @@ function SlotChip({
   selected: boolean;
   onPress: () => void;
 }) {
+  // Ability in the slot being played, so a player out of position shows it.
+  const rating =
+    abilityIn(player.attributes, position) * positionFamiliarity(player.position, position);
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${position} ${player.displayName}`}
+      accessibilityLabel={`${position} ${player.displayName}, rated ${rating.toFixed(0)}, fitness ${player.status.condition.toFixed(0)}`}
       style={[styles.slot, selected ? styles.slotSelected : null]}
     >
-      <Text style={[styles.slotPosition, { color: positionColor(position) }]}>{position}</Text>
+      <View style={styles.slotHeader}>
+        <Text style={[styles.slotPosition, { color: positionColor(position) }]}>{position}</Text>
+        <Text style={[styles.slotRating, { color: ratingColor(rating) }]}>{rating.toFixed(0)}</Text>
+      </View>
       <Text style={styles.slotName} numberOfLines={1}>
         {player.lastName || player.displayName}
       </Text>
-      <View style={styles.slotBar}>
-        <View
-          style={[
-            styles.slotBarFill,
-            {
-              width: `${Math.max(4, player.status.condition)}%`,
-              backgroundColor: conditionColor(player.status.condition),
-            },
-          ]}
-        />
-      </View>
+      <Fitness condition={player.status.condition} />
     </Pressable>
+  );
+}
+
+/** Fitness as a bar along the foot of a card or row, the same wherever a player is listed. */
+function Fitness({ condition }: { condition: number }) {
+  return (
+    <View style={styles.fitnessTrack}>
+      <View
+        style={[
+          styles.fitnessFill,
+          { width: `${Math.max(4, condition)}%`, backgroundColor: conditionColor(condition) },
+        ]}
+      />
+    </View>
   );
 }
 
@@ -381,29 +392,32 @@ function BenchRow({
   onPress: () => void;
 }) {
   const available = isAvailable(player);
+  const rating = currentAbility(player);
   return (
     <Pressable
       onPress={onPress}
       disabled={!available}
       accessibilityRole="button"
       accessibilityState={{ selected, disabled: !available }}
-      accessibilityLabel={`${player.position} ${player.displayName}`}
+      accessibilityLabel={`${player.position} ${player.displayName}, rated ${rating.toFixed(0)}, fitness ${player.status.condition.toFixed(0)}`}
       style={[styles.benchRow, selected ? styles.benchRowSelected : null, !available ? styles.benchRowOut : null]}
     >
-      <Text style={[styles.benchPosition, { color: positionColor(player.position) }]}>
-        {player.position}
-      </Text>
-      <Text style={styles.benchName} numberOfLines={1}>
-        {player.displayName}
-      </Text>
-      {!available ? (
-        <Badge
-          label={player.status.injuryMatches > 0 ? `INJ ${player.status.injuryMatches}` : `BAN ${player.status.suspensionMatches}`}
-          color={player.status.injuryMatches > 0 ? colors.danger : colors.warn}
-        />
-      ) : (
-        <Text style={styles.benchCondition}>{player.status.condition.toFixed(0)}</Text>
-      )}
+      <View style={styles.benchLine}>
+        <Text style={[styles.benchPosition, { color: positionColor(player.position) }]}>
+          {player.position}
+        </Text>
+        <Text style={styles.benchName} numberOfLines={1}>
+          {player.displayName}
+        </Text>
+        {!available ? (
+          <Badge
+            label={player.status.injuryMatches > 0 ? `INJ ${player.status.injuryMatches}` : `BAN ${player.status.suspensionMatches}`}
+            color={player.status.injuryMatches > 0 ? colors.danger : colors.warn}
+          />
+        ) : null}
+        <Text style={[styles.benchRating, { color: ratingColor(rating) }]}>{rating.toFixed(0)}</Text>
+      </View>
+      <Fitness condition={player.status.condition} />
     </Pressable>
   );
 }
@@ -438,15 +452,16 @@ const styles = StyleSheet.create({
     alignItems: 'center', minWidth: 0,
   },
   slotSelected: { borderColor: colors.accent, backgroundColor: colors.accentDim },
+  slotHeader: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   slotPosition: { fontSize: 10, fontWeight: '800' },
+  slotRating: { fontSize: 11, fontWeight: '800', fontVariant: ['tabular-nums'] },
   slotName: { color: colors.text, fontSize: 11, fontWeight: '600', marginTop: 1 },
-  slotBar: {
-    height: 3, backgroundColor: colors.surfaceAlt, borderRadius: 2,
-    overflow: 'hidden', alignSelf: 'stretch', marginTop: 4,
+  fitnessTrack: {
+    alignSelf: 'stretch', height: 3, marginTop: 5,
+    backgroundColor: colors.surfaceAlt, borderRadius: 2, overflow: 'hidden',
   },
-  slotBarFill: { height: 3, borderRadius: 2 },
+  fitnessFill: { height: 3, borderRadius: 2 },
   benchRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7, paddingHorizontal: spacing.sm, borderRadius: 6,
     borderWidth: 1, borderColor: 'transparent', backgroundColor: colors.surface,
     marginBottom: 3,
@@ -455,9 +470,10 @@ const styles = StyleSheet.create({
   benchRowOut: { opacity: 0.45 },
   benchPosition: { fontSize: 10, fontWeight: '800', width: 28 },
   benchName: { color: colors.text, fontSize: 13, flex: 1 },
-  benchCondition: {
-    color: colors.muted, fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'],
+  benchRating: {
+    fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'], width: 24, textAlign: 'right',
   },
+  benchLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   footer: {
     borderTopWidth: 1, borderTopColor: colors.border,
     backgroundColor: colors.surface, padding: spacing.md,
