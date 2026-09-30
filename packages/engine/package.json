@@ -9,7 +9,8 @@
     "sim": "tsx src/cli.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsx scripts/refresh-names.ts && tsc -p tsconfig.build.json",
+    "names:refresh": "tsx scripts/refresh-names.ts --force",
     "build:watch": "tsc -p tsconfig.build.json --watch"
   },
   "devDependencies": {

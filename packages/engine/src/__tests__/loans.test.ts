@@ -88,15 +88,13 @@ describe('sending a player out on loan', () => {
   it('splits his wage, so lending him out saves money and costs the borrower some', () => {
     const world = twoDivisionWorld('loan-wages');
     const parent = world.leagues[0]!.clubs[0]!;
-    const candidate = loanCandidates(world, parent.id)[0]!;
-    const borrower = allClubs(world).find(
-      (c) => c.id !== parent.id && loanOut(world, parent.id, c.id, candidate.id).agreed,
-    )!;
-    expect(borrower).toBeDefined();
+    const found = firstAcceptedLoan(world, parent.id)!;
+    expect(found).toBeDefined();
+    const borrower = findClub(world, found.borrowerId)!;
 
     // Put him back so the bills can be measured from before the move.
     recallLoans(world);
-    const player = candidate;
+    const player = world.players.get(found.playerId)!;
     const parentBefore = effectiveWageBill(world, parent);
     const borrowerBefore = effectiveWageBill(world, borrower);
     loanOut(world, parent.id, borrower.id, player.id);

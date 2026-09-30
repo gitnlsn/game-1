@@ -190,9 +190,12 @@ describe('running a side by hand', () => {
      * Chasing a game by going all-out attacking has to show up as more shots,
      * or the control is a button that does nothing.
      */
+    // The effect is a few per cent of a side's shots, so a handful of matches
+    // is a coin toss: a new world can flip it. A hundred is ~50ms and stable.
+    const seeds = Array.from({ length: 100 }, (_, i) => `m${i + 1}`);
     const shotsWith = (manage: boolean) => {
       let shots = 0;
-      for (const seed of ['m1', 'm2', 'm3', 'm4', 'm5', 'm6']) {
+      for (const seed of seeds) {
         const match = startMatch(new Rng(seed), home, away, {
           homeSheet: sheet(home.id),
           manualSide: 'home',

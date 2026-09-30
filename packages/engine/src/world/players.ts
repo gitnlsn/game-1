@@ -1,6 +1,6 @@
 import { Rng, clamp } from '../rng/index.js';
 import type { AttributeKey, Attributes, Player, Position } from '../types.js';
-import { generateName, NAME_POOLS, type NamePool } from './names.js';
+import { formatName, generateName, NAME_POOLS, pickNationality, pickSurname, type NamePool } from './names.js';
 import { abilityIn, POSITION_WEIGHTS } from './positions.js';
 import { expectedWage } from '../economy/valuation.js';
 import { createPlayerStatus } from './status.js';
@@ -106,7 +106,7 @@ export interface GeneratePlayerOptions {
   potentialTarget: number;
   age?: number;
   nationality?: NamePool;
-  /** Bias toward domestic players; foreigners are drawn from all pools. */
+  /** The league's own pool; foreigners follow that league's real recruiting mix. */
   domesticPool?: NamePool;
   /**
    * Display names already taken in this squad. Two players called "Juninho" in
@@ -141,7 +141,7 @@ export function ensurePlayerIdsAbove(players: Iterable<Player>): void {
 export function generatePlayer(rng: Rng, options: GeneratePlayerOptions): Player {
   const pool =
     options.nationality ??
-    (options.domesticPool && rng.chance(0.62) ? options.domesticPool : rng.pick(NAME_POOLS));
+    (options.domesticPool ? pickNationality(rng, options.domesticPool) : rng.pick(NAME_POOLS));
 
   const age = options.age ?? generateAge(rng);
   const hiddenPotential = clamp(Math.round(rng.gaussian(options.potentialTarget, 6)), 20, 99);
@@ -194,11 +194,11 @@ function generateUniqueName(rng: Rng, pool: NamePool, taken: Set<string> | undef
   if (!taken.has(full.displayName)) return full;
 
   for (let attempt = 0; attempt < 30; attempt++) {
-    const second = rng.pick(pool.last);
+    const second = pickSurname(rng, pool);
     if (second === name.lastName) continue;
     const compound = {
       ...name,
-      displayName: `${name.firstName.charAt(0)}. ${name.lastName} ${second}`,
+      displayName: formatName(pool, name.firstName, `${name.lastName} ${second}`),
     };
     if (!taken.has(compound.displayName)) return compound;
   }

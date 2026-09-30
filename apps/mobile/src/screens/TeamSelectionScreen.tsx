@@ -13,6 +13,7 @@ import {
   positionFamiliarity,
   resolveTeamSheet,
   setTeamSheet,
+  shirtName,
   suggestedTeamSheet,
   setTactics,
   tactics as currentTactics,
@@ -393,7 +394,7 @@ function SlotChip({
         <Text style={[styles.slotRating, { color: ratingColor(rating) }]}>{rating.toFixed(0)}</Text>
       </View>
       <Text style={styles.slotName} numberOfLines={1}>
-        {player.lastName || player.displayName}
+        {shirtName(player)}
       </Text>
       <Fitness condition={player.status.condition} />
     </Pressable>

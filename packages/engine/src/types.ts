@@ -66,7 +66,7 @@ export interface Player {
   id: string;
   firstName: string;
   lastName: string;
-  /** Display name: a mononym for some players, otherwise "F. Lastname". */
+  /** Display name: a nickname, two forenames, "F. Lastname" or, for Brazilians and Portuguese, the full name. */
   displayName: string;
   nationality: string;
   age: number;

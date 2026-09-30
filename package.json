@@ -7,6 +7,7 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "build:engine": "pnpm --filter @eleven-deep/engine build",
+    "names:refresh": "pnpm --filter @eleven-deep/engine names:refresh",
     "mobile": "pnpm build:engine && pnpm --filter @eleven-deep/mobile exec expo start",
     "mobile:web": "pnpm build:engine && pnpm --filter @eleven-deep/mobile exec expo start --web",
     "mobile:android": "pnpm build:engine && pnpm --filter @eleven-deep/mobile exec expo run:android",

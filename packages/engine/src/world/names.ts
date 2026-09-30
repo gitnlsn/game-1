@@ -1,98 +1,141 @@
 import type { Rng } from '../rng/index.js';
+import type { Player } from '../types.js';
+import { LEAGUE_FOREIGN_MIX, RAW_NAME_POOLS, type RawNamePool } from './nameData.generated.js';
 
 /**
  * Fully fictional players built from per-nationality name pools. Deliberately no
  * real-player database: real squad data is licensed, and a fresh world each save
  * is better for the game anyway.
+ *
+ * The pools are statistics, not people: how often each forename and surname
+ * occurs among a country's footballers on Wikidata, refreshed at build time by
+ * scripts/refresh-names.ts. Drawing by that frequency is what makes a squad read
+ * right -- a Brazilian side has several Silvas and one Fonseca, not one of each.
  */
 export interface NamePool {
   code: string;
   label: string;
   first: readonly string[];
+  firstWeights: readonly number[];
   last: readonly string[];
-  /** Chance a player from here goes by a single name (Brazilian style). */
-  mononymChance: number;
-  /** Nicknames used as mononyms, when mononymChance fires. */
-  mononyms?: readonly string[];
+  lastWeights: readonly number[];
+  /** Forenames used together, as in João Pedro. Empty where that isn't a habit. */
+  pairs: readonly string[];
+  pairWeights: readonly number[];
+  style: NamingStyle;
 }
 
-export const NAME_POOLS: readonly NamePool[] = [
-  {
-    code: 'BRA',
-    label: 'Brazil',
-    mononymChance: 0.55,
-    first: ['Gabriel', 'Lucas', 'Matheus', 'Rafael', 'Thiago', 'Bruno', 'Felipe', 'Rodrigo', 'Vinicius', 'Caio', 'Douglas', 'Everton', 'Fabricio', 'Igor', 'Juliano', 'Leandro', 'Murilo', 'Otavio', 'Renan', 'Wesley'],
-    last: ['Silva', 'Santos', 'Oliveira', 'Souza', 'Pereira', 'Costa', 'Almeida', 'Ferreira', 'Rodrigues', 'Barbosa', 'Ribeiro', 'Cardoso', 'Nascimento', 'Moreira', 'Teixeira', 'Machado', 'Correia', 'Azevedo', 'Batista', 'Fonseca'],
-    mononyms: ['Juninho', 'Rafinha', 'Kaka', 'Fred', 'Dedé', 'Zezinho', 'Vitinho', 'Gabigol', 'Everaldo', 'Tico', 'Dudu', 'Nenê', 'Cafu', 'Lelê', 'Betinho', 'Ronaldinho', 'Careca', 'Serginho', 'Paulinho', 'Marcelinho'],
-  },
-  {
-    code: 'ARG',
-    label: 'Argentina',
-    mononymChance: 0,
-    first: ['Santiago', 'Mateo', 'Nicolas', 'Franco', 'Julian', 'Emiliano', 'Agustin', 'Lautaro', 'Facundo', 'Tomas', 'Joaquin', 'Ezequiel', 'Gonzalo', 'Ignacio', 'Federico', 'Lucas', 'Martin', 'Alejandro', 'Cristian', 'Rodrigo'],
-    last: ['Gomez', 'Fernandez', 'Lopez', 'Martinez', 'Romero', 'Sosa', 'Alvarez', 'Benitez', 'Acosta', 'Medina', 'Herrera', 'Aguirre', 'Molina', 'Ortiz', 'Rojas', 'Paredes', 'Cabrera', 'Peralta', 'Vega', 'Correa'],
-  },
-  {
-    code: 'ESP',
-    label: 'Spain',
-    mononymChance: 0.1,
-    first: ['Alvaro', 'Sergio', 'Pablo', 'Javier', 'Carlos', 'Marco', 'Adrian', 'Ruben', 'Iker', 'Unai', 'Aitor', 'Borja', 'Dani', 'Hugo', 'Mikel', 'Oscar', 'Raul', 'Victor', 'Jorge', 'Nacho'],
-    last: ['Garcia', 'Hernandez', 'Ruiz', 'Torres', 'Navarro', 'Castillo', 'Iglesias', 'Serrano', 'Vidal', 'Blanco', 'Gallego', 'Ramos', 'Sanz', 'Lorenzo', 'Marin', 'Cano', 'Bravo', 'Duran', 'Gil', 'Soler'],
-    mononyms: ['Isco', 'Koke', 'Nolito', 'Joselu', 'Cucho', 'Canales', 'Pedri', 'Gavi'],
-  },
-  {
-    code: 'ENG',
-    label: 'England',
-    mononymChance: 0,
-    first: ['Harry', 'Jack', 'Callum', 'Oliver', 'Reece', 'Marcus', 'Declan', 'Mason', 'Jordan', 'Ethan', 'Connor', 'Lewis', 'Tyler', 'Bailey', 'Kieran', 'Ollie', 'Charlie', 'Ben', 'Joe', 'Sam'],
-    last: ['Smith', 'Walker', 'Wright', 'Hughes', 'Bennett', 'Palmer', 'Foster', 'Hayes', 'Mitchell', 'Barnes', 'Clarke', 'Dawson', 'Ellis', 'Fletcher', 'Grant', 'Holden', 'Kerr', 'Lawrence', 'Norris', 'Pearce'],
-  },
-  {
-    code: 'FRA',
-    label: 'France',
-    mononymChance: 0,
-    first: ['Hugo', 'Theo', 'Lucas', 'Enzo', 'Nathan', 'Maxime', 'Antoine', 'Clement', 'Florian', 'Kylian', 'Romain', 'Yanis', 'Baptiste', 'Corentin', 'Jules', 'Mathis', 'Quentin', 'Sofiane', 'Thomas', 'Valentin'],
-    last: ['Dubois', 'Laurent', 'Lefevre', 'Moreau', 'Girard', 'Fontaine', 'Rousseau', 'Mercier', 'Blanchard', 'Chevalier', 'Perrin', 'Marchand', 'Renaud', 'Barbier', 'Guerin', 'Leclerc', 'Boucher', 'Faure', 'Dumont', 'Vasseur'],
-  },
-  {
-    code: 'GER',
-    label: 'Germany',
-    mononymChance: 0,
-    first: ['Leon', 'Jonas', 'Niklas', 'Maximilian', 'Felix', 'Tim', 'Lukas', 'Julian', 'Moritz', 'Fabian', 'Jannik', 'Marvin', 'Philipp', 'Sebastian', 'Tobias', 'Dennis', 'Kevin', 'Florian', 'Simon', 'Nico'],
-    last: ['Muller', 'Schmidt', 'Weber', 'Wagner', 'Becker', 'Hoffmann', 'Schafer', 'Koch', 'Richter', 'Klein', 'Wolf', 'Neumann', 'Zimmermann', 'Braun', 'Krause', 'Hartmann', 'Lange', 'Werner', 'Kruger', 'Vogel'],
-  },
-  {
-    code: 'ITA',
-    label: 'Italy',
-    mononymChance: 0,
-    first: ['Lorenzo', 'Matteo', 'Alessandro', 'Davide', 'Federico', 'Andrea', 'Simone', 'Giacomo', 'Riccardo', 'Nicolo', 'Stefano', 'Marco', 'Gianluca', 'Emanuele', 'Fabio', 'Luca', 'Pietro', 'Salvatore', 'Tommaso', 'Vincenzo'],
-    last: ['Rossi', 'Russo', 'Ferrari', 'Esposito', 'Bianchi', 'Romano', 'Colombo', 'Ricci', 'Marino', 'Greco', 'Bruno', 'Gallo', 'Conti', 'De Luca', 'Mancini', 'Costa', 'Giordano', 'Rizzo', 'Lombardi', 'Barbieri'],
-  },
-  {
-    code: 'NED',
-    label: 'Netherlands',
-    mononymChance: 0,
-    first: ['Daan', 'Sven', 'Bram', 'Lars', 'Jurgen', 'Ruud', 'Stijn', 'Thijs', 'Joost', 'Wessel', 'Koen', 'Niels', 'Mats', 'Rick', 'Tijn', 'Jesse', 'Sem', 'Floris', 'Gijs', 'Teun'],
-    last: ['de Jong', 'van Dijk', 'Bakker', 'Visser', 'Smit', 'Meijer', 'de Vries', 'van den Berg', 'Dekker', 'Mulder', 'Bos', 'Vos', 'Peters', 'Hendriks', 'van Leeuwen', 'Timmermans', 'Kuiper', 'Willems', 'Scholten', 'Brouwer'],
-  },
-  {
-    code: 'POR',
-    label: 'Portugal',
-    mononymChance: 0.35,
-    first: ['Joao', 'Diogo', 'Ruben', 'Bernardo', 'Goncalo', 'Tiago', 'Andre', 'Rafael', 'Nuno', 'Miguel', 'Ricardo', 'Fabio', 'Pedro', 'Hugo', 'Vitor', 'Bruno', 'Daniel', 'Luis', 'Paulo', 'Sergio'],
-    last: ['Silva', 'Ferreira', 'Sousa', 'Costa', 'Pinto', 'Carvalho', 'Lopes', 'Mendes', 'Alves', 'Cunha', 'Moura', 'Nunes', 'Tavares', 'Rocha', 'Marques', 'Antunes', 'Freitas', 'Guedes', 'Neves', 'Pires'],
-    mononyms: ['Nani', 'Pepe', 'Quaresma', 'Vitinha', 'Chiquinho', 'Zeca', 'Rafa', 'Toze'],
-  },
-  {
-    code: 'JPN',
-    label: 'Japan',
-    mononymChance: 0,
-    first: ['Takumi', 'Sho', 'Ryo', 'Daichi', 'Kaoru', 'Yuto', 'Hiroki', 'Kenta', 'Sota', 'Riku', 'Haruto', 'Yuki', 'Kaito', 'Ren', 'Shota', 'Koki', 'Naoki', 'Tatsuya', 'Yusuke', 'Junya'],
-    last: ['Tanaka', 'Suzuki', 'Sato', 'Watanabe', 'Ito', 'Yamamoto', 'Nakamura', 'Kobayashi', 'Kato', 'Yoshida', 'Sasaki', 'Yamaguchi', 'Matsumoto', 'Inoue', 'Kimura', 'Hayashi', 'Shimizu', 'Mori', 'Ikeda', 'Hashimoto'],
-  },
-] as const;
+interface NamingStyle {
+  /** Chance a player goes by a single name (Brazilian style). */
+  mononymChance: number;
+  /** Chance a player goes by two forenames and no surname: Bruno Henrique. */
+  pairChance: number;
+  /** "Gabriel Barbosa" where the whole name is what fans call him, else "G. Barbosa". */
+  fullNames: boolean;
+  /** Nickname built from the forename, when a mononym is drawn. */
+  nickname?: (first: string, rng: Rng) => string;
+}
+
+/**
+ * Squeezes the raw counts so the long tail still turns up. Real frequencies
+ * are steep enough that a league of 500 would be a third Silva.
+ */
+const WEIGHT_EXPONENT = 0.7;
+
+/** Portuguese diminutives: Paulo → Paulinho, Marcos → Marquinhos, Diego → Dieguinho. */
+function portugueseDiminutive(first: string): string | undefined {
+  const special: Record<string, string> = {
+    Rafael: 'Rafinha', Eduardo: 'Dudu', José: 'Zé', Guilherme: 'Gui',
+    Gabriel: 'Biel', Lucas: 'Luquinhas', João: 'Joãozinho', Luiz: 'Luizinho', Luís: 'Luisinho',
+    Alexandre: 'Xandinho', Fabiano: 'Fabinho', Júnior: 'Juninho', William: 'Willian',
+  };
+  if (special[first]) return special[first];
+  const stem = (s: string) => s.replace(/c$/, 'qu').replace(/g$/, 'gu');
+  if (/[^aeiou]o$/.test(first)) return `${stem(first.slice(0, -1))}inho`;
+  if (/[^aeiou]os$/.test(first)) return `${stem(first.slice(0, -2))}inhos`;
+  return undefined;
+}
+
+function lusophoneNickname(first: string, rng: Rng): string {
+  const diminutive = portugueseDiminutive(first);
+  const roll = rng.next();
+  if (diminutive && roll < 0.4) return diminutive;
+  if (roll < 0.52) return `${first} Júnior`;
+  // Most Brazilian "mononyms" are simply the forename: Everton, Wesley, Danilo.
+  return first;
+}
+
+function spanishNickname(first: string): string {
+  const short: Record<string, string> = {
+    Daniel: 'Dani', Ignacio: 'Nacho', Francisco: 'Fran', Alejandro: 'Álex', Rodrigo: 'Rodri',
+    Jesús: 'Chus', Manuel: 'Manu', Santiago: 'Santi', Joaquín: 'Joaquín', Sebastián: 'Sebas',
+  };
+  return short[first] ?? first;
+}
+
+/**
+ * Nicknames the rules above can reach that belong to one famous player. A
+ * Série B right back called Ronaldinho reads as a joke, not as realism.
+ */
+const RESERVED_NICKNAMES = new Set([
+  'Ronaldo', 'Ronaldinho', 'Romário', 'Rivaldo', 'Marcelo', 'Casemiro', 'Kaká', 'Neymar', 'Neymar Júnior',
+  'Vinícius Júnior', 'Vini', 'Cristiano', 'Deco', 'Rodri', 'Pedri', 'Isco',
+]);
+
+const DEFAULT_STYLE: NamingStyle = { mononymChance: 0, pairChance: 0, fullNames: false };
+const HISPANIC: NamingStyle = { mononymChance: 0.03, pairChance: 0.04, fullNames: false, nickname: spanishNickname };
+
+const STYLES: Record<string, NamingStyle> = {
+  BRA: { mononymChance: 0.35, pairChance: 0.12, fullNames: true, nickname: lusophoneNickname },
+  POR: { mononymChance: 0.15, pairChance: 0.1, fullNames: true, nickname: lusophoneNickname },
+  ESP: { ...HISPANIC, mononymChance: 0.08 },
+  ARG: HISPANIC,
+  URU: HISPANIC,
+  COL: HISPANIC,
+  PAR: HISPANIC,
+  CHI: HISPANIC,
+  ECU: HISPANIC,
+};
+
+function toPool(raw: RawNamePool): NamePool {
+  const names = (entries: RawNamePool['first']) => entries.map(([name]) => name);
+  const weights = (entries: RawNamePool['first']) => entries.map(([, n]) => n ** WEIGHT_EXPONENT);
+  return {
+    code: raw.code,
+    label: raw.label,
+    first: names(raw.first),
+    firstWeights: weights(raw.first),
+    last: names(raw.last),
+    lastWeights: weights(raw.last),
+    pairs: names(raw.pairs),
+    pairWeights: weights(raw.pairs),
+    style: STYLES[raw.code] ?? DEFAULT_STYLE,
+  };
+}
+
+export const NAME_POOLS: readonly NamePool[] = RAW_NAME_POOLS.map(toPool);
 
 export const NAME_POOL_BY_CODE = new Map(NAME_POOLS.map((p) => [p.code, p]));
+
+/**
+ * Share of a league's players who are home-grown. Brazilian squads are
+ * overwhelmingly Brazilian; English ones much less so.
+ */
+const DOMESTIC_SHARE: Record<string, number> = { BRA: 0.85, ENG: 0.6 };
+const DEFAULT_DOMESTIC_SHARE = 0.62;
+
+/**
+ * The nationality of a player joining a club in `domestic`'s league. Foreigners
+ * come from where that league really recruits -- Brazil from its neighbours,
+ * England from Ireland, Scotland and France -- rather than evenly from everywhere.
+ */
+export function pickNationality(rng: Rng, domestic: NamePool): NamePool {
+  if (rng.chance(DOMESTIC_SHARE[domestic.code] ?? DEFAULT_DOMESTIC_SHARE)) return domestic;
+  const mix = (LEAGUE_FOREIGN_MIX[domestic.code] ?? []).filter(([code]) => NAME_POOL_BY_CODE.has(code));
+  if (mix.length === 0) return rng.pick(NAME_POOLS.filter((p) => p !== domestic));
+  const [code] = mix[rng.weightedIndex(mix.map(([, n]) => n))]!;
+  return NAME_POOL_BY_CODE.get(code)!;
+}
 
 export interface GeneratedName {
   firstName: string;
@@ -100,18 +143,41 @@ export interface GeneratedName {
   displayName: string;
 }
 
-export function generateName(rng: Rng, pool: NamePool): GeneratedName {
-  const firstName = rng.pick(pool.first);
-  const lastName = rng.pick(pool.last);
+export function pickSurname(rng: Rng, pool: NamePool): string {
+  return pool.last[rng.weightedIndex(pool.lastWeights)]!;
+}
 
-  if (pool.mononyms && pool.mononyms.length > 0 && rng.chance(pool.mononymChance)) {
-    const mononym = rng.pick(pool.mononyms);
-    return { firstName, lastName, displayName: mononym };
+/** "Gabriel Barbosa" or "G. Barbosa", as the pool's country would print it. */
+export function formatName(pool: NamePool, firstName: string, lastName: string): string {
+  return pool.style.fullNames ? `${firstName} ${lastName}` : `${firstName.charAt(0)}. ${lastName}`;
+}
+
+export function generateName(rng: Rng, pool: NamePool): GeneratedName {
+  const { style } = pool;
+  const lastName = pickSurname(rng, pool);
+
+  if (pool.pairs.length > 0 && rng.chance(style.pairChance)) {
+    const pair = pool.pairs[rng.weightedIndex(pool.pairWeights)]!;
+    return { firstName: pair, lastName, displayName: pair };
   }
 
-  return {
-    firstName,
-    lastName,
-    displayName: `${firstName.charAt(0)}. ${lastName}`,
-  };
+  const firstName = pool.first[rng.weightedIndex(pool.firstWeights)]!;
+  if (style.nickname && rng.chance(style.mononymChance)) {
+    const nickname = style.nickname(firstName, rng);
+    if (!RESERVED_NICKNAMES.has(nickname)) return { firstName, lastName, displayName: nickname };
+  }
+
+  return { firstName, lastName, displayName: formatName(pool, firstName, lastName) };
+}
+
+/**
+ * The name for a shirt or a pitch slot: the surname where fans use one, else
+ * whatever the player goes by. "G. Barbosa" and "Gabriel Barbosa" are Barbosa;
+ * "Dudu" and "João Pedro" stay as they are.
+ */
+export function shirtName(player: Pick<Player, 'displayName' | 'lastName'>): string {
+  const { displayName, lastName } = player;
+  if (lastName && displayName.endsWith(` ${lastName}`)) return lastName;
+  const initialled = /^\p{Lu}\. (.+)$/u.exec(displayName);
+  return initialled ? initialled[1]! : displayName;
 }
