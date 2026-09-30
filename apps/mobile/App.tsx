@@ -6,6 +6,7 @@ import { NavigationContainer, DarkTheme, type Theme } from '@react-navigation/na
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { GameProvider, useGame } from './src/game/GameContext';
+import { SubscriptionProvider } from './src/game/subscription';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { TabsScreen } from './src/screens/TabsScreen';
 import { PlayerScreen } from './src/screens/PlayerScreen';
@@ -126,13 +127,15 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <GameProvider>
-        <ErrorBoundary onReload={() => { /* the provider reloads from storage on remount */ }}>
-          <NavigationContainer theme={navTheme}>
-            <Game />
-          </NavigationContainer>
-        </ErrorBoundary>
-      </GameProvider>
+      <SubscriptionProvider>
+        <GameProvider>
+          <ErrorBoundary onReload={() => { /* the provider reloads from storage on remount */ }}>
+            <NavigationContainer theme={navTheme}>
+              <Game />
+            </NavigationContainer>
+          </ErrorBoundary>
+        </GameProvider>
+      </SubscriptionProvider>
     </SafeAreaProvider>
   );
 }

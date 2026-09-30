@@ -19,7 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.elevendeep.app",
-      "versionCode": 8
+      "versionCode": 11
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -29,6 +29,9 @@
       "eas": {
         "projectId": "1e9451b0-260c-4168-af2b-915081e54578"
       }
-    }
+    },
+    "plugins": [
+      "expo-iap"
+    ]
   }
 }

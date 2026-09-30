@@ -1,0 +1,7 @@
+{
+  "subscriptionId": "eleven_deep_pro",
+  "plans": [
+    { "id": "monthly", "label": "Monthly", "months": 1 },
+    { "id": "yearly", "label": "Yearly", "months": 12 }
+  ]
+}

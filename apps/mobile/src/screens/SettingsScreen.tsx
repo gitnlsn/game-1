@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, ChipRow, Divider, ScreenHeader, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LeaderboardsCard } from '../components/Leaderboards';
+import { SubscriptionCard } from '../components/SubscriptionCard';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+import { useSubscription } from '../game/subscription';
 import appConfig from '../../app.json';
 
 /**
@@ -41,11 +43,34 @@ export function SettingsScreen({ header = false }: { header?: boolean }) {
     useGame();
   const insets = useSafeAreaInsets();
   const [confirming, setConfirming] = useState(false);
+  const subscription = useSubscription();
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Pull-to-refresh asks Google Play again, so it only exists where Play does.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await subscription.reload();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [subscription]);
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingBottom: spacing.lg + insets.bottom }]}
+      refreshControl={
+        subscription.available ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.surface}
+          />
+        ) : undefined
+      }
     >
       {header ? (
         <ScreenHeader
@@ -76,6 +101,8 @@ export function SettingsScreen({ header = false }: { header?: boolean }) {
         * after that reads as an afterthought and gets scrolled past.
         */}
       <LeaderboardsCard lifetime={lifetime} />
+
+      <SubscriptionCard />
 
       {/* Reached from the title screen too, where there may be no career to
         * abandon and nothing to go back to. */}
