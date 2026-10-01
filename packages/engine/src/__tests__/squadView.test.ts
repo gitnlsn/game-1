@@ -45,14 +45,19 @@ describe('squad roles', () => {
   });
 
   it('calls a player a prospect only when the scouted band says so', () => {
+    let prospects = 0;
     for (const seed of ['prospects-a', 'prospects-b', 'prospects-c']) {
       const c = career(seed);
       for (const m of squadMembers(c)) {
-        if (m.role !== 'prospect') continue;
-        expect(m.player.age).toBeLessThanOrEqual(21);
-        expect(scoutReport(c, m.player).low).toBeGreaterThan(currentAbility(m.player) + 6);
+        const report = scoutReport(c, m.player);
+        const qualifies =
+          m.player.age <= 21 && report.low > currentAbility(m.player) + 6 && m.role !== 'key';
+        // Both ways: every prospect qualifies, and every qualifying non-starter is one.
+        expect(m.role === 'prospect', m.player.displayName).toBe(qualifies);
+        if (qualifies) prospects++;
       }
     }
+    expect(prospects).toBeGreaterThan(0);
   });
 
   it('counts depth per part of the pitch', () => {

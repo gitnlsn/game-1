@@ -13,7 +13,19 @@ import {
 import { recordExpense, recordIncome } from '../economy/finances.js';
 import { settleSponsorDeals } from '../economy/sponsors.js';
 import { coachingFactor, finishGroundWorks } from '../economy/levers.js';
-import { simulateSeason } from '../league/season.js';
+import {
+  createSeasonState,
+  finaliseSeason,
+  playRound,
+  seasonComplete,
+  simulateSeason,
+} from '../league/season.js';
+import {
+  abilitySnapshot,
+  DEVELOPMENT_TUNING,
+  developWorld,
+  leagueWeeks,
+} from './seasonDevelopment.js';
 import {
   createTransferWindow,
   expireFreeAgents,
@@ -109,6 +121,8 @@ export interface SimulateCareerOptions {
   seasons: number;
   /** Called at the end of each season, for progress reporting. */
   onSeason?: (summary: SeasonSummary) => void;
+  /** Develop players through each season, the way a played career does. */
+  inSeasonDevelopment?: boolean;
 }
 
 /**
@@ -123,7 +137,9 @@ export function simulateCareer(
   const summaries: SeasonSummary[] = [];
 
   for (let i = 0; i < options.seasons; i++) {
-    const summary = simulateCareerSeason(world, rng);
+    const summary = simulateCareerSeason(world, rng, {
+      ...(options.inSeasonDevelopment ? { inSeasonDevelopment: true } : {}),
+    });
     summaries.push(summary);
     options.onSeason?.(summary);
   }
@@ -140,10 +156,38 @@ export function beginSeason(world: World): void {
   }
 }
 
-export function simulateCareerSeason(world: World, rng: Rng): SeasonSummary {
+export interface SimulateCareerSeasonOptions {
+  /**
+   * Develop players every few weeks through the season, as a played career
+   * does, instead of once at the close. The benchmarks run both ways.
+   */
+  inSeasonDevelopment?: boolean;
+}
+
+export function simulateCareerSeason(
+  world: World,
+  rng: Rng,
+  options: SimulateCareerSeasonOptions = {},
+): SeasonSummary {
   beginSeason(world);
-  const season: SeasonResult = simulateSeason(world, rng, { economy: true, playerState: true });
-  return closeSeason(world, rng, season);
+  if (!options.inSeasonDevelopment) {
+    const season: SeasonResult = simulateSeason(world, rng, { economy: true, playerState: true });
+    return closeSeason(world, rng, season);
+  }
+
+  const start = abilitySnapshot(world);
+  const state = createSeasonState(world, rng, { economy: true, playerState: true });
+  let developed = 0;
+  while (!seasonComplete(state)) {
+    playRound(state);
+    const { played } = leagueWeeks(state);
+    if (played - developed >= DEVELOPMENT_TUNING.weeksPerStep) {
+      developWorld(world, state, developed, played);
+      developed = played;
+    }
+  }
+  developWorld(world, state, developed, leagueWeeks(state).played);
+  return closeSeason(world, rng, finaliseSeason(state), { developedInSeason: start });
 }
 
 /**

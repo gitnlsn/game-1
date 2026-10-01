@@ -196,6 +196,11 @@ export interface DevelopmentStepContext extends DevelopmentContext {
   /** Share of the season this step covers, 0 to 1. Steps in a season sum to 1. */
   fraction: number;
   focus?: TrainingFocus;
+  /**
+   * The season's development rate, before minutes and coaching. Drawn here when
+   * not given; a season of steps should pass the same one to every step.
+   */
+  rate?: number;
 }
 
 /**
@@ -216,7 +221,7 @@ export function developStep(rng: Rng, player: Player, context: DevelopmentStepCo
   const share = clamp(context.minutes / available, 0, 1);
   const playingFactor = Math.min(1, share / A.fullMinutesShare);
 
-  let rate = rng.float(A.developmentRateMin, A.developmentRateMax);
+  let rate = context.rate ?? rng.float(A.developmentRateMin, A.developmentRateMax);
   if (gap > 0) {
     rate *= (A.benchDevelopmentFloor + (1 - A.benchDevelopmentFloor) * playingFactor) * context.coaching;
   } else {

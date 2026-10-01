@@ -91,6 +91,8 @@ export interface ValidateEconomyOptions {
   seasons?: number;
   clubCount?: number;
   seed?: number | string;
+  /** Develop players through each season, as a played career does. */
+  inSeasonDevelopment?: boolean;
 }
 
 export function validateEconomy(options: ValidateEconomyOptions = {}): EconomyReport {
@@ -106,6 +108,7 @@ export function validateEconomy(options: ValidateEconomyOptions = {}): EconomyRe
 
   const summaries = simulateCareer(world, rng, {
     seasons,
+    ...(options.inSeasonDevelopment ? { inSeasonDevelopment: true } : {}),
     onSeason: () => {
       cashHistory.push((totalBalance(allClubs(world)) / leagueRevenue(allClubs(world))) * 100);
     },

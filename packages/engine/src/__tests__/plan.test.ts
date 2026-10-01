@@ -28,6 +28,8 @@ import { effectiveWageBill } from '../transfers/loans.js';
 import { allClubs } from '../world/index.js';
 import { currentAbility } from '../world/players.js';
 import { depthAt } from '../transfers/needs.js';
+import { expectedWage } from '../economy/valuation.js';
+import type { TransferOffer } from '../types.js';
 
 function playSeason(career: Career): void {
   let guard = 0;
@@ -91,12 +93,11 @@ describe('drafting a plan', () => {
     planMove(c, { kind: 'renew', playerId: player.id, wage: player.contract.wage * 2, years: 3 });
     expect(plannedMoves(c).map((m) => m.kind)).toEqual(['renew']);
 
-    const suitor = loanSuitors(c, player.id)[0];
-    if (suitor) {
-      planMove(c, { kind: 'loanOut', playerId: player.id, toClubId: suitor.id });
-      planMove(c, { kind: 'release', playerId: player.id });
-      expect(plannedMoves(c).map((m) => m.kind)).toEqual(['release']);
-    }
+    // Loan and release are both ways out; the later one replaces the earlier.
+    const borrower = allClubs(c.world).find((club) => club.id !== c.managedClubId)!;
+    planMove(c, { kind: 'loanOut', playerId: player.id, toClubId: borrower.id });
+    planMove(c, { kind: 'release', playerId: player.id });
+    expect(plannedMoves(c).map((m) => m.kind)).toEqual(['release']);
   });
 
   it('can be undone a move at a time', () => {
@@ -129,12 +130,14 @@ describe('confirming a plan', () => {
     const renew = spare(c, [out.id]);
 
     planMove(c, { kind: 'release', playerId: out.id });
-    planMove(c, { kind: 'renew', playerId: renew.id, wage: Math.round(renew.contract.wage * 1.5), years: 3 });
+    // What the window screen offers: a little over what he expects.
+    const wage = Math.round(Math.max(expectedWage(renew), renew.contract.wage) * 1.1);
+    planMove(c, { kind: 'renew', playerId: renew.id, wage, years: 3 });
     planMove(c, { kind: 'buy', playerId: target.player.id, fee: target.askingPrice });
 
     const preview = planPreview(c);
     const results = confirmPlan(c);
-    expect(results.every((r) => r.ok)).toBe(true);
+    expect(results.filter((r) => !r.ok).map((r) => `${r.move.kind}: ${r.reason}`)).toEqual([]);
 
     const club = managedClub(c);
     expect(club.finances.transferBudget).toBe(preview.after.transferBudget);
@@ -183,18 +186,32 @@ describe('confirming a plan', () => {
   });
 
   it('accepting one bid for a player lets the others lapse', () => {
-    for (const seed of ['lapse-a', 'lapse-b', 'lapse-c', 'lapse-d']) {
-      const c = toWindow(seed);
-      const player = spare(c);
-      setListing(c, player.id, 'transfer');
-      const offers = incomingOffers(c).filter((o) => o.playerId === player.id);
-      if (offers.length < 2) continue;
+    const c = toWindow('lapse');
+    const player = spare(c);
+    const buyers = allClubs(c.world).filter((club) => club.id !== c.managedClubId).slice(0, 2);
+    // Two bids for the same man, made directly: whether the AI happens to make
+    // them on some seed is not what this is about.
+    const bid = (buyer: (typeof buyers)[number], fee: number): TransferOffer => ({
+      id: `test-${buyer.id}`,
+      playerId: player.id,
+      playerName: player.displayName,
+      buyerClubId: buyer.id,
+      buyerClubName: buyer.name,
+      sellerClubId: c.managedClubId,
+      fee,
+      wage: player.contract.wage,
+      years: 3,
+      status: 'pending',
+    });
+    const [first, second] = [bid(buyers[0]!, 1_000_000), bid(buyers[1]!, 900_000)];
+    transferWindow(c)!.incoming.push(first, second);
 
-      planMove(c, { kind: 'sell', offerId: offers[0]!.id });
-      confirmPlan(c);
-      expect(incomingOffers(c).some((o) => o.playerId === player.id)).toBe(false);
-      return;
-    }
+    planMove(c, { kind: 'sell', offerId: first.id });
+    const [result] = confirmPlan(c);
+
+    expect(result!.ok).toBe(true);
+    expect(second.status).toBe('rejected');
+    expect(incomingOffers(c).some((o) => o.playerId === player.id)).toBe(false);
   });
 });
 
@@ -243,17 +260,18 @@ describe('listing players', () => {
   });
 
   it('sends loan-listed players out when the season starts', () => {
-    for (const seed of ['loanlist-a', 'loanlist-b', 'loanlist-c']) {
-      const c = toWindow(seed);
-      const club = managedClub(c);
-      const player = club.squad.find((p) => loanSuitors(c, p.id).length > 0 && depthAt(club, p.position) > 1);
-      if (!player) continue;
+    const c = toWindow('loanlist');
+    const club = managedClub(c);
+    const player = club.squad.find(
+      (p) => loanSuitors(c, p.id).length > 0 && depthAt(club, p.position) > 1,
+    );
+    // A squad of 25 always has someone a smaller club would play; if not, the
+    // fixture is wrong and the test should say so rather than pass.
+    expect(player).toBeDefined();
 
-      setListing(c, player.id, 'loan');
-      startNextSeason(c);
-      expect(c.world.loans.some((l) => l.playerId === player.id)).toBe(true);
-      expect(c.listings[player.id]).toBeUndefined();
-      return;
-    }
+    setListing(c, player!.id, 'loan');
+    startNextSeason(c);
+    expect(c.world.loans.some((l) => l.playerId === player!.id)).toBe(true);
+    expect(c.listings[player!.id]).toBeUndefined();
   });
 });

@@ -102,8 +102,13 @@ import {
   completeTransferWindow,
   type SeasonSummary,
 } from './career.js';
-import { coachingQuality, developStep, exactAbility } from './aging.js';
-import { coachingFactor } from '../economy/levers.js';
+import { exactAbility } from './aging.js';
+import {
+  abilitySnapshot,
+  DEVELOPMENT_TUNING,
+  developWorld,
+  leagueWeeks,
+} from './seasonDevelopment.js';
 
 /**
  * A career being played rather than simulated: the world, the season in
@@ -972,64 +977,16 @@ export function placeListedLoans(career: Career): { playerId: string; clubName: 
 
 // --- Development through the season -----------------------------------------
 
-export const DEVELOPMENT_TUNING = {
-  /** League weeks between development steps: roughly a month. */
-  weeksPerStep: 4,
-  /** Seasons back that keep every point on a curve; older ones keep one each. */
-  detailedSeasons: 2,
-} as const;
-
-/** League weeks in the season, and how many have been played. Cup midweeks are not weeks. */
-export function leagueWeeks(state: SeasonState): { played: number; total: number } {
-  let played = 0;
-  let total = 0;
-  for (let round = 1; round <= state.totalRounds; round++) {
-    if (isMidweek(state, round)) continue;
-    total++;
-    if (round < state.nextRound) played++;
-  }
-  return { played, total };
-}
-
 /** Runs a development step if a month has gone by since the last. */
 function developIfDue(career: Career): void {
   const { played } = leagueWeeks(career.season);
   if (played - career.developedWeeks >= DEVELOPMENT_TUNING.weeksPerStep) developThrough(career, played);
 }
 
-/**
- * Develops every player in the world through to `week`. Everyone, not just the
- * managed squad: development is how talent moves around the league, and a world
- * where only your players grew mid-season would not be the one the AI plays in.
- *
- * Drawn from a generator of its own, so when steps fall cannot change a result.
- */
+/** Develops the world through to `week`, your players with their training focus. */
 function developThrough(career: Career, week: number): void {
-  const { total } = leagueWeeks(career.season);
-  const weeks = week - career.developedWeeks;
-  if (weeks <= 0 || total === 0) return;
-
-  const fraction = weeks / total;
-  const rng = new Rng(`dev:${career.world.seed}:${career.world.season}:${week}`);
-  const seasonMatches = Math.max(1, week);
-
-  for (const club of allClubs(career.world)) {
-    const coaching = coachingQuality(club.reputation) * coachingFactor(club);
-    for (const player of club.squad) {
-      const focus = career.training[player.id];
-      developStep(rng, player, {
-        minutes: player.status.minutes,
-        seasonMatches,
-        coaching,
-        fraction,
-        ...(focus ? { focus } : {}),
-      });
-    }
-  }
-  for (const player of career.world.freeAgents) {
-    developStep(rng, player, { minutes: 0, seasonMatches, coaching: 0.85, fraction });
-  }
-
+  if (week <= career.developedWeeks) return;
+  developWorld(career.world, career.season, career.developedWeeks, week, (id) => career.training[id]);
   career.developedWeeks = week;
   recordProgression(career, week);
 }
@@ -1037,10 +994,7 @@ function developThrough(career: Career, week: number): void {
 /** Starts a season's development: nothing developed yet, and where everyone starts from. */
 function openSeasonDevelopment(career: Career): void {
   career.developedWeeks = 0;
-  career.seasonStartAbility = {};
-  for (const player of career.world.players.values()) {
-    career.seasonStartAbility[player.id] = Math.round(exactAbility(player) * 10) / 10;
-  }
+  career.seasonStartAbility = abilitySnapshot(career.world);
   recordProgression(career, 0);
 }
 

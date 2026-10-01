@@ -11,7 +11,6 @@ import {
   advanceRound,
   endSeason,
   isSeasonComplete,
-  leagueWeeks,
   managedClub,
   progressionOf,
   seasonChange,
@@ -22,6 +21,7 @@ import {
   type Career,
 } from '../career/controller.js';
 import { deserializeCareer, serializeCareer } from '../career/persistence.js';
+import { leagueWeeks } from '../career/seasonDevelopment.js';
 import { createWorld, allClubs } from '../world/index.js';
 import { currentAbility } from '../world/players.js';
 import type { Player } from '../types.js';

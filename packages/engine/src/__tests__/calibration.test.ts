@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { validateEngine, type ValidationReport } from '../analysis/validate.js';
-import { validateEconomy, type EconomyReport } from '../analysis/economy.js';
+import { ECONOMY_BENCHMARKS, validateEconomy, type EconomyReport } from '../analysis/economy.js';
 
 /**
  * Guards the match engine's calibration. These are wider than the tolerances in
@@ -179,5 +179,48 @@ describe('multi-seed calibration sweep', () => {
       expect(report.metrics.talentDriftPct, seed).toBeGreaterThan(92);
       expect(report.metrics.talentDriftPct, seed).toBeLessThan(108);
     }
+  });
+});
+
+/**
+ * A played career develops players through the season rather than once at the
+ * close, so the sweep above is not, on its own, measuring the game people play.
+ * This runs the same benchmarks on that path.
+ *
+ * Title dominance is the one exception, judged on the average across seeds:
+ * which club wins a title is the noisiest thing a season produces, and on a
+ * single seed the two development paths are just two draws of it -- 28% and 16%
+ * on one seed, 20% and 56% on the next, 34% and 35% averaged over ten.
+ */
+describe('calibration sweep, developing through the season', () => {
+  const seeds = ['economy', 'sweep-a', 'sweep-b'];
+  let reports: { seed: string; report: EconomyReport }[];
+
+  beforeAll(() => {
+    reports = seeds.map((seed) => ({
+      seed,
+      report: validateEconomy({ seasons: 25, seed, inSeasonDevelopment: true }),
+    }));
+  });
+
+  it('passes every economy benchmark on every seed', () => {
+    const failures: string[] = [];
+    for (const { seed, report } of reports) {
+      for (const check of report.checks) {
+        if (check.benchmark.key === 'titleDominancePct' || check.pass) continue;
+        failures.push(
+          `${seed}: ${check.benchmark.label} = ${check.value.toFixed(2)} ` +
+            `(want ${check.benchmark.target} +/- ${check.benchmark.tolerance})`,
+        );
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('spreads titles like the end-of-season path, on average', () => {
+    const benchmark = ECONOMY_BENCHMARKS.find((b) => b.key === 'titleDominancePct')!;
+    const mean =
+      reports.reduce((sum, { report }) => sum + report.metrics.titleDominancePct!, 0) / reports.length;
+    expect(Math.abs(mean - benchmark.target)).toBeLessThanOrEqual(benchmark.tolerance);
   });
 });

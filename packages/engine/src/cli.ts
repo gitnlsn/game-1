@@ -204,7 +204,13 @@ function commandSquad(): void {
 
 function commandEconomy(): void {
   const seasons = num('seasons', 20);
-  const report = validateEconomy({ seasons, seed: flag('seed', 'economy'), clubCount: num('clubs', 20) });
+  const report = validateEconomy({
+    seasons,
+    seed: flag('seed', 'economy'),
+    clubCount: num('clubs', 20),
+    // --in-season measures the path a played career takes.
+    ...(has('in-season') ? { inSeasonDevelopment: true } : {}),
+  });
 
   if (has('json')) {
     console.log(JSON.stringify(report.metrics, null, 2));
