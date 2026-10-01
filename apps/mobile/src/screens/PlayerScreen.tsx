@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -12,6 +12,11 @@ import {
   scoutReport,
   scoutsAvailable,
   scoutValuation,
+  scoutCapacity,
+  managedClub,
+  ownsPlayer,
+  isShortlisted,
+  toggleShortlist,
   type AttributeKey,
   type Player,
 } from '@eleven-deep/engine';
@@ -61,6 +66,9 @@ export function PlayerScreen({ route }: Props) {
   const loan = loanStatus(career, player.id);
   const { status } = player;
   const isOwn = club?.id === career.managedClubId;
+  // Out on loan he is not at the club, but he is still yours.
+  const owned = ownsPlayer(career, player);
+  const shortlisted = isShortlisted(career, player.id);
   // Goalkeeping numbers are noise for an outfielder; show them last and muted.
   const groups = player.position === 'GK' ? [GROUPS[3]!, ...GROUPS.slice(0, 3)] : GROUPS;
 
@@ -84,6 +92,23 @@ export function PlayerScreen({ route }: Props) {
               {player.age} · {player.nationality} · {club?.name ?? 'Free agent'}
             </Text>
           </View>
+          {!owned ? (
+            <Pressable
+              onPress={() => {
+                toggleShortlist(career, player.id);
+                refresh();
+              }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={shortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
+              accessibilityState={{ selected: shortlisted }}
+              style={styles.star}
+            >
+              <Text style={[styles.starText, shortlisted ? styles.starOn : null]}>
+                {shortlisted ? '★' : '☆'}
+              </Text>
+            </Pressable>
+          ) : null}
           <Text style={[styles.ability, { color: ratingColor(ability) }]}>{ability.toFixed(0)}</Text>
         </View>
       </Card>
@@ -115,6 +140,10 @@ export function PlayerScreen({ route }: Props) {
             : report.low > ability + 6
               ? 'There is clearly more to come.'
               : 'Hard to say how much further he goes.'}
+        </Text>
+        <Text style={styles.reportExplain}>
+          The range is your staff's estimate of how good he could become. A scouting trip narrows
+          it; you have {scouts} of {scoutCapacity(managedClub(career).reputation)} left this season.
         </Text>
         <Divider />
         <KeyValue label="Market price" value={formatMoney(marketValue(player))} />
@@ -221,6 +250,10 @@ function AttributeCell({ label, value }: { label: string; value: number }) {
 }
 
 const styles = StyleSheet.create({
+  star: { paddingHorizontal: spacing.sm },
+  starText: { color: colors.faint, fontSize: 22 },
+  starOn: { color: colors.gold },
+  reportExplain: { color: colors.faint, fontSize: 11, marginTop: spacing.xs, lineHeight: 16 },
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
   missing: { color: colors.muted, padding: spacing.lg, fontStyle: 'italic' },

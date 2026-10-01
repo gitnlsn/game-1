@@ -12,6 +12,8 @@ import {
   expectedWage,
   formatMoney,
   incomingOffers,
+  isShortlisted,
+  toggleShortlist,
   loanableSquad,
   loanSuitors,
   managedClub,
@@ -28,10 +30,10 @@ import {
   type MarketListing,
   type Club,
   type Player,
-  type PotentialEstimate,
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { TargetRow } from '../components/TargetRow';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
@@ -343,6 +345,12 @@ export function TransfersScreen() {
                   ? 'Your staff are stretched until next season. What you already know is what you go on.'
                   : 'Send one to watch a player and you will get a tighter read on how good he might become.'}
               </Text>
+              <Button
+                label="Shortlist and search"
+                variant="secondary"
+                style={styles.bid}
+                onPress={() => navigation.navigate('scouting')}
+              />
             </Card>
             <ChipRow
               style={styles.filter}
@@ -372,7 +380,12 @@ export function TransfersScreen() {
                   );
                   refresh();
                 }}
-                onBid={() => setPending(listing)}
+                shortlisted={isShortlisted(career, listing.player.id)}
+                onToggleShortlist={() => {
+                  toggleShortlist(career, listing.player.id);
+                  refresh();
+                }}
+                action={{ label: 'Make an offer', onPress: () => setPending(listing) }}
               />
             ))}
           </>
@@ -461,80 +474,6 @@ function SquadRow({
       <View style={styles.actions}>
         <Button label="Release" variant="danger" style={styles.action} onPress={onRelease} />
         <Button label="Renew" style={styles.action} onPress={onRenew} />
-      </View>
-    </Card>
-  );
-}
-
-function TargetRow({
-  listing,
-  band,
-  canScout,
-  onOpen,
-  onScout,
-  onBid,
-}: {
-  listing: MarketListing;
-  band: PotentialEstimate;
-  canScout: boolean;
-  onOpen: () => void;
-  onScout: () => void;
-  onBid: () => void;
-}) {
-  const { player } = listing;
-  const blocked = !listing.wouldJoin || !listing.affordable;
-  /*
-   * Past this point another report buys almost nothing, and saying so is kinder
-   * than letting someone spend their last scout on a player they already know.
-   */
-  const known = band.confidence >= 0.85;
-
-  return (
-    <Card style={styles.card}>
-      <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={player.displayName}>
-        <View style={styles.rowTop}>
-          <Text style={[styles.pos, { color: positionColor(player.position) }]}>
-            {player.position}
-          </Text>
-          <Text style={styles.cardTitle} numberOfLines={1}>
-            {player.displayName}
-          </Text>
-          <Text style={[styles.rating, { color: ratingColor(currentAbility(player)) }]}>
-            {currentAbility(player).toFixed(0)}
-          </Text>
-        </View>
-        <Text style={styles.cardMeta}>
-          {player.age} · {listing.sellerClubName}
-        </Text>
-      </Pressable>
-      <Divider />
-      <KeyValue
-        label="Asking price"
-        value={listing.askingPrice === 0 ? 'Free' : formatMoney(listing.askingPrice)}
-        bold
-      />
-      <KeyValue label="Wages" value={`${formatMoney(listing.expectedWage)}/wk`} />
-      <KeyValue
-        label="Could become"
-        value={`${band.low}–${band.high} · ${band.label}`}
-        tint={band.confidence >= 0.6 ? colors.text : colors.faint}
-      />
-      {blocked ? (
-        <Badge
-          label={!listing.wouldJoin ? 'Would not join you' : 'Beyond your budget'}
-          color={colors.warn}
-          style={styles.blocked}
-        />
-      ) : null}
-      <View style={styles.actions}>
-        <Button
-          label={known ? 'Nothing more to learn' : 'Send a scout'}
-          variant="secondary"
-          style={styles.action}
-          disabled={!canScout || known}
-          onPress={onScout}
-        />
-        {blocked ? null : <Button label="Make an offer" style={styles.action} onPress={onBid} />}
       </View>
     </Card>
   );

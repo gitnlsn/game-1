@@ -87,13 +87,22 @@ import {
   scoutingRemaining,
   assignScout,
 } from '../world/scouting.js';
-import type { PotentialEstimate, Player, ScoutingState } from '../types.js';
+import type {
+  ListingKind,
+  PotentialEstimate,
+  Player,
+  ProgressionPoint,
+  ScoutingState,
+  ShortlistEntry,
+  TrainingFocus,
+} from '../types.js';
 import {
   beginSeason,
   closeSeason,
   completeTransferWindow,
   type SeasonSummary,
 } from './career.js';
+import { pruneManagerState } from './manager.js';
 
 /**
  * A career being played rather than simulated: the world, the season in
@@ -122,6 +131,14 @@ export interface Career {
    * answered by the AI inside the season loop; only this club's wait here.
    */
   sponsorOffers: SponsorOffer[];
+  /** Players the manager is watching, at other clubs or as free agents. */
+  shortlist: ShortlistEntry[];
+  /** Own players the manager has put up for sale or for loan. */
+  listings: Record<string, ListingKind>;
+  /** Training focus per own player. A player missing from it trains balanced. */
+  training: Record<string, TrainingFocus>;
+  /** Progression curve per player, for the squad and the shortlist. */
+  progression: Record<string, ProgressionPoint[]>;
 }
 
 /** What a career plays, as opposed to what the harnesses measure. */
@@ -172,6 +189,10 @@ export function startCareer(options: StartCareerOptions): Career {
     scouting: createScoutingState(),
     board: createBoardState(world, managedClubId),
     sponsorOffers: [],
+    shortlist: [],
+    listings: {},
+    training: {},
+    progression: {},
   };
 
   // You start knowing your own squad reasonably well: your coaches have watched
@@ -582,6 +603,7 @@ export function startNextSeason(career: Career): Transfer[] {
 
   // Retired and departed players would otherwise accumulate in every save.
   pruneScouting(career.scouting, new Set(career.world.players.keys()));
+  pruneManagerState(career);
   resetScoutingCapacity(career.scouting);
   // The board re-reads the squad it has just paid for, in the division it is
   // now in -- a promoted club is asked to survive, not to finish where it did.

@@ -135,6 +135,12 @@ export function ClubScreen() {
             onPress={() => navigation.navigate('transfers')}
             style={styles.playButton}
           />
+          <Button
+            label={`Your shortlist (${career.shortlist.length})`}
+            variant="secondary"
+            onPress={() => navigation.navigate('scouting')}
+            style={styles.quickButton}
+          />
           {/*
             * Without this the window is a dead end: starting the next season
             * lived only on the season summary screen, which you cannot get back

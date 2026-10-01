@@ -488,11 +488,59 @@ export interface MarketListing {
 export interface BrowseOptions {
   position?: Position;
   maxFee?: number;
+  minAge?: number;
   maxAge?: number;
   minAbility?: number;
+  /** Most he could expect to earn a week at your club. */
+  maxWage?: number;
   /** Only players the buyer could actually sign. */
   affordableOnly?: boolean;
   limit?: number;
+}
+
+/** Whether a club would let this player go at all. Free agents always can. */
+export function sellerWouldSell(seller: Club | undefined, player: Player): boolean {
+  const T = TRANSFER_TUNING;
+  // A club will not sell its only specialist, nor cut below the squad floor.
+  return !seller || (seller.squad.length > T.minSquadSize && depthAt(seller, player.position) > 1);
+}
+
+/**
+ * One player as a listing, priced and gated by the AI's rules. Unlike
+ * `transferTargets` this does not hide a player his club will not sell, so a
+ * shortlist can still show him -- and say why he is out of reach.
+ */
+export function appraiseTarget(
+  world: World,
+  buyerClubId: string,
+  playerId: string,
+): (MarketListing & { forSale: boolean }) | undefined {
+  const buyer = findClub(world, buyerClubId);
+  const player = world.players.get(playerId);
+  if (!buyer || !player || player.clubId === buyerClubId) return undefined;
+
+  const seller = player.clubId ? findClub(world, player.clubId) : undefined;
+  if (player.clubId && !seller) return undefined;
+  return { ...listingFor(buyer, player, seller), forSale: sellerWouldSell(seller, player) };
+}
+
+function listingFor(buyer: Club, player: Player, seller: Club | undefined): MarketListing {
+  const T = TRANSFER_TUNING;
+  const price = seller ? askingPrice(seller, player) : 0;
+  const wage = expectedWage(player);
+  const wageRoom =
+    wageBill(buyer.squad) + wage * T.moveWageMax <= buyer.finances.wageBudget * T.wageBudgetCeiling;
+  const affordable = wageRoom && (!seller || buyer.finances.transferBudget >= price);
+
+  return {
+    player,
+    sellerClubId: seller?.id ?? '',
+    sellerClubName: seller?.name ?? 'Free agent',
+    askingPrice: price,
+    expectedWage: wage,
+    wouldJoin: playerWouldJoin(player, seller, buyer),
+    affordable,
+  };
 }
 
 /**
@@ -505,7 +553,6 @@ export function transferTargets(
   buyerClubId: string,
   options: BrowseOptions = {},
 ): MarketListing[] {
-  const T = TRANSFER_TUNING;
   const buyer = findClub(world, buyerClubId);
   if (!buyer) return [];
 
@@ -513,34 +560,18 @@ export function transferTargets(
 
   const consider = (player: Player, seller: Club | undefined) => {
     if (options.position && player.position !== options.position) return;
+    if (options.minAge !== undefined && player.age < options.minAge) return;
     if (options.maxAge !== undefined && player.age > options.maxAge) return;
     if (options.minAbility !== undefined && ability(player.attributes, player.position) < options.minAbility) {
       return;
     }
+    if (!sellerWouldSell(seller, player)) return;
 
-    // A club will not sell its only specialist, nor cut below the squad floor.
-    if (seller && (seller.squad.length <= T.minSquadSize || depthAt(seller, player.position) <= 1)) {
-      return;
-    }
-
-    const price = seller ? askingPrice(seller, player) : 0;
-    if (options.maxFee !== undefined && price > options.maxFee) return;
-
-    const wage = expectedWage(player);
-    const wageRoom =
-      wageBill(buyer.squad) + wage * T.moveWageMax <= buyer.finances.wageBudget * T.wageBudgetCeiling;
-    const affordable = wageRoom && (!seller || buyer.finances.transferBudget >= price);
-    if (options.affordableOnly && !affordable) return;
-
-    listings.push({
-      player,
-      sellerClubId: seller?.id ?? '',
-      sellerClubName: seller?.name ?? 'Free agent',
-      askingPrice: price,
-      expectedWage: wage,
-      wouldJoin: playerWouldJoin(player, seller, buyer),
-      affordable,
-    });
+    const listing = listingFor(buyer, player, seller);
+    if (options.maxFee !== undefined && listing.askingPrice > options.maxFee) return;
+    if (options.maxWage !== undefined && listing.expectedWage > options.maxWage) return;
+    if (options.affordableOnly && !listing.affordable) return;
+    listings.push(listing);
   };
 
   for (const player of world.freeAgents) consider(player, undefined);

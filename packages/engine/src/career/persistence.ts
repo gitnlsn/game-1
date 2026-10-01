@@ -7,8 +7,12 @@ import type {
   MatchEvent,
   MatchResult,
   Player,
+  ListingKind,
+  ProgressionPoint,
   ScoutingState,
+  ShortlistEntry,
   SponsorOffer,
+  TrainingFocus,
   TeamSheet,
   TransferWindowState,
 } from '../types.js';
@@ -20,7 +24,7 @@ import type { BoardState } from './board.js';
 import { BOARD_TUNING, createBoardState, refreshExpectation } from './board.js';
 import type { SeasonSummary } from './career.js';
 
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -83,6 +87,11 @@ export interface SavedCareer {
   board: BoardState;
   /** Added in save version 9: sponsor offers waiting for an answer. */
   sponsorOffers: SponsorOffer[];
+  /** Added in save version 10: what the manager is doing with individual players. */
+  shortlist: ShortlistEntry[];
+  listings: Record<string, ListingKind>;
+  training: Record<string, TrainingFocus>;
+  progression: Record<string, ProgressionPoint[]>;
 }
 
 export function toSavedCareer(career: Career): SavedCareer {
@@ -119,6 +128,10 @@ export function toSavedCareer(career: Career): SavedCareer {
     scouting: career.scouting,
     board: career.board,
     sponsorOffers: career.sponsorOffers,
+    shortlist: career.shortlist,
+    listings: career.listings,
+    training: career.training,
+    progression: career.progression,
   };
 }
 
@@ -259,6 +272,19 @@ const MIGRATIONS: Record<number, Migration> = {
    * its clubs' finances pick the new fields up as optional defaults.
    */
   8: (saved) => ({ ...saved, version: 9, sponsorOffers: [] }),
+  /**
+   * v10 lets a manager act on individual players: a shortlist, players listed
+   * for sale or loan, training focus, and a progression curve. An older career
+   * has done none of it yet, and its curves start from the next point recorded.
+   */
+  9: (saved) => ({
+    ...saved,
+    version: 10,
+    shortlist: [],
+    listings: {},
+    training: {},
+    progression: {},
+  }),
 };
 
 /** Raised when a save cannot be brought up to the current format. */
@@ -371,6 +397,10 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     scouting: saved.scouting ?? { reports: {}, capacityUsed: 0 },
     board,
     sponsorOffers: saved.sponsorOffers ?? [],
+    shortlist: saved.shortlist ?? [],
+    listings: saved.listings ?? {},
+    training: saved.training ?? {},
+    progression: saved.progression ?? {},
   };
 }
 

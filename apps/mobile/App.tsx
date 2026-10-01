@@ -15,6 +15,7 @@ import { MatchScreen } from './src/screens/MatchScreen';
 import { SeasonSummaryScreen } from './src/screens/SeasonSummaryScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { TransfersScreen } from './src/screens/TransfersScreen';
+import { ScoutingScreen } from './src/screens/ScoutingScreen';
 import { NewCareerScreen } from './src/screens/NewCareerScreen';
 import { SaveProblemScreen } from './src/screens/SaveProblemScreen';
 import { SackedScreen } from './src/screens/SackedScreen';
@@ -113,6 +114,7 @@ function Game() {
         component={TransfersScreen}
         options={{ title: 'Transfer window' }}
       />
+      <Stack.Screen name="scouting" component={ScoutingScreen} options={{ title: 'Scouting' }} />
       {/* No way back: the career is over, and the only move is to start another. */}
       <Stack.Screen
         name="sacked"

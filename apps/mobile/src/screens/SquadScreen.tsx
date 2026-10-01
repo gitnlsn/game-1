@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -8,54 +8,127 @@ import {
   isAvailable,
   managedClub,
   marketValue,
+  POSITION_GROUP,
+  POSITIONS,
   scoutReport,
+  squadAlerts,
+  squadDepth,
+  squadMembers,
   type Career,
-  type Player,
+  type ListingKind,
+  type PositionGroup,
   type PotentialEstimate,
+  type SquadMember,
+  type SquadRole,
 } from '@eleven-deep/engine';
-import { Badge, Card, ScreenHeader } from '../components/ui';
+import { Badge, Card, ScreenHeader, SectionTitle, Segmented } from '../components/ui';
 import { colors, conditionColor, positionColor, radius, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-type SortKey = 'ability' | 'age' | 'value' | 'minutes';
+type ViewKey = 'position' | 'roles' | 'contracts' | 'development';
 
-const SORTS: { key: SortKey; label: string }[] = [
-  { key: 'ability', label: 'Ability' },
-  { key: 'age', label: 'Age' },
-  { key: 'value', label: 'Value' },
-  { key: 'minutes', label: 'Minutes' },
+const VIEWS: { value: ViewKey; label: string }[] = [
+  { value: 'position', label: 'Position' },
+  { value: 'roles', label: 'Roles' },
+  { value: 'contracts', label: 'Contracts' },
+  { value: 'development', label: 'Growth' },
 ];
+
+const GROUP_NAMES: Record<PositionGroup, string> = {
+  GK: 'Goalkeepers',
+  DEF: 'Defenders',
+  MID: 'Midfielders',
+  FWD: 'Forwards',
+};
+
+export const ROLE_INFO: Record<SquadRole, { label: string; color: string; blurb: string }> = {
+  key: { label: 'Key', color: colors.accent, blurb: 'Your strongest eleven.' },
+  rotation: { label: 'Rotation', color: colors.info, blurb: 'Next in: the bench of that eleven.' },
+  prospect: { label: 'Prospect', color: colors.gold, blurb: 'Young, with clearly more to come.' },
+  backup: { label: 'Backup', color: colors.muted, blurb: 'Cover the squad needs, rarely in the matchday squad.' },
+  surplus: { label: 'Surplus', color: colors.warn, blurb: 'More of him than you need. Sell, loan or release.' },
+};
+
+const ROLE_ORDER: SquadRole[] = ['key', 'rotation', 'prospect', 'backup', 'surplus'];
+
+interface Section {
+  title: string;
+  note?: string;
+  members: SquadMember[];
+}
+
+function buildSections(career: Career, view: ViewKey, members: SquadMember[]): Section[] {
+  const byAbility = (a: SquadMember, b: SquadMember) =>
+    currentAbility(b.player) - currentAbility(a.player);
+
+  switch (view) {
+    case 'position': {
+      const depth = squadDepth(career);
+      return depth.map((d) => ({
+        title: GROUP_NAMES[d.group],
+        note: `${d.have} for ${d.starting} starting place${d.starting === 1 ? '' : 's'} · a full squad carries ${d.need}`,
+        members: members
+          .filter((m) => POSITION_GROUP[m.player.position] === d.group)
+          .sort(
+            (a, b) =>
+              POSITIONS.indexOf(a.player.position) - POSITIONS.indexOf(b.player.position) ||
+              byAbility(a, b),
+          ),
+      }));
+    }
+    case 'roles':
+      return ROLE_ORDER.map((role) => ({
+        title: ROLE_INFO[role].label,
+        note: ROLE_INFO[role].blurb,
+        members: members.filter((m) => m.role === role).sort(byAbility),
+      })).filter((section) => section.members.length > 0);
+    case 'contracts':
+      return [
+        {
+          title: 'By contract',
+          note: 'Shortest first. In his last year, a player can walk away for nothing.',
+          members: [...members].sort(
+            (a, b) =>
+              a.player.contract.yearsRemaining - b.player.contract.yearsRemaining ||
+              b.player.contract.wage - a.player.contract.wage,
+          ),
+        },
+      ];
+    case 'development': {
+      const room = (m: SquadMember) => scoutReport(career, m.player).high - currentAbility(m.player);
+      return [
+        {
+          title: 'Room to grow',
+          note: 'Players 23 and under, most to come first. Minutes and coaching are what bring it out.',
+          members: members.filter((m) => m.player.age <= 23).sort((a, b) => room(b) - room(a)),
+        },
+      ];
+    }
+  }
+}
 
 export function SquadScreen() {
   const navigation = useNavigation<Nav>();
   const { career, version } = useGame();
-  const [sort, setSort] = useState<SortKey>('ability');
+  const [view, setView] = useState<ViewKey>('position');
 
   const club = career ? managedClub(career) : undefined;
 
-  const players = useMemo(() => {
-    if (!club) return [];
-    const list = [...club.squad];
-    list.sort((a, b) => {
-      switch (sort) {
-        case 'age':
-          return a.age - b.age || currentAbility(b) - currentAbility(a);
-        case 'value':
-          return marketValue(b) - marketValue(a);
-        case 'minutes':
-          return b.status.minutes - a.status.minutes;
-        default:
-          return currentAbility(b) - currentAbility(a);
-      }
-    });
-    return list;
+  const members = useMemo(
+    () => (career ? squadMembers(career) : []),
     // version changes whenever the engine mutates the world in place.
-  }, [club, sort, version]);
+    [career, version],
+  );
+  const alerts = useMemo(() => (career ? squadAlerts(career) : []), [career, version]);
+  const sections = useMemo(
+    () => (career ? buildSections(career, view, members) : []),
+    [career, view, members],
+  );
 
-  if (!club) return null;
+  if (!club || !career) return null;
 
   // Cheap enough on a squad of ~25 to sit in the render, which is how the club
   // screen counts its injuries too.
@@ -66,15 +139,10 @@ export function SquadScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerArea}>
-        {/*
-          * Pinned above the list rather than scrolling with it, so every row of
-          * it is list height paid for on every scroll position. Hence one line
-          * of subtitle, not two.
-          */}
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
         <ScreenHeader
           title="Squad"
-          subtitle="Every player at the club — tap one for the full report."
+          subtitle="Who you have, where they stand, and what needs doing."
           metrics={[
             { label: 'Players', value: `${club.squad.length}` },
             { label: 'Avg age', value: averageAge.toFixed(1) },
@@ -87,52 +155,68 @@ export function SquadScreen() {
             },
           ]}
         />
-        <View style={styles.sortRow}>
-          {SORTS.map((option) => (
-            <Pressable
-              key={option.key}
-              onPress={() => setSort(option.key)}
-              accessibilityRole="button"
-              accessibilityLabel={`Sort by ${option.label}`}
-              accessibilityState={{ selected: sort === option.key }}
-              style={[styles.sortChip, sort === option.key ? styles.sortChipActive : null]}
-            >
-              <Text
-                style={[styles.sortChipText, sort === option.key ? styles.sortChipTextActive : null]}
-              >
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
 
-      <FlatList
-        data={players}
-        keyExtractor={(player) => player.id}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <PlayerRow
-            player={item}
-            report={scoutReport(career!, item)}
-            onPress={() => navigation.navigate('player', { playerId: item.id })}
-          />
-        )}
-      />
+        {alerts.length > 0 ? (
+          <Card style={styles.alerts}>
+            <Text style={styles.alertsTitle}>Needs your attention</Text>
+            {alerts.map((alert, index) => (
+              <Pressable
+                key={`${alert.kind}-${alert.playerId ?? index}`}
+                disabled={!alert.playerId}
+                onPress={() => alert.playerId && navigation.navigate('player', { playerId: alert.playerId })}
+                accessibilityRole={alert.playerId ? 'button' : 'text'}
+              >
+                <Text style={styles.alertText}>• {alert.message}</Text>
+              </Pressable>
+            ))}
+          </Card>
+        ) : null}
+
+        <View style={styles.viewRow}>
+          <Segmented fill options={VIEWS} value={view} onChange={setView} style={styles.segmented} />
+        </View>
+        <Pressable
+          onPress={() => navigation.navigate('scouting')}
+          accessibilityRole="button"
+          style={styles.scoutLink}
+        >
+          <Text style={styles.scoutLinkText}>
+            Scouting and shortlist · {career.shortlist.length} watched ›
+          </Text>
+        </Pressable>
+
+        {sections.map((section) => (
+          <View key={section.title} style={styles.section}>
+            <SectionTitle>{section.title}</SectionTitle>
+            {section.note ? <Text style={styles.sectionNote}>{section.note}</Text> : null}
+            {section.members.map((member) => (
+              <PlayerRow
+                key={member.player.id}
+                member={member}
+                report={scoutReport(career, member.player)}
+                listing={career.listings[member.player.id]}
+                onPress={() => navigation.navigate('player', { playerId: member.player.id })}
+              />
+            ))}
+          </View>
+        ))}
+      </ScrollView>
     </View>
   );
 }
 
 function PlayerRow({
-  player,
+  member,
   report,
+  listing,
   onPress,
 }: {
-  player: Player;
+  member: SquadMember;
   report: PotentialEstimate;
+  listing: ListingKind | undefined;
   onPress: () => void;
 }) {
+  const { player, role, expiring, loanedTo } = member;
   const ability = currentAbility(player);
   const { status } = player;
 
@@ -212,6 +296,20 @@ function PlayerRow({
 
         {unavailable ? <Badge label={unavailable.label} color={unavailable.color} /> : null}
       </View>
+
+      <View style={styles.tags}>
+        <Badge label={ROLE_INFO[role].label} color={ROLE_INFO[role].color} />
+        {expiring ? (
+          <Badge
+            label={player.contract.yearsRemaining === 0 ? 'Out of contract' : 'Last year'}
+            color={colors.danger}
+          />
+        ) : null}
+        {loanedTo ? <Badge label={`On loan · ${loanedTo}`} color={colors.info} /> : null}
+        {listing ? (
+          <Badge label={listing === 'transfer' ? 'Transfer listed' : 'Loan listed'} color={colors.warn} />
+        ) : null}
+      </View>
       </Card>
     </Pressable>
   );
@@ -228,20 +326,17 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  headerArea: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
-  sortRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
-  sortChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  sortChipActive: { borderColor: colors.accent, backgroundColor: colors.accentDim },
-  sortChipText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-  sortChipTextActive: { color: '#EAFBEF' },
-  list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl * 2 },
+  list: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  alerts: { marginBottom: spacing.md, borderColor: colors.warn },
+  alertsTitle: { color: colors.warn, fontSize: 12, fontWeight: '800', marginBottom: spacing.xs },
+  alertText: { color: colors.text, fontSize: 12, lineHeight: 18 },
+  viewRow: { marginBottom: spacing.xs },
+  segmented: {},
+  scoutLink: { paddingVertical: spacing.sm, alignSelf: 'flex-end' },
+  scoutLinkText: { color: colors.info, fontSize: 12, fontWeight: '600' },
+  section: { marginTop: spacing.sm },
+  sectionNote: { color: colors.faint, fontSize: 11, marginBottom: spacing.sm, marginTop: -2 },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   playerCard: { marginBottom: spacing.sm, padding: spacing.sm },
   playerTop: { flexDirection: 'row', alignItems: 'center' },
   positionChip: {

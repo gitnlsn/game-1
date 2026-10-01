@@ -22,6 +22,7 @@ export type GameStackParamList = {
   matchResult: { round: number };
   seasonSummary: undefined;
   transfers: undefined;
+  scouting: undefined;
   sacked: undefined;
   liveMatch: undefined;
 };

@@ -427,6 +427,20 @@ export interface TransferOffer {
   status: 'pending' | 'accepted' | 'rejected';
 }
 
+/**
+ * A move the manager has drafted but not yet made. Nothing happens until the
+ * plan is confirmed, and then everything is checked again at the moment it is
+ * made: a plan is an intention, not a reservation.
+ */
+export type PlannedMove =
+  | { id: string; kind: 'buy'; playerId: string; fee: number }
+  /** Accept a bid on the table for one of your players. */
+  | { id: string; kind: 'sell'; offerId: string }
+  | { id: string; kind: 'reject'; offerId: string }
+  | { id: string; kind: 'loanOut'; playerId: string; toClubId: string }
+  | { id: string; kind: 'release'; playerId: string }
+  | { id: string; kind: 'renew'; playerId: string; wage: number; years: number };
+
 /** The close-season window, while a human manager is acting in it. */
 export interface TransferWindowState {
   open: boolean;
@@ -435,7 +449,38 @@ export interface TransferWindowState {
   incoming: TransferOffer[];
   /** Everything that has completed in this window, both halves. */
   completed: Transfer[];
+  /**
+   * Moves the manager has drafted and not yet confirmed. Optional because
+   * windows saved before planning existed have none.
+   */
+  planned?: PlannedMove[];
 }
+
+/** A player the manager is keeping an eye on. */
+export interface ShortlistEntry {
+  playerId: string;
+  addedSeason: number;
+}
+
+/** Putting one of your own players on the market. */
+export type ListingKind = 'transfer' | 'loan';
+
+/** What a player works on in training. Decides where his growth lands, not how much. */
+export type TrainingFocus =
+  | 'balanced'
+  | 'finishing'
+  | 'passing'
+  | 'defending'
+  | 'physical'
+  | 'aerial'
+  | 'goalkeeping';
+
+/**
+ * One point on a player's progression curve, as the manager saw him at the time:
+ * season, round, ability, and the scouted potential band. A tuple because a
+ * squad's worth of these over many seasons is the largest thing a save grows by.
+ */
+export type ProgressionPoint = [season: number, round: number, ability: number, low: number, high: number];
 
 export interface TableRow {
   clubId: string;
