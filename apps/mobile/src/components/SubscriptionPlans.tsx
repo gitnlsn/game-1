@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import X from 'lucide-react-native/icons/x';
+import Check from 'lucide-react-native/icons/check';
 import { Badge, Button, Card } from './ui';
 import { colors, radius, spacing } from '../theme';
 import { savingsPercent } from '../game/entitlement';
 import { useSubscription, type Plan, type SubscribeOutcome } from '../game/subscription';
+import { PRO_PERKS, usePro } from '../game/pro';
 
 /**
  * Choosing a plan, as its own step.
@@ -13,6 +15,10 @@ import { useSubscription, type Plan, type SubscribeOutcome } from '../game/subsc
  * button, so buying is something the player walks into rather than past. Like
  * ConfirmDialog it renders nothing while hidden, which keeps react-native-web
  * (where the app is developed) honest.
+ *
+ * It is also the paywall: a locked feature opens it with `reason` saying what
+ * was tapped, so the sheet answers the question the tap asked before it lists
+ * everything else.
  */
 
 const PROBLEMS: Partial<Record<SubscribeOutcome, string>> = {
@@ -51,12 +57,16 @@ export function SubscriptionPlans({
   visible,
   onClose,
   onSubscribed,
+  reason,
 }: {
   visible: boolean;
   onClose: () => void;
   onSubscribed: () => void;
+  /** What the player tried to do, when a locked feature opened this. */
+  reason?: string;
 }) {
   const { plans, checking, subscribe, restore } = useSubscription();
+  const pro = usePro();
   const [selected, setSelected] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
@@ -67,6 +77,17 @@ export function SubscriptionPlans({
     setMessage(undefined);
     setSelected((current) => current ?? bestValue(plans));
   }, [visible, plans]);
+
+  /*
+   * Play can finish answering after the sheet is open -- a cached entitlement
+   * that was still being confirmed, or a payment that cleared -- and the
+   * subscriber should not be left looking at prices.
+   */
+  useEffect(() => {
+    if (visible && pro.active) onSubscribed();
+    // Only the moment it turns on matters, not every new callback identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, pro.active]);
 
   if (!visible) return null;
 
@@ -106,7 +127,7 @@ export function SubscriptionPlans({
                 <Text style={styles.title} accessibilityRole="header">
                   Eleven Deep Pro
                 </Text>
-                <Text style={styles.subtitle}>Choose how you would like to pay.</Text>
+                <Text style={styles.subtitle}>{reason ?? 'Choose how you would like to pay.'}</Text>
               </View>
               <Pressable
                 onPress={onClose}
@@ -117,6 +138,18 @@ export function SubscriptionPlans({
               >
                 <X color={colors.muted} size={20} />
               </Pressable>
+            </View>
+
+            <View style={styles.perks}>
+              {PRO_PERKS.map((perk) => (
+                <View key={perk.id} style={styles.perk}>
+                  <Check color={colors.accent} size={16} style={styles.perkIcon} />
+                  <View style={styles.perkText}>
+                    <Text style={styles.perkTitle}>{perk.title}</Text>
+                    <Text style={styles.perkDetail}>{perk.detail}</Text>
+                  </View>
+                </View>
+              ))}
             </View>
 
             {plans.length === 0 ? (
@@ -201,6 +234,12 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 18, fontWeight: '700' },
   subtitle: { color: colors.muted, fontSize: 13, marginTop: spacing.xs },
   close: { padding: spacing.xs },
+  perks: { gap: spacing.md, marginTop: spacing.lg },
+  perk: { flexDirection: 'row', gap: spacing.sm },
+  perkIcon: { marginTop: 1 },
+  perkText: { flex: 1 },
+  perkTitle: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  perkDetail: { color: colors.muted, fontSize: 12, marginTop: 2, lineHeight: 17 },
   plans: { gap: spacing.sm, marginTop: spacing.lg },
   plan: {
     flexDirection: 'row',

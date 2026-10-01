@@ -17,8 +17,28 @@ export interface CreateWorldOptions {
   divisions?: number;
 }
 
-/** Names for the divisions, top tier first. */
-const DIVISION_NAMES = ['Liga Nacional', 'Segunda Divisao', 'Terceira Divisao'];
+/**
+ * The countries a career can be played in, and what each calls its divisions,
+ * top tier first. Brazil is the one every harness measures; the others share
+ * its generator and differ only in names, cities and where players come from.
+ */
+export const COUNTRIES = [
+  { code: 'BRA', label: 'Brazil', divisions: ['Liga Nacional', 'Segunda Divisao', 'Terceira Divisao'] },
+  { code: 'ENG', label: 'England', divisions: ['First Division', 'Second Division', 'Third Division'] },
+  { code: 'ESP', label: 'Spain', divisions: ['Primera División', 'Segunda División', 'Tercera División'] },
+  { code: 'ITA', label: 'Italy', divisions: ['Prima Divisione', 'Seconda Divisione', 'Terza Divisione'] },
+  { code: 'GER', label: 'Germany', divisions: ['Erste Liga', 'Zweite Liga', 'Dritte Liga'] },
+  { code: 'FRA', label: 'France', divisions: ['Première Division', 'Deuxième Division', 'Troisième Division'] },
+  { code: 'ARG', label: 'Argentina', divisions: ['Primera Nacional', 'Segunda Nacional', 'Tercera Nacional'] },
+  { code: 'POR', label: 'Portugal', divisions: ['Primeira Divisão', 'Segunda Divisão', 'Terceira Divisão'] },
+  { code: 'NED', label: 'Netherlands', divisions: ['Eerste Klasse', 'Tweede Klasse', 'Derde Klasse'] },
+] as const;
+
+export type CountryCode = (typeof COUNTRIES)[number]['code'];
+
+function divisionNames(nationality: string): readonly string[] {
+  return COUNTRIES.find((c) => c.code === nationality)?.divisions ?? COUNTRIES[0].divisions;
+}
 
 export function createWorld(options: CreateWorldOptions): World {
   const rng = new Rng(options.seed);
@@ -45,7 +65,7 @@ export function createWorld(options: CreateWorldOptions): World {
   const ranked = divisions === 1 ? clubs : [...clubs].sort((a, b) => b.reputation - a.reputation);
   const leagues: League[] = Array.from({ length: divisions }, (_, i) => ({
     id: `l${i + 1}`,
-    name: i === 0 && options.leagueName ? options.leagueName : (DIVISION_NAMES[i] ?? `Divisao ${i + 1}`),
+    name: i === 0 && options.leagueName ? options.leagueName : (divisionNames(nationality)[i] ?? `Division ${i + 1}`),
     nationality,
     tier: i + 1,
     clubs: ranked.slice(i * clubCount, (i + 1) * clubCount),

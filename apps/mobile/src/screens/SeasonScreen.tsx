@@ -104,7 +104,8 @@ export function SeasonScreen() {
  * and the window between them.
  */
 function matchdayLabel(career: Career): string {
-  if (transferWindow(career) !== undefined) return 'Window open';
+  const window = transferWindow(career);
+  if (window && !window.midSeason) return 'Window open';
   if (isSeasonComplete(career)) return 'Complete';
   return `${career.season.nextRound} of ${career.season.totalRounds}`;
 }

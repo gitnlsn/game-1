@@ -45,6 +45,125 @@ const CLUB_STYLES: Record<string, ClubNamingStyle> = {
       (c) => `${c} FC`,
     ],
   },
+  /*
+   * The countries below use invented towns, as England does. Real towns would
+   * collide with real clubs constantly -- every Spanish town of any size has a
+   * "CD" or a "UD" -- and a blocklist cannot keep up with that.
+   */
+  ESP: {
+    cities: [
+      'Valdemora', 'Castrillo', 'Peñaverde', 'Almedina', 'Torrealta', 'Villalobar', 'Montesierra',
+      'Riosalado', 'Fuentelar', 'Navalcruz', 'Sotoverde', 'Alcaraván', 'Robledal', 'Encinar',
+      'Valbuena', 'Arroyomar', 'Campoalto', 'Miraflores', 'Belmonte', 'Calanda',
+    ],
+    patterns: [
+      (c) => `CD ${c}`,
+      (c) => `${c} CF`,
+      (c) => `Atlético ${c}`,
+      (c) => `Real ${c}`,
+      (c) => `UD ${c}`,
+      (c) => `SD ${c}`,
+      (c) => `Deportivo ${c}`,
+    ],
+  },
+  ITA: {
+    cities: [
+      'Borgomaro', 'Castelvento', 'Sanvito', 'Roccaverde', 'Fontanella', 'Valdoria', 'Casalfiore',
+      'Torrenova', 'Monteleone', 'Campobianco', 'Rivalta', 'Belforte', 'Serravalle', 'Lagomare',
+      'Colleverde', 'Acquaviva', 'Sassoreale', 'Ponteluce', 'Vallescura', 'Pietralunga',
+    ],
+    patterns: [
+      (c) => `${c} Calcio`,
+      (c) => `AC ${c}`,
+      (c) => `US ${c}`,
+      (c) => `Sporting ${c}`,
+      (c) => `Virtus ${c}`,
+      (c) => `Unione ${c}`,
+      (c) => `Polisportiva ${c}`,
+    ],
+  },
+  GER: {
+    cities: [
+      'Altenbruck', 'Bergheide', 'Eichenfeld', 'Falkenau', 'Grünwalden', 'Hohenmark', 'Kaltenbach',
+      'Lindenau', 'Neuwerden', 'Osterfeld', 'Rabenstein', 'Schwarzhagen', 'Tannenbrück',
+      'Weidenstadt', 'Wolfsheide', 'Ahlenbrück', 'Birkenfurt', 'Dornstedt', 'Erlenhof', 'Steinbrück',
+    ],
+    patterns: [
+      (c) => `FC ${c}`,
+      (c) => `SV ${c}`,
+      (c) => `VfB ${c}`,
+      (c) => `TSV ${c}`,
+      (c) => `SpVgg ${c}`,
+      (c) => `Eintracht ${c}`,
+      (c) => `Sportfreunde ${c}`,
+    ],
+  },
+  FRA: {
+    cities: [
+      'Montclair', 'Valfleury', 'Saint-Aubry', 'Roquebelle', 'Champmorel', 'Bellerive', 'Fontclaire',
+      'Port-Mareuil', 'Rochebrune', 'Vauclair', 'Saint-Gérald', 'Mirabel', 'Castelnoir',
+      'Peyrelongue', 'Aubeterre', 'Valmont', 'Sainte-Odile', 'Boisjoli', 'Hautefort', 'Clairvaux',
+    ],
+    patterns: [
+      (c) => `${c} FC`,
+      (c) => `AS ${c}`,
+      (c) => `Olympique ${c}`,
+      (c) => `Stade ${c}`,
+      (c) => `US ${c}`,
+      (c) => `Racing ${c}`,
+      (c) => `SC ${c}`,
+    ],
+  },
+  ARG: {
+    cities: [
+      'Villa Alegre', 'Puerto Esperanza', 'Cerro Azul', 'Laguna Brava', 'Los Álamos', 'Bahía Serena',
+      'Colonia Nueva', 'Río Claro', 'Paso del Indio', 'Las Acacias', 'Villa Rosales', 'General Peña',
+      'Sierra Morada', 'El Ombú', 'Cañada Larga', 'Santa Brígida', 'Pampa Alta', 'San Telmo Sur',
+      'Villa Ventana', 'Monte Hermoso Alto',
+    ],
+    patterns: [
+      (c) => `Atlético ${c}`,
+      (c) => `Deportivo ${c}`,
+      (c) => `Sportivo ${c}`,
+      (c) => `${c} Juniors`,
+      (c) => `Unión ${c}`,
+      (c) => `Independiente ${c}`,
+      (c) => `Ferro ${c}`,
+    ],
+  },
+  POR: {
+    cities: [
+      'Vale Formoso', 'Porto Claro', 'Ribeira Alta', 'Monte Sereno', 'Castelo Velho', 'Vila Serena',
+      'Fontelas', 'Póvoa do Sol', 'Santa Luzia', 'Ponte Verde', 'Aldeia Grande', 'Torre Branca',
+      'Lagoa Azul', 'Penedo Alto', 'Serra Nova', 'Vila Franca do Mar', 'Rio Fundo', 'Quinta Velha',
+      'Campo Maior Novo', 'Alvorada',
+    ],
+    patterns: [
+      (c) => `${c} FC`,
+      (c) => `Sporting ${c}`,
+      (c) => `União ${c}`,
+      (c) => `Académico ${c}`,
+      (c) => `Desportivo ${c}`,
+      (c) => `GD ${c}`,
+      (c) => `SC ${c}`,
+    ],
+  },
+  NED: {
+    cities: [
+      'Bergendaal', 'Lindenhoven', 'Westerdijk', 'Oosterbroek', 'Zandvoorde', 'Molendam', 'Rijnhaven',
+      'Veldhove', 'Duinwijk', 'Kerkebrug', 'Heideloo', 'Waterberg', 'Eikendorp', 'Noordmeer',
+      'Sluiskerk', 'Dijkhuizen', 'Polderwijk', 'Vlietdam', 'Hoogmolen', 'Brederode',
+    ],
+    patterns: [
+      (c) => `${c} FC`,
+      (c) => `VV ${c}`,
+      (c) => `SC ${c}`,
+      (c) => `${c} Boys`,
+      (c) => `Sparta ${c}`,
+      (c) => `Quick ${c}`,
+      (c) => `Excelsior ${c}`,
+    ],
+  },
 };
 
 /**
@@ -74,9 +193,13 @@ function generateClubName(rng: Rng, style: ClubNamingStyle, taken: Set<string>):
   throw new Error('generateClubName: exhausted name combinations');
 }
 
-function shortNameFor(name: string): string {
+/** Three letters for the tightest places a club is named. */
+export function shortNameFor(name: string): string {
   const words = name.split(' ').filter((w) => w.length > 0);
-  const meaningful = words.filter((w) => !/^(FC|EC|AC|SC)$/i.test(w));
+  // The club-type words around the town, in every country a career is played in.
+  const meaningful = words.filter(
+    (w) => !/^(FC|EC|AC|SC|CF|CD|UD|SD|AS|US|SV|VV|GD|TSV|VfB|SpVgg|Calcio|Juniors|Boys)$/i.test(w),
+  );
   const base = meaningful[meaningful.length - 1] ?? words[0]!;
   return base.slice(0, 3).toUpperCase();
 }

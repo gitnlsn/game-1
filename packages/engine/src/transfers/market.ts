@@ -71,6 +71,10 @@ export interface ShopOptions {
    * They are still shuffled with everyone else so the RNG sequence is unchanged.
    */
   skipClubIds?: readonly string[];
+  /** Fewer signings than a close season allows, for a mid-season window. */
+  maxSignings?: number;
+  /** Fewer positions looked at, for the same reason. */
+  positionsShopped?: number;
 }
 
 /**
@@ -97,7 +101,7 @@ export function prepareTransferWindow(
     if (!skip.has(club.id)) trimSquad(world, club);
   }
   for (const club of clubs) {
-    if (!skip.has(club.id)) transfers.push(...raiseFunds(rng, world, club));
+    if (!skip.has(club.id)) transfers.push(...raiseFunds(rng, world, club, skip));
   }
 
   return transfers;
@@ -123,8 +127,9 @@ export function shopTransferWindow(
     // Work down the weakest positions. Clubs shop to improve, not only when they
     // have fallen below the standard their reputation implies -- a strong club
     // with money in the bank still wants a better left back.
-    for (const need of squadNeeds(club).slice(0, T.positionsShoppedPerWindow)) {
-      if (signings >= T.maxSigningsPerWindow) break;
+    const maxSignings = options.maxSignings ?? T.maxSigningsPerWindow;
+    for (const need of squadNeeds(club).slice(0, options.positionsShopped ?? T.positionsShoppedPerWindow)) {
+      if (signings >= maxSignings) break;
       if (club.squad.length >= T.maxSquadSize) break;
 
       const candidate = findBestCandidate(rng, world, club, need.position, need.current, skip);
@@ -214,7 +219,11 @@ function findBestCandidate(
  * talent from clubs that cannot afford it to clubs that can -- which is exactly
  * what happens in real leagues.
  */
-function raiseFunds(rng: Rng, world: World, seller: Club): Transfer[] {
+/**
+ * `skip` are clubs that must not be sold *to* either: the managed club buys
+ * only what its manager chose to, or it pays for a player nobody asked for.
+ */
+function raiseFunds(rng: Rng, world: World, seller: Club, skip: ReadonlySet<string> = new Set()): Transfer[] {
   const T = TRANSFER_TUNING;
   const sales: Transfer[] = [];
   let releases = 0;
@@ -232,7 +241,7 @@ function raiseFunds(rng: Rng, world: World, seller: Club): Transfer[] {
     let sold = false;
     for (const player of saleable) {
       const price = Math.round(askingPrice(seller, player) * T.distressDiscount);
-      const buyer = findBuyer(world, seller, player, price);
+      const buyer = findBuyer(world, seller, player, price, skip);
       if (!buyer) continue;
 
       leaveSquad(seller, player.id);
@@ -281,12 +290,18 @@ function raiseFunds(rng: Rng, world: World, seller: Club): Transfer[] {
 }
 
 /** The club best placed to take a player off a struggling club's hands. */
-function findBuyer(world: World, seller: Club, player: Player, price: number): Club | undefined {
+function findBuyer(
+  world: World,
+  seller: Club,
+  player: Player,
+  price: number,
+  skip: ReadonlySet<string>,
+): Club | undefined {
   const T = TRANSFER_TUNING;
   let best: Club | undefined;
 
   for (const buyer of allClubs(world)) {
-    if (buyer.id === seller.id) continue;
+    if (buyer.id === seller.id || skip.has(buyer.id)) continue;
     if (buyer.squad.length >= T.maxSquadSize) continue;
     if (buyer.finances.transferBudget < price) continue;
     if (!playerWouldJoin(player, seller, buyer)) continue;

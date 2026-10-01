@@ -5,9 +5,14 @@ import { Button, Card, ChipRow, Divider, ScreenHeader, SectionTitle } from '../c
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LeaderboardsCard } from '../components/Leaderboards';
 import { SubscriptionCard } from '../components/SubscriptionCard';
+import { ProButton, usePaywall } from '../components/ProGate';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import { useSubscription } from '../game/subscription';
+import { usePro } from '../game/pro';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { GameStackParamList } from '../nav/routes';
 import appConfig from '../../app.json';
 
 /**
@@ -26,6 +31,17 @@ import appConfig from '../../app.json';
  */
 const BUILD = `${appConfig.expo.version} (${appConfig.expo.android.versionCode})`;
 
+const DEV_PRO = [
+  { value: 'play' as const, label: 'Ask Play' },
+  { value: 'free' as const, label: 'Free' },
+  { value: 'pro' as const, label: 'Pro' },
+];
+
+const SELECTION = [
+  { value: 'you' as const, label: 'You pick' },
+  { value: 'assistant' as const, label: 'Assistant picks' },
+];
+
 const MATCH_MODES = [
   { value: 'instant' as const, label: 'Instant' },
   { value: 'replay' as const, label: 'Replay' },
@@ -39,8 +55,13 @@ const MATCH_MODES = [
  * has one.
  */
 export function SettingsScreen({ header = false }: { header?: boolean }) {
-  const { settings, updateSettings, abandonCareer, career, started, live, returnToTitle, lifetime } =
+  const { settings, updateSettings, abandonCareer, career, started, live, returnToTitle, lifetime, slots } =
     useGame();
+  const pro = usePro();
+  const paywall = usePaywall();
+  const navigation = useNavigation<NativeStackNavigationProp<GameStackParamList>>();
+  // Another career kept besides this one, which abandoning leaves alone.
+  const othersKept = Object.keys(slots.slots).some((slot) => Number(slot) !== slots.active);
   const insets = useSafeAreaInsets();
   const [confirming, setConfirming] = useState(false);
   const subscription = useSubscription();
@@ -95,11 +116,53 @@ export function SettingsScreen({ header = false }: { header?: boolean }) {
         </Text>
       </Card>
 
+      {pro.offered ? (
+        <>
+          <SectionTitle>Team selection</SectionTitle>
+          <Card>
+            {pro.active ? (
+              <>
+                <ChipRow
+                  options={SELECTION}
+                  value={settings.assistantPicks ? 'assistant' : 'you'}
+                  onChange={(value) => updateSettings({ assistantPicks: value === 'assistant' })}
+                />
+                <Text style={styles.note}>
+                  {settings.assistantPicks
+                    ? 'Before every match your assistant picks the fittest, most in-form eleven in your formation. Your instructions stay as you set them, and anything you pick by hand is replaced at kick-off.'
+                    : 'The eleven you pick stays picked until you change it.'}
+                </Text>
+              </>
+            ) : (
+              <ProButton
+                label="Let your assistant pick the team"
+                reason="Before every match, your assistant picks the fittest and most in-form eleven in your formation."
+                onLocked={paywall.show}
+                onPress={() => {}}
+              />
+            )}
+          </Card>
+        </>
+      ) : null}
+
       {/*
         * Above Career on purpose. It is a record rather than a setting, and
         * the section below it ends in a destructive button -- anything placed
         * after that reads as an afterthought and gets scrolled past.
         */}
+      {/* Only in a career: there is nothing to rename from the title menu. */}
+      {pro.offered && career && started ? (
+        <>
+          <SectionTitle>Editor</SectionTitle>
+          <ProButton
+            label="Rename clubs and players"
+            reason="Rename any player or club, and the game uses your names everywhere."
+            onLocked={paywall.show}
+            onPress={() => navigation.navigate('editor')}
+          />
+        </>
+      ) : null}
+
       <LeaderboardsCard lifetime={lifetime} />
 
       <SubscriptionCard />
@@ -125,7 +188,11 @@ export function SettingsScreen({ header = false }: { header?: boolean }) {
               </>
             ) : null}
             <Text style={styles.warning}>
-              Abandoning deletes this career permanently. There is only one save.
+              {othersKept
+                ? 'Abandoning deletes this career permanently. Your other careers are not affected.'
+                : pro.active
+                  ? 'Abandoning deletes this career permanently.'
+                  : 'Abandoning deletes this career permanently. There is only one save.'}
             </Text>
             <Button
               label="Abandon career"
@@ -150,12 +217,30 @@ export function SettingsScreen({ header = false }: { header?: boolean }) {
         onCancel={() => setConfirming(false)}
       />
 
+      {__DEV__ ? (
+        <>
+          <SectionTitle>Development</SectionTitle>
+          <Card>
+            <ChipRow
+              options={DEV_PRO}
+              value={settings.devPro ?? 'play'}
+              onChange={(value) => updateSettings({ devPro: value === 'play' ? undefined : value })}
+            />
+            <Text style={styles.note}>
+              Pretend to be a free player or a subscriber, to see both sides of Pro without Google Play.
+            </Text>
+          </Card>
+        </>
+      ) : null}
+
       {/*
         * `dev` is the useful half of this. A debug build served by Metro and a
         * release build installed from Play look identical on screen, behave
         * differently, and are signed by different keys -- which is exactly the
         * distinction that is hard to make from the outside.
         */}
+      {paywall.element}
+
       <Text style={styles.build}>
         Eleven Deep {BUILD}
         {__DEV__ ? ' · dev' : ''}

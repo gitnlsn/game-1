@@ -7,3 +7,4 @@ export * from './manager.js';
 export * from './squadView.js';
 export * from './plan.js';
 export * from './seasonDevelopment.js';
+export * from './records.js';

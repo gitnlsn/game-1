@@ -307,7 +307,11 @@ export function closeSeason(
   }
 
   return {
-    season: world.season - 1,
+    /*
+     * The season just played. With the window deferred the world has not
+     * moved on to the next one yet; without, it already has.
+     */
+    season: options.deferWindow ? world.season : world.season - 1,
     table: season.table,
     tables: season.tables ?? [season.table],
     promotions,

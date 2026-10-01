@@ -49,6 +49,8 @@ export interface CareerSummary {
   points: number;
   boardMood: string;
   next: NextUp;
+  /** A sandbox career; optional because index entries from before sandboxes lack it. */
+  sandbox?: boolean;
 }
 
 export function careerSummary(career: Career): CareerSummary {
@@ -69,6 +71,7 @@ export function careerSummary(career: Career): CareerSummary {
     points: row?.points ?? 0,
     boardMood: boardConfidence(career).mood,
     next: nextUp(career),
+    ...(career.sandbox ? { sandbox: true } : {}),
   };
 }
 
@@ -77,7 +80,8 @@ function nextUp(career: Career): NextUp {
     return { kind: 'sacked', reason: career.board.sackReason ?? 'The board has decided to make a change.' };
   }
   // A dismissal outranks an open window: you are not signing anyone.
-  if (transferWindow(career)) return { kind: 'window' };
+  // The mid-season window does not hold the season up, so the next match still leads.
+  if (transferWindow(career) && !transferWindow(career)?.midSeason) return { kind: 'window' };
   if (isSeasonComplete(career)) return { kind: 'seasonOver' };
 
   const upcoming = nextFixture(career);

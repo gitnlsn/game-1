@@ -26,11 +26,15 @@ export type GameStackParamList = {
   windowPlan: undefined;
   sacked: undefined;
   liveMatch: undefined;
+  records: undefined;
+  editor: undefined;
+  compare: undefined;
 };
 
 export type MenuStackParamList = {
   title: undefined;
-  newCareer: undefined;
+  /** The save slot the career goes in; whatever is there is replaced. */
+  newCareer: { slot?: number } | undefined;
   menuSettings: undefined;
 };
 

@@ -15,6 +15,7 @@ import {
   sponsorDeals,
   sponsorOfferWeeksLeft,
   type SponsorOffer,
+  sandboxGrant,
 } from '@eleven-deep/engine';
 import { Button, Card, Divider, KeyValue, ScreenHeader, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -22,6 +23,8 @@ import { ordinal } from '../format';
 import { MoneyDecisions } from './MoneyDecisions';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+
+const SANDBOX_GRANTS = [5_000_000, 25_000_000, 100_000_000];
 
 export function FinancesScreen() {
   const { career, version, refresh } = useGame();
@@ -111,6 +114,32 @@ export function FinancesScreen() {
           </Card>
         );
       })}
+
+      {career.sandbox ? (
+        <>
+          <SectionTitle>Sandbox</SectionTitle>
+          <Card style={styles.card}>
+            <Text style={styles.cardMeta}>
+              Money added here goes on the balance and the transfer budget at once.
+            </Text>
+            <View style={styles.actions}>
+              {SANDBOX_GRANTS.map((amount) => (
+                <Button
+                  key={amount}
+                  label={`+${formatMoney(amount)}`}
+                  variant="secondary"
+                  style={styles.action}
+                  onPress={() => {
+                    if (!sandboxGrant(career, amount)) return;
+                    setMessage(`${formatMoney(amount)} added.`);
+                    refresh();
+                  }}
+                />
+              ))}
+            </View>
+          </Card>
+        </>
+      ) : null}
 
       <MoneyDecisions career={career} onChange={refresh} onMessage={setMessage} />
 

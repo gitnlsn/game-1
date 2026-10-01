@@ -168,7 +168,10 @@ export function seasonCalendar(career: Career): SeasonCalendar {
     entries.push({ ...common, ...leagueSlot(career, fixture, results, me) });
   }
 
-  const window = transferWindow(career);
+  // The band after the last matchday is the close-season window; the mid-season
+  // one runs between matchdays and is shown on the club screen instead.
+  const open = transferWindow(career);
+  const window = open?.midSeason ? undefined : open;
 
   return {
     season: career.world.season,

@@ -16,8 +16,12 @@ import type {
   World,
 } from '../types.js';
 import {
+  createTransferWindow,
+  generateIncomingOffers,
   makeBid,
   offerContract,
+  prepareTransferWindow,
+  shopTransferWindow,
   releasePlayer,
   respondToOffer,
   transferTargets,
@@ -48,6 +52,7 @@ import {
 } from '../economy/levers.js';
 import type { StaffLevel, StaffLevels } from '../types.js';
 import { DEFAULT_FORMATION, FORMATIONS } from '../world/positions.js';
+import { shortNameFor } from '../world/clubs.js';
 import { resolveTeamSheet, type Lineup } from '../match/ratings.js';
 import {
   finishMatch,
@@ -103,6 +108,7 @@ import {
   type SeasonSummary,
 } from './career.js';
 import { exactAbility } from './aging.js';
+import { createRecords, recordSeason, type ClubRecords } from './records.js';
 import {
   abilitySnapshot,
   DEVELOPMENT_TUNING,
@@ -149,6 +155,14 @@ export interface Career {
   developedWeeks: number;
   /** Every player's ability as this season began, to measure the season against. */
   seasonStartAbility: Record<string, number>;
+  /** The managed club's history: seasons, players, records. */
+  records: ClubRecords;
+  /**
+   * A sandbox career: the board cannot sack, and money can be added at will.
+   * Fixed when the career starts. The app keeps sandbox careers off the
+   * leaderboards, since nothing in them was earned.
+   */
+  sandbox: boolean;
 }
 
 /** What a career plays, as opposed to what the harnesses measure. */
@@ -169,6 +183,8 @@ export interface StartCareerOptions {
   divisions?: number;
   /** Play a knockout cup alongside the league. On by default for a career. */
   cup?: boolean;
+  /** Start a sandbox career; see `Career.sandbox`. */
+  sandbox?: boolean;
 }
 
 export function startCareer(options: StartCareerOptions): Career {
@@ -205,6 +221,8 @@ export function startCareer(options: StartCareerOptions): Career {
     progression: {},
     developedWeeks: 0,
     seasonStartAbility: {},
+    records: createRecords(),
+    sandbox: options.sandbox === true,
   };
 
   // You start knowing your own squad reasonably well: your coaches have watched
@@ -222,6 +240,7 @@ export function managedClub(career: Career): Club {
 
 /** Plays the next round of fixtures. Returns every result, across all clubs. */
 export function advanceRound(career: Career): MatchResult[] {
+  closeMidSeasonWindowIfDue(career);
   const results = playRound(career.season, { humanClubId: career.managedClubId });
 
   // Facing a side teaches you about it. Done here rather than inside the season
@@ -242,7 +261,79 @@ export function advanceRound(career: Career): MatchResult[] {
 
   offerManagedSponsor(career, results);
   developIfDue(career);
+  openMidSeasonWindowIfDue(career);
   return results;
+}
+
+// --- The mid-season window --------------------------------------------------
+
+/**
+ * A second, smaller window halfway through the league season, open to every
+ * club. It runs alongside the matches rather than stopping them: while it is
+ * open the manager trades as in the close season, and when it shuts the AI
+ * clubs make their own, fewer, signings.
+ *
+ * Only a played career has one. The headless harnesses simulate seasons
+ * without the controller, so what they measure is unchanged.
+ */
+export const MID_SEASON_WINDOW = {
+  /** Opens once this share of the season's matchdays has been played. */
+  opensAt: 0.5,
+  /** Matchdays it stays open for. */
+  matchdays: 4,
+  /** Signings per AI club when it shuts, against four in the close season. */
+  maxSignings: 1,
+  positionsShopped: 2,
+} as const;
+
+function openMidSeasonWindowIfDue(career: Career): void {
+  const { world, season } = career;
+  const existing = world.transferWindow;
+  if (existing?.open) return;
+  if (existing?.midSeason && existing.season === world.season) return;
+
+  const played = season.nextRound - 1;
+  if (played < Math.ceil(season.totalRounds * MID_SEASON_WINDOW.opensAt)) return;
+  // Not so late that it would still be open when the season ends.
+  if (season.totalRounds - played <= MID_SEASON_WINDOW.matchdays) return;
+
+  // Clubs clear the decks first, exactly as before a close-season window.
+  const transfers = prepareTransferWindow(career.rng, world, { skipClubIds: [career.managedClubId] });
+  const window = createTransferWindow(world.season);
+  window.midSeason = true;
+  window.closesBeforeRound = season.nextRound + MID_SEASON_WINDOW.matchdays;
+  window.completed.push(...transfers);
+  window.incoming = generateIncomingOffers(career.rng, world, career.managedClubId, {
+    listed: new Set(Object.keys(career.listings).filter((id) => career.listings[id] === 'transfer')),
+  });
+  world.transferWindow = window;
+}
+
+function closeMidSeasonWindowIfDue(career: Career): void {
+  const window = transferWindow(career);
+  if (!window?.midSeason) return;
+  if (career.season.nextRound < (window.closesBeforeRound ?? 0) && !isSeasonComplete(career)) return;
+  closeMidSeasonWindow(career);
+}
+
+/** Shuts the mid-season window: the AI's signings, then nothing more until summer. */
+export function closeMidSeasonWindow(career: Career): Transfer[] {
+  const window = transferWindow(career);
+  if (!window?.midSeason) return [];
+  const transfers = shopTransferWindow(career.rng, career.world, {
+    skipClubIds: [career.managedClubId],
+    maxSignings: MID_SEASON_WINDOW.maxSignings,
+    positionsShopped: MID_SEASON_WINDOW.positionsShopped,
+  });
+  window.completed.push(...transfers);
+  window.open = false;
+  pruneManagerState(career);
+  return transfers;
+}
+
+/** Whether the open window, if any, is the mid-season one. */
+export function isMidSeasonWindow(career: Career): boolean {
+  return transferWindow(career)?.midSeason === true;
 }
 
 /**
@@ -538,6 +629,13 @@ export function endSeason(career: Career): SeasonSummary {
   // Whatever is left of the season's development, while minutes still count.
   developThrough(career, leagueWeeks(career.season).played);
 
+  // The mid-season window's business belongs in this season's summary, and
+  // the close-season window is about to take its place.
+  closeMidSeasonWindow(career);
+  const midSeason = career.world.transferWindow;
+  const midSeasonTransfers =
+    midSeason?.midSeason && midSeason.season === career.world.season ? midSeason.completed : [];
+
   const result = finaliseSeason(career.season);
   // An offer cannot outlive the season it was made in.
   career.sponsorOffers = [];
@@ -558,16 +656,43 @@ export function endSeason(career: Career): SeasonSummary {
   const cup = career.season.cup;
   const cupResult = cupOutcome(career, cup);
 
+  /*
+   * The records are written before closeSeason too: it wipes every player's
+   * numbers for the new season and starts moving players on. Promotion is not
+   * known yet, so the line's movement is filled in once it is.
+   */
+  const club = managedClub(career);
+  const run = cupRun(career);
+  recordSeason(career.records, {
+    season: career.world.season,
+    clubId: club.id,
+    clubName: club.name,
+    squad: club.squad,
+    borrowed: new Set(
+      career.world.loans.filter((loan) => loan.clubId === club.id).map((loan) => loan.playerId),
+    ),
+    league,
+    table,
+    results: career.season.results,
+    clubNames: (id) => findClub(career.world, id)?.name ?? 'Unknown',
+    ...(run ? { cup: { name: run.name, roundsWon: run.roundsSurvived, finish: cupResult } } : {}),
+  });
+
   const summary = closeSeason(career.world, career.rng, result, {
     deferWindow: true,
     managedClubId: career.managedClubId,
     listedPlayerIds: Object.keys(career.listings).filter((id) => career.listings[id] === 'transfer'),
     developedInSeason: career.seasonStartAbility,
   });
+  summary.transfers = [...midSeasonTransfers, ...summary.transfers];
   career.history.push(summary);
 
   const moved = summary.promotions.find((p) => p.clubId === career.managedClubId);
+  const line = career.records.seasons[career.records.seasons.length - 1];
+  if (line && moved) line.movement = moved.to < moved.from ? 'promoted' : 'relegated';
+
   summary.verdict = judgeSeason(career.board, {
+    cannotSack: career.sandbox,
     table,
     clubId: career.managedClubId,
     league,
@@ -614,6 +739,10 @@ export function isSacked(career: Career): boolean {
  * Closes the window -- the AI does its own business -- and starts the new season.
  */
 export function startNextSeason(career: Career): Transfer[] {
+  // The mid-season window is open while matches are still being played.
+  if (!isSeasonComplete(career)) {
+    throw new Error('startNextSeason: the season is still being played');
+  }
   // Before the AI trades, so a listed player goes where you would have sent him
   // and not to whoever the loan market happens to reach first.
   placeListedLoans(career);
@@ -662,6 +791,7 @@ export interface LiveMatch {
  * jumps around whatever minute the manager happened to be watching.
  */
 export function beginLiveMatch(career: Career): LiveMatch | undefined {
+  closeMidSeasonWindowIfDue(career);
   const upcoming = nextFixture(career);
   if (!upcoming) return undefined;
 
@@ -703,6 +833,7 @@ export function endLiveMatch(live: LiveMatch, career: Career): MatchResult {
   const result = playFixture(career.season, live.fixture, finishMatch(live.match));
   offerManagedSponsor(career, [result]);
   developIfDue(career);
+  openMidSeasonWindowIfDue(career);
   return result;
 }
 
@@ -1063,4 +1194,71 @@ export function setTrainingFocus(career: Career, playerId: string, focus: Traini
   if (focus === 'balanced') delete career.training[playerId];
   else career.training[playerId] = focus;
   return true;
+}
+
+// --- Sandbox and editor ---------------------------------------------------
+
+/**
+ * Adds money to the managed club, spendable straight away: bids are capped by
+ * the transfer budget rather than the balance, so both go up. The budget is
+ * worked out from cash again at the next season's start, as it always is.
+ * Sandbox careers only; false otherwise.
+ */
+export function sandboxGrant(career: Career, amount: number): boolean {
+  if (!career.sandbox || !(amount > 0)) return false;
+  const finances = managedClub(career).finances;
+  finances.balance += amount;
+  finances.transferBudget += amount;
+  return true;
+}
+
+/** The longest name the editor accepts, so a name always fits on a row. */
+export const MAX_NAME_LENGTH = 28;
+
+function cleanName(name: string): string | undefined {
+  const trimmed = name.replace(/\s+/g, ' ').trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_NAME_LENGTH) return undefined;
+  return trimmed;
+}
+
+/**
+ * Renames a player anywhere in the world. The name is shown as typed; the
+ * first and last names follow it so anything that sorts or abbreviates by
+ * them keeps agreeing with what is on screen. History keeps the old name:
+ * last season's records describe last season.
+ */
+export function renamePlayer(career: Career, playerId: string, name: string): boolean {
+  const cleaned = cleanName(name);
+  const player = cleaned ? findPlayerAnywhere(career, playerId) : undefined;
+  if (!cleaned || !player) return false;
+  const parts = cleaned.split(' ');
+  player.displayName = cleaned;
+  player.firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : cleaned;
+  player.lastName = parts[parts.length - 1]!;
+  return true;
+}
+
+/** Renames a club, and optionally its city. The short name follows the name. */
+export function renameClub(
+  career: Career,
+  clubId: string,
+  edit: { name?: string; city?: string },
+): boolean {
+  const club = findClub(career.world, clubId);
+  if (!club) return false;
+  const name = edit.name !== undefined ? cleanName(edit.name) : club.name;
+  const city = edit.city !== undefined ? cleanName(edit.city) : club.city;
+  if (!name || !city) return false;
+  club.name = name;
+  club.city = city;
+  club.shortName = shortNameFor(name);
+  return true;
+}
+
+function findPlayerAnywhere(career: Career, playerId: string): Player | undefined {
+  for (const club of allClubs(career.world)) {
+    const player = club.squad.find((p) => p.id === playerId);
+    if (player) return player;
+  }
+  return career.world.freeAgents.find((p) => p.id === playerId);
 }

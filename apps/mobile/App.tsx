@@ -22,6 +22,9 @@ import { SaveProblemScreen } from './src/screens/SaveProblemScreen';
 import { SackedScreen } from './src/screens/SackedScreen';
 import { LiveMatchScreen } from './src/screens/LiveMatchScreen';
 import { TitleScreen } from './src/screens/TitleScreen';
+import { RecordsScreen } from './src/screens/RecordsScreen';
+import { EditorScreen } from './src/screens/EditorScreen';
+import { CompareScreen } from './src/screens/CompareScreen';
 import type { RootStackParamList } from './src/nav/routes';
 import { colors } from './src/theme';
 
@@ -116,6 +119,9 @@ function Game() {
         options={{ title: 'Transfer window' }}
       />
       <Stack.Screen name="scouting" component={ScoutingScreen} options={{ title: 'Scouting' }} />
+      <Stack.Screen name="records" component={RecordsScreen} options={{ title: 'Club records' }} />
+      <Stack.Screen name="editor" component={EditorScreen} options={{ title: 'Editor' }} />
+      <Stack.Screen name="compare" component={CompareScreen} options={{ title: 'Compare' }} />
       <Stack.Screen name="windowPlan" component={WindowPlanScreen} options={{ title: 'Your window plan' }} />
       {/* No way back: the career is over, and the only move is to start another. */}
       <Stack.Screen

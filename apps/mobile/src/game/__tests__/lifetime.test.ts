@@ -10,6 +10,7 @@ import {
 import {
   emptyLifetime,
   endCareer,
+  forgetCareer,
   LIFETIME_KEY,
   loadLifetime,
   ownMatchesThisSeason,
@@ -54,6 +55,7 @@ describe('lifetime totals', () => {
       seasons: 0,
       longestRun: 0,
       current: { key: 'a', matchesThisSeason: 0, seasons: 0 },
+      parked: {},
     });
   });
 
@@ -203,6 +205,7 @@ describe('lifetime totals', () => {
       seasons: 11,
       longestRun: 7,
       current: { key: 'a', matchesThisSeason: 12, seasons: 7 },
+      parked: { b: { key: 'b', matchesThisSeason: 3, seasons: 2 } },
     };
 
     await saveLifetime(storage, record);
@@ -225,6 +228,49 @@ describe('lifetime totals', () => {
       seasons: 1,
       longestRun: 0,
       current: undefined,
+      parked: {},
     });
+  });
+});
+
+describe('lifetime totals across save slots', () => {
+  it('switching between careers counts each match once and never re-adopts', () => {
+    const one = startCareer({ seed: 'lifetime-slot-one' });
+    const two = startCareer({ seed: 'lifetime-slot-two' });
+    playSeason(one);
+    rollOver(one);
+
+    let record = recordProgress(emptyLifetime(), 'one', one);
+    const afterOne = record.matches;
+    expect(record.seasons).toBe(1);
+
+    record = recordProgress(record, 'two', two);
+    expect(record.matches).toBe(afterOne);
+    expect(record.parked.one).toBeDefined();
+
+    // Back to the first: nothing new has happened there, so nothing moves.
+    record = recordProgress(record, 'one', one);
+    expect(record.matches).toBe(afterOne);
+    expect(record.seasons).toBe(1);
+    expect(record.parked.two).toBeDefined();
+
+    advanceRound(two);
+    record = recordProgress(record, 'two', two);
+    expect(record.matches).toBe(afterOne + ownMatchesThisSeason(two));
+    expect(record.seasons).toBe(1);
+  });
+
+  it('forgets a parked career that has been replaced', () => {
+    const one = startCareer({ seed: 'lifetime-forget-one' });
+    const two = startCareer({ seed: 'lifetime-forget-two' });
+    let record = recordProgress(emptyLifetime(), 'one', one);
+    record = recordProgress(record, 'two', two);
+
+    record = forgetCareer(record, 'one');
+    expect(record.parked).toEqual({});
+    expect(record.current?.key).toBe('two');
+
+    record = forgetCareer(record, 'two');
+    expect(record.current).toBeUndefined();
   });
 });

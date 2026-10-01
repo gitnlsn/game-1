@@ -30,7 +30,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { unconfirmedWarning } from '../game/moveText';
 import { colors, spacing } from '../theme';
 import { ordinal } from '../format';
-import { useGame } from '../game/GameContext';
+import { useGame, type SimOutcome } from '../game/GameContext';
+import { ProButton, usePaywall } from '../components/ProGate';
 import type { RootStackParamList } from '../nav/routes';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -47,10 +48,13 @@ export function ClubScreen() {
   const navigation = useNavigation<Nav>();
   const {
     career, busy, playRound, finishSeason, beginNextSeason, windowOpen, sacked,
-    settings, startLive,
+    settings, startLive, simToEnd, simProgress, stopSim, pro, midSeasonWindow,
   } = useGame();
   // Before the guard below: hooks cannot run conditionally.
   const [confirmingSeason, setConfirmingSeason] = useState(false);
+  /** What the last sim did, until the next match is played. */
+  const [simmed, setSimmed] = useState<SimOutcome | undefined>();
+  const paywall = usePaywall();
   if (!career) return null;
 
   const club = managedClub(career);
@@ -112,6 +116,18 @@ export function ClubScreen() {
         * Reached on relaunch as much as on the day it happens: without this a
         * dismissed manager reopens the app to a perfectly normal club screen.
         */}
+      {midSeasonWindow && !sacked ? (
+        <MidSeasonWindowCard
+          closesBeforeRound={midSeasonWindow.closesBeforeRound ?? 0}
+          nextRound={career.season.nextRound}
+          offers={midSeasonWindow.incoming.filter((o) => o.status === 'pending').length}
+          planned={plannedMoves(career).length}
+          shortlist={career.shortlist.length}
+          onOpen={() => navigation.navigate('transfers')}
+          onShortlist={() => navigation.navigate('scouting')}
+        />
+      ) : null}
+
       {sacked ? (
         <Card style={styles.sackedCard}>
           <SectionTitle>Career over</SectionTitle>
@@ -174,6 +190,23 @@ export function ClubScreen() {
             style={styles.playButton}
           />
         </Card>
+      ) : simProgress ? (
+        <Card style={styles.matchCard}>
+          <SectionTitle>Simulating</SectionTitle>
+          <Text style={styles.finishedText}>
+            Matchday {simProgress.played} of {simProgress.total}. It will stop for anything that
+            needs you.
+          </Text>
+          <View style={styles.simTrack}>
+            <View
+              style={[
+                styles.simFill,
+                { width: `${Math.round((simProgress.played / Math.max(1, simProgress.total)) * 100)}%` },
+              ]}
+            />
+          </View>
+          <Button label="Stop" variant="secondary" onPress={stopSim} style={styles.playButton} />
+        </Card>
       ) : upcoming ? (
         <Card style={styles.matchCard}>
           <SectionTitle
@@ -208,6 +241,9 @@ export function ClubScreen() {
             * is making rather than one being made for him.
             */}
           <Text style={styles.setup}>Set up: {describeTactics(currentTactics(career))}</Text>
+          {settings.assistantPicks && pro.active ? (
+            <Text style={styles.setup}>Your assistant picks the eleven at kick-off.</Text>
+          ) : null}
 
           <Button
             label="Pick team"
@@ -224,11 +260,20 @@ export function ClubScreen() {
                 if (await startLive()) navigation.navigate('liveMatch');
                 return;
               }
+              setSimmed(undefined);
               const outcome = await playRound();
               if (outcome?.ownMatch && career) {
                 navigation.navigate('matchResult', { round: career.season.nextRound - 1 });
               }
             }}
+            style={styles.quickButton}
+          />
+          <ProButton
+            label="Sim to end of season"
+            reason="Play out the rest of the season in one go. It stops for the sack or a sponsor offer."
+            onLocked={paywall.show}
+            loading={busy}
+            onPress={async () => setSimmed(await simToEnd())}
             style={styles.quickButton}
           />
         </Card>
@@ -259,6 +304,8 @@ export function ClubScreen() {
           />
         </Card>
       )}
+
+      {simmed && !simProgress ? <SimSummary outcome={simmed} clubId={club.id} /> : null}
 
       <SectionTitle>Form</SectionTitle>
       <Card>
@@ -353,6 +400,13 @@ export function ClubScreen() {
       ) : null}
 
       <HistoryCard career={career} />
+      <ProButton
+        label="Club records"
+        reason="Every season, the club's all-time appearances and scorers, and its biggest wins."
+        onLocked={paywall.show}
+        onPress={() => navigation.navigate('records')}
+        style={styles.recordsButton}
+      />
 
       <ConfirmDialog
         visible={confirmingSeason}
@@ -370,7 +424,90 @@ export function ClubScreen() {
         }}
         onCancel={() => setConfirmingSeason(false)}
       />
+      {paywall.element}
     </ScrollView>
+  );
+}
+
+/**
+ * The mid-season window, above the next match rather than instead of it: the
+ * season does not wait for it. On its last matchday it says so, and says what
+ * will be lost, because the next tap of Quick play is what shuts it.
+ */
+function MidSeasonWindowCard({
+  closesBeforeRound,
+  nextRound,
+  offers,
+  planned,
+  shortlist,
+  onOpen,
+  onShortlist,
+}: {
+  closesBeforeRound: number;
+  nextRound: number;
+  offers: number;
+  planned: number;
+  shortlist: number;
+  onOpen: () => void;
+  onShortlist: () => void;
+}) {
+  const left = closesBeforeRound - nextRound;
+  const lastDay = left <= 1;
+  return (
+    <Card style={[styles.matchCard, styles.windowCard]}>
+      <SectionTitle right={<Badge label={lastDay ? 'Last matchday' : `${left} matchdays left`} color={lastDay ? colors.warn : colors.info} />}>
+        Mid-season window
+      </SectionTitle>
+      <Text style={styles.finishedText}>
+        {lastDay
+          ? 'The window shuts before your next match after this one. '
+          : 'Open while the season goes on. '}
+        {offers > 0 ? `${offers} ${offers === 1 ? 'bid' : 'bids'} for your players waiting. ` : ''}
+        {planned > 0 && lastDay
+          ? `${planned} planned ${planned === 1 ? 'move is' : 'moves are'} not confirmed and will not happen once it shuts.`
+          : ''}
+      </Text>
+      <Button label="Open the window" onPress={onOpen} style={styles.playButton} />
+      <Button label={`Your shortlist (${shortlist})`} variant="secondary" onPress={onShortlist} style={styles.quickButton} />
+    </Card>
+  );
+}
+
+const SIM_STOPS: Record<SimOutcome['stoppedFor'], string> = {
+  window: 'The mid-season window has opened. Do your business before carrying on.',
+  complete: 'The season is over.',
+  sacked: 'The board has made a change.',
+  sponsor: 'A sponsor has made an offer — answer it on the Money tab before it runs out.',
+  stopped: 'Stopped, as asked.',
+};
+
+/** What a sim just did, so a season played in one tap is not a blank. */
+function SimSummary({ outcome, clubId }: { outcome: SimOutcome; clubId: string }) {
+  let won = 0;
+  let drawn = 0;
+  let lost = 0;
+  let scored = 0;
+  let conceded = 0;
+  for (const match of outcome.matches) {
+    const home = match.homeClubId === clubId;
+    const ours = home ? match.home.goals : match.away.goals;
+    const theirs = home ? match.away.goals : match.home.goals;
+    scored += ours;
+    conceded += theirs;
+    if (ours > theirs) won += 1;
+    else if (ours === theirs) drawn += 1;
+    else lost += 1;
+  }
+  return (
+    <>
+      <SectionTitle>Simulated</SectionTitle>
+      <Card>
+        <KeyValue label="Matchdays" value={`${outcome.rounds}`} />
+        <KeyValue label="Your record" value={`W${won} D${drawn} L${lost}`} bold />
+        <KeyValue label="Goals" value={`${scored}–${conceded}`} />
+        <Text style={styles.simNote}>{SIM_STOPS[outcome.stoppedFor]}</Text>
+      </Card>
+    </>
   );
 }
 
@@ -385,7 +522,11 @@ function HistoryCard({ career }: { career: Career }) {
           .slice()
           .reverse()
           .map((summary, index) => {
-            const own = summary.table.findIndex((r) => r.clubId === career.managedClubId) + 1;
+            // The division they were in that season, which need not be the top one.
+            const table =
+              summary.tables.find((rows) => rows.some((r) => r.clubId === career.managedClubId)) ??
+              summary.table;
+            const own = table.findIndex((r) => r.clubId === career.managedClubId) + 1;
             const won = summary.championName === managedClub(career).name;
             return (
               <View key={summary.season}>
@@ -432,6 +573,17 @@ const styles = StyleSheet.create({
   },
   playButton: { marginTop: spacing.md },
   quickButton: { marginTop: spacing.sm },
+  windowCard: { borderColor: colors.info },
+  recordsButton: { marginTop: spacing.md },
+  simTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.surfaceAlt,
+    marginTop: spacing.md,
+    overflow: 'hidden',
+  },
+  simFill: { height: 6, backgroundColor: colors.accent },
+  simNote: { color: colors.muted, fontSize: 12, marginTop: spacing.sm, lineHeight: 17 },
   finishedText: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   noForm: { color: colors.faint, fontSize: 13, fontStyle: 'italic' },
   resultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3 },

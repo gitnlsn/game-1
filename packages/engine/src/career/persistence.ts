@@ -23,8 +23,9 @@ import type { Career } from './controller.js';
 import type { BoardState } from './board.js';
 import { BOARD_TUNING, createBoardState, refreshExpectation } from './board.js';
 import type { SeasonSummary } from './career.js';
+import { recordsFromHistory, type ClubRecords } from './records.js';
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -94,6 +95,9 @@ export interface SavedCareer {
   progression: Record<string, ProgressionPoint[]>;
   developedWeeks: number;
   seasonStartAbility: Record<string, number>;
+  /** Added in save version 11: the club's history, and whether this is a sandbox. */
+  records: ClubRecords;
+  sandbox: boolean;
 }
 
 export function toSavedCareer(career: Career): SavedCareer {
@@ -136,6 +140,8 @@ export function toSavedCareer(career: Career): SavedCareer {
     progression: career.progression,
     developedWeeks: career.developedWeeks,
     seasonStartAbility: career.seasonStartAbility,
+    records: career.records,
+    sandbox: career.sandbox,
   };
 }
 
@@ -291,6 +297,31 @@ const MIGRATIONS: Record<number, Migration> = {
     developedWeeks: 0,
     seasonStartAbility: {},
   }),
+  /**
+   * v11 keeps the club's history. An older career gets back what its season
+   * summaries can tell -- where it finished, who went up -- and starts keeping
+   * players' numbers from the season in progress. It was never a sandbox.
+   */
+  10: (saved) => {
+    /*
+     * Also fixes the season numbers on the summaries: with the window deferred
+     * every one was stamped a season early, the first season reading as 0. A
+     * career starts in season 1 and banks one summary per season, so the i-th
+     * summary is season i + 1.
+     */
+    const history = ((saved.history as SeasonSummary[]) ?? []).map((summary, index) => ({
+      ...summary,
+      season: index + 1,
+    }));
+    const leagues = (saved.leagues as { name: string; tier: number }[]) ?? [];
+    return {
+      ...saved,
+      version: 11,
+      history,
+      records: recordsFromHistory(history, saved.managedClubId as string, leagues),
+      sandbox: false,
+    };
+  },
 };
 
 /** Raised when a save cannot be brought up to the current format. */
@@ -411,6 +442,8 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     // which covers everything played so far.
     developedWeeks: saved.developedWeeks ?? 0,
     seasonStartAbility: saved.seasonStartAbility ?? {},
+    records: saved.records ?? recordsFromHistory(saved.history, saved.managedClubId, saved.leagues),
+    sandbox: saved.sandbox === true,
   };
 }
 

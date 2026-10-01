@@ -191,6 +191,21 @@ trimming, for distress sales, and as a *seller* in the AI's shopping. Incoming
 offers are the only route out of your squad, and they need your answer. A club in
 debt is then your problem to solve, which is the point.
 
+**There is a second, smaller window halfway through the season** (`MID_SEASON_WINDOW`
+in the controller), open to everyone. It opens once half the season's matchdays are
+played and stays open for four — *alongside* the matches, not instead of them, so the
+club screen shows it above the next fixture rather than in its place, and the season
+sim stops when it opens. It shuts by itself before the fifth matchday, at which point
+each AI club makes at most one signing (against four in the summer). Its business is
+folded into that season's summary. Only a played career has one: the harnesses
+simulate seasons without the controller, so calibration does not see it.
+
+**The managed club only ever buys what its manager chose.** Clubs in debt sell to
+raise funds, and the buyer search used to consider *every* club — including yours,
+which then paid for a player nobody had asked for. The skip list now covers buyers as
+well as sellers; `midseason.test.ts` plays two seasons of both windows with the
+manager doing nothing and asserts nobody arrives.
+
 Two things learned from using it:
 
 - **Sort by what you can reach, not by ability.** Sorting the market by quality
@@ -512,6 +527,108 @@ without the backend this deliberately does not have; a modified APK can post
 whatever it likes. The Play Console can reset a board or wipe one player's scores
 after the fact, and that is the whole of the defence. For three vanity counters
 on a single-player management sim, that is the right trade.
+
+## Eleven Deep Pro
+
+A Google Play subscription (`eleven_deep_pro`, monthly and yearly plans in
+`apps/mobile/billing.json`). **The rule for what goes behind it: depth,
+convenience and variety — never anything that decides whether winning means
+anything.** No bought money, no one-sided transfer windows, and every career is
+complete on the free tier. The leaderboards are the reason this is a rule rather
+than a preference: anything that makes a career easier for money makes those
+numbers meaningless.
+
+`src/game/pro.ts` is the one gate. `usePro()` answers two questions, and screens
+need both:
+
+- **`offered`** — whether Pro exists on this device at all. False on web, iOS and
+  any build without a subscription id, and then *no* Pro surface renders: a lock
+  with nothing to buy behind it is just a broken feature.
+- **`active`** — whether this player has it.
+
+`PRO_PERKS` lists what Pro includes, and is what the paywall shows; only shipped
+features go in it. Today that is:
+
+| Perk | Where |
+|---|---|
+| Three save slots | Title screen |
+| Sim to the end of the season | Club tab. Stops for the sack, a sponsor offer, or the mid-season window opening |
+| The assistant picks the team | Options. Re-picks the eleven before every match in your formation; instructions are kept |
+| Eight more countries | New career. England, Spain, Italy, Germany, France, Argentina, Portugal, the Netherlands |
+| Club records and player histories | Club tab → Club records; Player → Career history |
+| Editor | Options → rename any club or town; Player → rename |
+| Compare players | Shortlist → side by side, best of each row picked out |
+| Sandbox careers | New career → Sandbox. Money on tap, no sack, no leaderboards |
+
+What stayed out, and why: extra scouting trips, or anything that reveals more than a
+free player can see, would be paying to know more — the compare view uses only
+numbers the player screens already show. The mid-season window is for everyone.
+
+`ProButton` and `usePaywall` (`components/ProGate.tsx`) are how a screen gates a
+feature: a subscriber gets an ordinary button, a free player gets the same button
+with a lock and a Pro badge that opens the paywall, and where Pro is not on sale it
+is not drawn at all. The paywall is `SubscriptionPlans` opened with a `reason`, so
+the sheet first answers the question the tap asked ("Gremio is kept in a Pro save
+slot"), and it closes itself if Play confirms the subscription while it is open.
+
+In a development build, **Options → Development** pretends to be a free player
+or a subscriber, so both sides of every Pro feature can be built on the web
+where there is no Play billing.
+
+### Records, sandbox and the editor
+
+**Club records** (`career/records.ts`) are written in `endSeason`, before
+`closeSeason` wipes every player's numbers and starts moving them on: a line per
+season (finish, record, cup run, promotion, top scorer), a line per player per
+season in your squad, and the biggest win and heaviest defeat. They are kept for
+every career, subscribed or not, so someone who subscribes in season five sees
+seasons one to four. A save from before records (v10) gets back what its summaries
+can tell — where each season finished — and players' numbers count from then on.
+
+**Sandbox** is fixed when a career starts (`Career.sandbox`). The board's confidence
+still moves but it cannot sack (`judgeSeason`'s `cannotSack`), `sandboxGrant` puts
+money on both the balance and the transfer budget (bids are capped by the budget,
+not the balance), and the app never folds a sandbox career into the lifetime totals,
+so it cannot reach the leaderboards.
+
+**The editor** renames players, clubs and towns in place (`renamePlayer`,
+`renameClub`). History keeps the names it was played under; a club's short name is
+re-derived from the new one.
+
+**Countries** live in `COUNTRIES` (`world/index.ts`): division names, plus a naming
+style in `world/clubs.ts` and a recruitment mix in `world/names.ts`. Every new
+country uses invented towns, as England always has — real towns collide with real
+clubs constantly, and every Spanish town of any size has a "CD" or a "UD". Brazil is
+untouched, and still the only country the harnesses measure.
+
+### Save slots
+
+Three careers at once for Pro, one free. Slot 0 is the original save key
+(`game1:career:v1`), so the save already on a device simply *is* slot 0 — the
+same reason the key still says `game1`. Slots 1 and 2 are `…:slot2` and
+`…:slot3`, and `game1:slots:v1` indexes them: which is loaded, and a stored
+`CareerSummary` for each, so the title screen can describe three careers while
+loading one.
+
+- **The index is descriptive, never authoritative.** On launch any save without
+  an entry is deserialised and given one (`recoverSlots`), so a career can never
+  go missing from the title screen because a write was skipped. The one that
+  would otherwise bite: a save from before slots is only indexed when it is
+  next saved, and starting a career in another slot first would have orphaned it.
+- **The lifetime totals park careers rather than adopting them twice.** The
+  record used to track one career in progress; switching to another would have
+  looked like meeting it for the first time and banked its whole history again.
+  `LifetimeRecord.parked` keeps the delta bookkeeping for every career not
+  loaded, and a replaced career's entry is forgotten.
+- **Lapsed subscribers keep everything.** A career in a Pro slot stays on the
+  device and on the title screen, locked; tapping it opens the paywall. Slot 0
+  always plays.
+- **Free players see one grouped row** for what Pro would add — not a locked row
+  per empty slot.
+- **AsyncStorage's 6 MB Android cap is raised to 64 MB** in `app.config.js`. A
+  save runs to ~1.4 MB after twenty seasons; three of them plus a quarantined
+  copy was too close to the cap for a failed write to be anyone's lost career.
+  `android/` is generated, so this lands on the next `expo prebuild`.
 
 ## Tests and CI
 

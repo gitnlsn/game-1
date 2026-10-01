@@ -21,6 +21,7 @@ import { Card, ChipRow, EmptyNote, SectionTitle, Segmented } from '../components
 import { TargetRow } from '../components/TargetRow';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+import { ProButton, usePaywall } from '../components/ProGate';
 import type { RootStackParamList } from '../nav/routes';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -72,6 +73,7 @@ export function ScoutingScreen() {
   const insets = useSafeAreaInsets();
   const { career, version, refresh } = useGame();
   const [view, setView] = useState<Tab>('shortlist');
+  const paywall = usePaywall();
   const [position, setPosition] = useState<string>('any');
   const [age, setAge] = useState<(typeof AGES)[number]['value']>('any');
   const [potential, setPotential] = useState<(typeof POTENTIAL)[number]['value']>('any');
@@ -148,6 +150,16 @@ export function ScoutingScreen() {
         </Card>
       ) : null}
 
+      {view === 'shortlist' && shortlist.length >= 2 ? (
+        <ProButton
+          label="Compare side by side"
+          reason="Line up to three shortlisted players and see who is better at what."
+          onLocked={paywall.show}
+          onPress={() => navigation.navigate('compare')}
+          style={styles.compare}
+        />
+      ) : null}
+
       {view === 'shortlist' ? (
         shortlist.length === 0 ? (
           <Card>
@@ -207,11 +219,13 @@ export function ScoutingScreen() {
           )}
         </>
       )}
+      {paywall.element}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  compare: { marginBottom: spacing.md },
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg },
   explainer: { marginBottom: spacing.md },

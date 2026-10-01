@@ -1,30 +1,104 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
+import Lock from 'lucide-react-native/icons/lock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Button, Card, textStyles } from '../components/ui';
+import { Badge, Button, Card, SectionTitle, textStyles } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { colors, spacing } from '../theme';
+import { usePaywall } from '../components/ProGate';
+import { colors, radius, spacing } from '../theme';
 import { ordinal } from '../format';
 import { useGame } from '../game/GameContext';
 import { careerSummary, type CareerSummary, type NextUp } from '../game/summary';
 import { leaderboardProblem, playGamesAvailable, showLeaderboards } from '../game/playGames';
 import type { LifetimeRecord } from '../game/lifetime';
+import { usePro } from '../game/pro';
+import { FREE_SLOTS, SLOT_COUNT, firstEmptySlot, type SlotIndex } from '../game/saves';
 import type { MenuStackParamList } from '../nav/routes';
 
 type Nav = NativeStackNavigationProp<MenuStackParamList>;
 
+interface Kept {
+  slot: number;
+  summary: CareerSummary;
+  savedAt: number;
+  /** In a Pro slot, without Pro: kept, but not playable until resubscribing. */
+  locked: boolean;
+}
+
+/**
+ * Every career on the device, Continue first. The loaded one is described from
+ * the career itself rather than its index entry, which is a save behind at
+ * worst and absent altogether on a save from before slots.
+ */
+function keptCareers(
+  slots: SlotIndex,
+  loaded: { slot: number; summary: CareerSummary } | undefined,
+  pro: boolean,
+): Kept[] {
+  const kept: Kept[] = [];
+  for (let slot = 0; slot < SLOT_COUNT; slot++) {
+    const entry = slots.slots[slot];
+    const summary = loaded?.slot === slot ? loaded.summary : entry?.summary;
+    if (!summary) continue;
+    kept.push({
+      slot,
+      summary,
+      savedAt: loaded?.slot === slot ? Infinity : (entry?.savedAt ?? 0),
+      locked: slot >= FREE_SLOTS && !pro,
+    });
+  }
+  return kept.sort((a, b) => b.savedAt - a.savedAt);
+}
+
 export function TitleScreen() {
-  const { career, continueCareer, lifetime } = useGame();
+  const { career, continueCareer, lifetime, slots, activeSlot, openSlot, busy } = useGame();
+  const pro = usePro();
   const navigation = useNavigation<Nav>();
-  const [confirming, setConfirming] = useState(false);
+  /** The slot a new career would replace, while that is being confirmed. */
+  const [replacing, setReplacing] = useState<number | undefined>();
+  const [picking, setPicking] = useState(false);
+  const paywall = usePaywall();
   // Set only when a tap came to nothing, so the button is never silent.
   const [problem, setProblem] = useState<string | undefined>();
   // No navigator header here: this screen owns its own edge-to-edge insets.
   const insets = useSafeAreaInsets();
 
-  const summary = career ? careerSummary(career) : undefined;
+  const kept = keptCareers(
+    slots,
+    career ? { slot: activeSlot, summary: careerSummary(career) } : undefined,
+    pro.active,
+  );
+  const [first, ...others] = kept;
+  const usable = pro.active ? SLOT_COUNT : FREE_SLOTS;
+  const empty = firstEmptySlot(new Set(kept.map((k) => k.slot)), usable);
+
+  const open = (entry: Kept) => {
+    if (!entry.locked) {
+      void openSlot(entry.slot);
+      return;
+    }
+    if (!pro.offered) return;
+    paywall.show(
+      `${entry.summary.clubName} is kept in a Pro save slot. Subscribe to carry on with it.`,
+      () => void openSlot(entry.slot),
+    );
+  };
+
+  const startNew = () => {
+    if (empty !== undefined) {
+      // Nothing is replaced, so there is nothing to confirm.
+      navigation.navigate('newCareer', { slot: empty });
+    } else if (usable === 1) {
+      setReplacing(0);
+    } else {
+      setPicking(true);
+    }
+  };
+
+  const replaced = kept.find((k) => k.slot === replacing);
 
   return (
     <ScrollView
@@ -41,12 +115,48 @@ export function TitleScreen() {
         A club, a squad and a season at a time.
       </Text>
 
-      {summary ? <ContinueCard summary={summary} onPress={continueCareer} /> : null}
+      {first ? (
+        <ContinueCard
+          summary={first.summary}
+          locked={first.locked}
+          onPress={() => (first.slot === activeSlot && career && !first.locked ? continueCareer() : open(first))}
+        />
+      ) : null}
+
+      {others.length > 0 ? (
+        <>
+          <SectionTitle
+            right={pro.active ? <Text style={styles.count}>{kept.length} of {usable}</Text> : undefined}
+          >
+            Other careers
+          </SectionTitle>
+          <View style={styles.rows}>
+            {others.map((entry) => (
+              <CareerRow key={entry.slot} entry={entry} disabled={busy} onPress={() => open(entry)} />
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {/* One row for every slot Pro would add, not a locked row per slot. */}
+      {pro.offered && !pro.active ? (
+        <Pressable
+          onPress={() => paywall.show('Keep up to three careers on this phone and switch between them here.')}
+          accessibilityRole="button"
+          accessibilityLabel="Keep three careers at once with Pro"
+          style={({ pressed }) => [styles.upsell, pressed ? styles.rowPressed : null]}
+        >
+          <Lock color={colors.gold} size={16} />
+          <Text style={styles.upsellText}>Keep three careers at once</Text>
+          <Badge label="Pro" color={colors.gold} />
+          <ChevronRight color={colors.muted} size={18} />
+        </Pressable>
+      ) : null}
 
       <Button
-        label={summary ? 'New career' : 'Start a career'}
-        variant={summary ? 'secondary' : 'primary'}
-        onPress={() => (summary ? setConfirming(true) : navigation.navigate('newCareer'))}
+        label={first ? 'New career' : 'Start a career'}
+        variant={first ? 'secondary' : 'primary'}
+        onPress={startNew}
         style={styles.action}
       />
       {/*
@@ -84,27 +194,40 @@ export function TitleScreen() {
       <Record lifetime={lifetime} />
 
       {/*
-        * Nothing is deleted here. Starting a career is what overwrites the one
+        * Nothing is deleted here. Starting a career is what overwrites the
         * save, so backing out of the club picker costs you nothing -- and the
         * copy has to say so, or cancelling looks like the safe option when it
         * is simply the same option.
         */}
       <ConfirmDialog
-        visible={confirming}
+        visible={replaced !== undefined}
         title="Start a new career?"
         message={
-          summary
-            ? `${summary.clubName}, and every season you have played with them, will be deleted the moment you pick a new club. Until then nothing changes.`
+          replaced
+            ? `${replaced.summary.clubName}, and every season you have played with them, will be deleted the moment you pick a new club. Until then nothing changes.`
             : ''
         }
         confirmLabel="Choose a club"
         destructive
         onConfirm={() => {
-          setConfirming(false);
-          navigation.navigate('newCareer');
+          const slot = replacing;
+          setReplacing(undefined);
+          navigation.navigate('newCareer', { slot });
         }}
-        onCancel={() => setConfirming(false)}
+        onCancel={() => setReplacing(undefined)}
       />
+
+      <SlotPicker
+        visible={picking}
+        careers={[...kept].sort((a, b) => a.slot - b.slot)}
+        onPick={(slot) => {
+          setPicking(false);
+          setReplacing(slot);
+        }}
+        onCancel={() => setPicking(false)}
+      />
+
+      {paywall.element}
     </ScrollView>
   );
 }
@@ -122,7 +245,84 @@ function Record({ lifetime }: { lifetime: LifetimeRecord }) {
   );
 }
 
-function ContinueCard({ summary, onPress }: { summary: CareerSummary; onPress: () => void }) {
+/** Every slot is in use: which career makes way. */
+function SlotPicker({
+  visible,
+  careers,
+  onPick,
+  onCancel,
+}: {
+  visible: boolean;
+  careers: Kept[];
+  onPick: (slot: number) => void;
+  onCancel: () => void;
+}) {
+  if (!visible) return null;
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={styles.backdrop} accessibilityViewIsModal>
+        <Card style={styles.picker}>
+          <Text style={styles.pickerTitle} accessibilityRole="header">
+            Replace which career?
+          </Text>
+          <Text style={styles.pickerNote}>
+            All {careers.length} save slots are in use. Nothing is deleted until you pick a club.
+          </Text>
+          <View style={styles.rows}>
+            {careers.map((entry) => (
+              <CareerRow key={entry.slot} entry={{ ...entry, locked: false }} onPress={() => onPick(entry.slot)} />
+            ))}
+          </View>
+          <Button label="Cancel" variant="secondary" onPress={onCancel} style={styles.action} />
+        </Card>
+      </View>
+    </Modal>
+  );
+}
+
+function CareerRow({
+  entry,
+  onPress,
+  disabled,
+}: {
+  entry: Kept;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const { summary } = entry;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={`${summary.clubName}. ${spokenStanding(summary)}${entry.locked ? ' Pro save slot.' : ''}`}
+      style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
+    >
+      <View style={styles.rowText}>
+        <Text style={styles.rowClub} numberOfLines={1}>
+          {summary.clubName}
+        </Text>
+        <Text style={styles.rowMeta} numberOfLines={1}>
+          {summary.leagueName} · Season {summary.season}
+          {summary.position === undefined ? '' : ` · ${ordinal(summary.position)}`}
+        </Text>
+      </View>
+      {summary.sandbox ? <Badge label="Sandbox" color={colors.info} /> : null}
+      {entry.locked ? <Lock color={colors.gold} size={16} /> : null}
+      <ChevronRight color={colors.muted} size={18} />
+    </Pressable>
+  );
+}
+
+function ContinueCard({
+  summary,
+  locked,
+  onPress,
+}: {
+  summary: CareerSummary;
+  locked: boolean;
+  onPress: () => void;
+}) {
   const over = summary.next.kind === 'sacked';
 
   return (
@@ -136,7 +336,10 @@ function ContinueCard({ summary, onPress }: { summary: CareerSummary; onPress: (
         <Card style={[styles.continueCard, pressed ? styles.continuePressed : null]}>
           <View style={styles.continueHead}>
             <View style={styles.continueText}>
-              <Text style={styles.continueLabel}>{over ? 'SEE IT OUT' : 'CONTINUE'}</Text>
+              <Text style={[styles.continueLabel, locked ? styles.lockedLabel : null]}>
+                {locked ? 'PRO SAVE SLOT' : over ? 'SEE IT OUT' : 'CONTINUE'}
+                {summary.sandbox ? ' · SANDBOX' : ''}
+              </Text>
               <Text style={styles.clubName} numberOfLines={1}>
                 {summary.clubName}
               </Text>
@@ -234,6 +437,45 @@ const styles = StyleSheet.create({
   nextLine: { color: colors.text, fontSize: 13, marginTop: spacing.xs, lineHeight: 18 },
   nextOver: { color: colors.danger },
   action: { marginTop: spacing.sm },
+  lockedLabel: { color: colors.gold },
+  count: { color: colors.faint, fontSize: 11, fontVariant: ['tabular-nums'] },
+  rows: { gap: spacing.sm, marginBottom: spacing.md },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  rowPressed: { backgroundColor: colors.surfaceAlt, borderColor: colors.borderBright },
+  rowText: { flex: 1 },
+  rowClub: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  rowMeta: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  upsell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+  },
+  upsellText: { flex: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  picker: { width: '100%', maxWidth: 380 },
+  pickerTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  pickerNote: { color: colors.muted, fontSize: 13, marginTop: spacing.xs, marginBottom: spacing.md, lineHeight: 19 },
   problem: {
     color: colors.warn,
     fontSize: 12,

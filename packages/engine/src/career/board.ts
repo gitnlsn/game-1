@@ -101,6 +101,8 @@ export function judgeSeason(
     relegated: boolean;
     promoted: boolean;
     cupResult?: 'won' | 'final' | undefined;
+    /** A sandbox career: confidence still moves, but nobody is dismissed. */
+    cannotSack?: boolean;
   },
 ): BoardVerdict {
   const B = BOARD_TUNING;
@@ -123,7 +125,7 @@ export function judgeSeason(
   board.seasonsInCharge += 1;
 
   const protectedByGrace = board.seasonsInCharge <= B.gracePeriodSeasons;
-  const sacked = board.confidence < B.sackBelow && !protectedByGrace;
+  const sacked = board.confidence < B.sackBelow && !protectedByGrace && !options.cannotSack;
   if (sacked) {
     board.sacked = true;
     board.sackReason = options.relegated

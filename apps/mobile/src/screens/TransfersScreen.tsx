@@ -84,8 +84,8 @@ export function TransfersScreen() {
       <View style={styles.container}>
         <Card style={styles.closed}>
           <Text style={styles.closedText}>
-            The window is shut. It opens again when the season ends — use the season to shortlist
-            and scout the players you want.
+            The window is shut. It opens halfway through the season for a few matchdays, and again
+            when the season ends — use the time between to shortlist and scout the players you want.
           </Text>
           <Button
             label="Your shortlist"

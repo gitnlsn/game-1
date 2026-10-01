@@ -17,6 +17,16 @@ import {
   saveCareer,
   saveSettings,
   SETTINGS_KEY,
+  emptySlotIndex,
+  firstEmptySlot,
+  FREE_SLOTS,
+  loadSlotIndex,
+  quarantineKey,
+  recoverSlots,
+  saveSlotIndex,
+  SLOT_COUNT,
+  SLOT_INDEX_KEY,
+  slotKey,
   type SaveStorage,
 } from '../saves';
 
@@ -178,5 +188,94 @@ describe('settings', () => {
     const storage = new FakeStorage();
     storage.items.set(SETTINGS_KEY, 'not json');
     expect(await loadSettings(storage)).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+describe('save slots', () => {
+  let storage: FakeStorage;
+  beforeEach(() => {
+    storage = new FakeStorage();
+  });
+
+  it('keeps slot 0 at the key saves have always used', async () => {
+    expect(slotKey(0)).toBe(SAVE_KEY);
+    const career = playedCareer();
+    storage.items.set(SAVE_KEY, serializeCareer(career));
+
+    const loaded = await loadCareer(storage, 0);
+    expect(loaded.kind).toBe('career');
+  });
+
+  it('keeps each slot apart', async () => {
+    const one = playedCareer('slot-one');
+    const two = playedCareer('slot-two');
+    await saveCareer(storage, one, 0);
+    await saveCareer(storage, two, 2);
+
+    expect(await loadCareer(storage, 1)).toEqual({ kind: 'empty' });
+    const loaded = await loadCareer(storage, 2);
+    expect(loaded.kind === 'career' && loaded.career.world.seed).toBe(two.world.seed);
+
+    await clearCareer(storage, 2);
+    expect(await loadCareer(storage, 2)).toEqual({ kind: 'empty' });
+    expect((await loadCareer(storage, 0)).kind).toBe('career');
+  });
+
+  it('quarantines a damaged slot without touching the others', async () => {
+    await saveCareer(storage, playedCareer(), 0);
+    storage.items.set(slotKey(1), '{ broken');
+
+    expect((await loadCareer(storage, 1)).kind).toBe('problem');
+    expect(storage.items.has(quarantineKey(1))).toBe(true);
+    expect(storage.items.has(QUARANTINE_KEY)).toBe(false);
+    expect((await loadCareer(storage, 0)).kind).toBe('career');
+  });
+
+  it('reads a missing or corrupt index as empty, and an out-of-range slot as slot 0', async () => {
+    expect(await loadSlotIndex(storage)).toEqual(emptySlotIndex());
+    storage.items.set(SLOT_INDEX_KEY, 'nope');
+    expect(await loadSlotIndex(storage)).toEqual(emptySlotIndex());
+    storage.items.set(SLOT_INDEX_KEY, JSON.stringify({ active: 9, slots: {} }));
+    expect((await loadSlotIndex(storage)).active).toBe(0);
+  });
+
+  it('round-trips the index', async () => {
+    const index = {
+      active: 1,
+      slots: { 1: { careerKey: 'k', summary: { clubName: 'X' } as never, savedAt: 5 } },
+    };
+    await saveSlotIndex(storage, index);
+    expect(await loadSlotIndex(storage)).toEqual(index);
+  });
+
+  it('finds the first free slot among those the player may use', () => {
+    expect(firstEmptySlot(new Set(), 1)).toBe(0);
+    expect(firstEmptySlot(new Set([0]), FREE_SLOTS)).toBeUndefined();
+    expect(firstEmptySlot(new Set([0, 2]), SLOT_COUNT)).toBe(1);
+    expect(firstEmptySlot(new Set([0, 1, 2]), SLOT_COUNT)).toBeUndefined();
+  });
+});
+
+describe('recoverSlots', () => {
+  it('indexes a save nothing points at, and leaves indexed slots alone', async () => {
+    const storage = new FakeStorage();
+    const legacy = playedCareer('recover-legacy');
+    await saveCareer(storage, legacy, 0);
+    await saveCareer(storage, playedCareer('recover-new'), 1);
+    const index = {
+      active: 1,
+      slots: { 1: { careerKey: 'new', summary: { clubName: 'Kept' } as never, savedAt: 9 } },
+    };
+
+    const recovered = await recoverSlots(storage, index, (c) => ({ clubName: c.world.seed }) as never, () => 'old');
+
+    expect(recovered.slots[0]).toEqual({ careerKey: 'old', summary: { clubName: legacy.world.seed }, savedAt: 0 });
+    expect(recovered.slots[1]).toBe(index.slots[1]);
+    expect(recovered.slots[2]).toBeUndefined();
+  });
+
+  it('returns the same index when there is nothing to recover', async () => {
+    const index = emptySlotIndex();
+    expect(await recoverSlots(new FakeStorage(), index, () => ({}) as never, () => 'k')).toBe(index);
   });
 });

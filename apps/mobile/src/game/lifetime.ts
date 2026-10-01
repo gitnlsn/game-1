@@ -25,6 +25,12 @@ export interface LifetimeRecord {
   longestRun: number;
   /** What the career in progress has already contributed to the totals above. */
   current: CareerProgress | undefined;
+  /**
+   * The same bookkeeping for careers sitting in other save slots, keyed by
+   * career. Without it, going back to one would look like meeting a career for
+   * the first time, and adopting it would bank its whole history a second time.
+   */
+  parked: Record<string, CareerProgress>;
 }
 
 export interface CareerProgress {
@@ -43,7 +49,7 @@ export interface CareerProgress {
 }
 
 export function emptyLifetime(): LifetimeRecord {
-  return { matches: 0, seasons: 0, longestRun: 0, current: undefined };
+  return { matches: 0, seasons: 0, longestRun: 0, current: undefined, parked: {} };
 }
 
 /**
@@ -77,9 +83,13 @@ export function recordProgress(
   const seasons = career.history.length;
   const matches = ownMatchesThisSeason(career);
 
-  if (record.current?.key !== key) return adopt(record, key, career, seasons, matches);
+  if (record.current?.key !== key) {
+    const resumed = resume(record, key);
+    if (!resumed) return adopt(record, key, career, seasons, matches);
+    record = resumed;
+  }
 
-  const current = record.current;
+  const current = record.current!;
   /*
    * Within a season the results list only grows, so the difference is the
    * honest number of matches played since the last sync.
@@ -100,7 +110,20 @@ export function recordProgress(
     seasons: record.seasons + seenOut,
     longestRun: Math.max(record.longestRun, seasons),
     current: { key, matchesThisSeason: matches, seasons },
+    parked: record.parked,
   };
+}
+
+/**
+ * Switches the delta bookkeeping to a career from another save slot, parking
+ * the one that was in progress. Undefined if the record has never counted it.
+ */
+function resume(record: LifetimeRecord, key: string): LifetimeRecord | undefined {
+  const progress = record.parked[key];
+  if (!progress) return undefined;
+  const { [key]: _, ...parked } = record.parked;
+  if (record.current) parked[record.current.key] = record.current;
+  return { ...record, current: progress, parked };
 }
 
 /**
@@ -118,11 +141,14 @@ function adopt(
   seasons: number,
   matches: number,
 ): LifetimeRecord {
+  const parked = { ...record.parked };
+  if (record.current) parked[record.current.key] = record.current;
   return {
     matches: record.matches + leagueMatchesInHistory(career) + matches,
     seasons: record.seasons + seasons,
     longestRun: Math.max(record.longestRun, seasons),
     current: { key, matchesThisSeason: matches, seasons },
+    parked,
   };
 }
 
@@ -157,6 +183,17 @@ export function endCareer(record: LifetimeRecord): LifetimeRecord {
   return { ...record, current: undefined };
 }
 
+/**
+ * Drops the bookkeeping for a career that is gone, wherever it was kept: a
+ * parked career is deleted when a new one is started over its save slot.
+ */
+export function forgetCareer(record: LifetimeRecord, key: string): LifetimeRecord {
+  if (record.current?.key === key) return endCareer(record);
+  if (!(key in record.parked)) return record;
+  const { [key]: _, ...parked } = record.parked;
+  return { ...record, parked };
+}
+
 /** Whether a sync actually moved anything, so a no-op costs no write. */
 export function sameLifetime(a: LifetimeRecord, b: LifetimeRecord): boolean {
   return (
@@ -165,7 +202,8 @@ export function sameLifetime(a: LifetimeRecord, b: LifetimeRecord): boolean {
     a.longestRun === b.longestRun &&
     a.current?.key === b.current?.key &&
     a.current?.matchesThisSeason === b.current?.matchesThisSeason &&
-    a.current?.seasons === b.current?.seasons
+    a.current?.seasons === b.current?.seasons &&
+    a.parked === b.parked
   );
 }
 
@@ -178,7 +216,8 @@ export async function loadLifetime(storage: SaveStorage): Promise<LifetimeRecord
   try {
     const json = await storage.getItem(LIFETIME_KEY);
     if (!json) return emptyLifetime();
-    return { ...emptyLifetime(), ...(JSON.parse(json) as Partial<LifetimeRecord>) };
+    const stored = JSON.parse(json) as Partial<LifetimeRecord>;
+    return { ...emptyLifetime(), ...stored, parked: stored.parked ?? {} };
   } catch {
     /*
      * Starting the totals over is the worst outcome here and it is still only

@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   CAREER_DEFAULTS,
+  COUNTRIES,
   allClubs,
   clubStrength,
   createWorld,
@@ -10,9 +11,13 @@ import {
   marketValue,
   type Club,
 } from '@eleven-deep/engine';
-import { Badge, Card, SectionTitle, textStyles } from '../components/ui';
+import { Badge, Card, ChipRow, SectionTitle, Segmented, textStyles } from '../components/ui';
+import { usePaywall } from '../components/ProGate';
+import { usePro } from '../game/pro';
 import { colors, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+import { useRoute, type RouteProp } from '@react-navigation/native';
+import type { MenuStackParamList } from '../nav/routes';
 
 function randomSeed(): string {
   return Math.random().toString(36).slice(2, 9);
@@ -29,7 +34,12 @@ function ambitionLabel(reputation: number): { label: string; color: string } {
 
 export function NewCareerScreen() {
   const { newCareer } = useGame();
+  const slot = useRoute<RouteProp<MenuStackParamList, 'newCareer'>>().params?.slot;
   const [seed, setSeed] = useState(randomSeed);
+  const [nationality, setNationality] = useState<string>('BRA');
+  const [mode, setMode] = useState<'career' | 'sandbox'>('career');
+  const pro = usePro();
+  const paywall = usePaywall();
 
   /*
    * Built with the same seed AND the same shape the career will use. The seed
@@ -38,8 +48,8 @@ export function NewCareerScreen() {
    * divisions gave you a different club from the one you picked.
    */
   const world = useMemo(
-    () => createWorld({ seed, divisions: CAREER_DEFAULTS.divisions }),
-    [seed],
+    () => createWorld({ seed, divisions: CAREER_DEFAULTS.divisions, nationality }),
+    [seed, nationality],
   );
   const clubs = useMemo(
     () =>
@@ -70,6 +80,38 @@ export function NewCareerScreen() {
         trophies, a small one expects you to survive.
       </Text>
 
+      {pro.offered ? (
+        <>
+          <SectionTitle>Country</SectionTitle>
+          <ChipRow
+            options={COUNTRY_OPTIONS}
+            value={nationality}
+            onChange={(code) => {
+              if (code === 'BRA' || pro.active) setNationality(code);
+              else paywall.show('Manage in eight more countries, each with its own clubs, towns and players.', () => setNationality(code));
+            }}
+          />
+          <View style={styles.gap} />
+          <SectionTitle>Mode</SectionTitle>
+          <Segmented
+            fill
+            options={MODES}
+            value={mode}
+            onChange={(next) => {
+              if (next === 'career' || pro.active) setMode(next);
+              else paywall.show('A sandbox career: add money whenever you like, and the board never sacks you.', () => setMode(next));
+            }}
+          />
+          <Text style={styles.modeNote}>
+            {mode === 'sandbox'
+              ? 'Add money whenever you like, and the board never sacks you. Sandbox careers do not count towards the leaderboards.'
+              : pro.active
+                ? 'The board judges you, and every match counts towards the leaderboards.'
+                : 'Other countries and sandbox careers are part of Pro.'}
+          </Text>
+        </>
+      ) : null}
+
       <SectionTitle
         right={
           <Pressable onPress={() => setSeed(randomSeed())} accessibilityRole="button">
@@ -85,12 +127,19 @@ export function NewCareerScreen() {
           key={club.id}
           club={club}
           {...(world.leagues.length > 1 ? { division: league.name } : {})}
-          onPick={() => newCareer(seed, club.id)}
+          onPick={() => newCareer(seed, club.id, slot, { nationality, sandbox: mode === 'sandbox' })}
         />
       ))}
+      {paywall.element}
     </ScrollView>
   );
 }
+
+const COUNTRY_OPTIONS = COUNTRIES.map((c) => ({ value: c.code as string, label: c.label }));
+const MODES = [
+  { value: 'career' as const, label: 'Career' },
+  { value: 'sandbox' as const, label: 'Sandbox' },
+];
 
 function ClubOption({
   club,
@@ -148,6 +197,8 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
   intro: { marginTop: spacing.xs, marginBottom: spacing.lg, lineHeight: 19 },
   reroll: { color: colors.info, fontSize: 12, fontWeight: '600' },
+  gap: { height: spacing.sm },
+  modeNote: { color: colors.muted, fontSize: 12, marginTop: spacing.sm, marginBottom: spacing.md, lineHeight: 17 },
   clubCard: { marginBottom: spacing.sm },
   clubCardPressed: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
   clubHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

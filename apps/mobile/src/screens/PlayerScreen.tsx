@@ -34,35 +34,30 @@ import {
   toggleShortlist,
   type AttributeKey,
   type Player,
+  renamePlayer,
+  type PlayerSeasonLine,
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle, Segmented, StatBar } from '../components/ui';
 import { ProgressionChart } from '../components/ProgressionChart';
+import { ProButton, usePaywall } from '../components/ProGate';
+import { RenameDialog } from '../components/RenameDialog';
+import { usePro } from '../game/pro';
 import { RenewDialog } from '../components/RenewDialog';
 import { plannedLabel } from '../game/moveText';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, conditionColor, formColor, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
+import { ATTRIBUTE_GROUPS as GROUPS, ATTRIBUTE_LABELS as LABELS } from '../attributes';
 import type { RootStackParamList } from '../nav/routes';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'player'>;
 
-const GROUPS: { title: string; keys: AttributeKey[] }[] = [
-  { title: 'Technical', keys: ['finishing', 'passing', 'dribbling', 'crossing', 'tackling', 'heading'] },
-  { title: 'Mental', keys: ['vision', 'composure', 'positioning', 'workRate'] },
-  { title: 'Physical', keys: ['pace', 'strength', 'stamina'] },
-  { title: 'Goalkeeping', keys: ['reflexes', 'handling', 'distribution'] },
-];
-
-const LABELS: Record<AttributeKey, string> = {
-  finishing: 'Finishing', passing: 'Passing', dribbling: 'Dribbling', crossing: 'Crossing',
-  tackling: 'Tackling', heading: 'Heading', vision: 'Vision', composure: 'Composure',
-  positioning: 'Positioning', workRate: 'Work rate', pace: 'Pace', strength: 'Strength',
-  stamina: 'Stamina', reflexes: 'Reflexes', handling: 'Handling', distribution: 'Distribution',
-};
-
 export function PlayerScreen({ route }: Props) {
   const { career, version, refresh } = useGame();
+  const pro = usePro();
+  const paywall = usePaywall();
+  const [renaming, setRenaming] = useState(false);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { playerId } = route.params;
@@ -298,6 +293,20 @@ export function PlayerScreen({ route }: Props) {
         </>
       ) : null}
 
+      <CareerHistory
+        lines={career.records.players[player.id] ?? []}
+        live={owned && status.appearances > 0 ? {
+          season: career.world.season,
+          clubName: club?.name ?? '',
+          appearances: status.appearances,
+          goals: status.goals,
+          assists: status.assists,
+        } : undefined}
+        pro={pro.active}
+        offered={pro.offered}
+        onLocked={paywall.show}
+      />
+
       <SectionTitle>Attributes</SectionTitle>
       {groups.map((group) => (
         <View key={group.title}>
@@ -311,7 +320,104 @@ export function PlayerScreen({ route }: Props) {
           </Card>
         </View>
       ))}
+
+      <ProButton
+        label="Rename player"
+        reason="Rename any player or club, and the game uses your names everywhere."
+        onLocked={paywall.show}
+        onPress={() => setRenaming(true)}
+        style={styles.renameButton}
+      />
+      <RenameDialog
+        visible={renaming}
+        title="Rename player"
+        fields={[{ key: 'name', label: 'Name, as shown everywhere', value: player.displayName }]}
+        onSave={(values) => {
+          if (!renamePlayer(career, player.id, values.name ?? '')) return false;
+          setRenaming(false);
+          refresh();
+          return true;
+        }}
+        onCancel={() => setRenaming(false)}
+      />
+      {paywall.element}
     </ScrollView>
+  );
+}
+
+interface LiveLine {
+  season: number;
+  clubName: string;
+  appearances: number;
+  goals: number;
+  assists: number;
+}
+
+/**
+ * Every season the player has spent in your squad, newest first, with the one
+ * in progress on top. Nothing is drawn for a player who has never been yours.
+ */
+function CareerHistory({
+  lines,
+  live,
+  pro,
+  offered,
+  onLocked,
+}: {
+  lines: PlayerSeasonLine[];
+  live: LiveLine | undefined;
+  pro: boolean;
+  offered: boolean;
+  onLocked: (reason: string) => void;
+}) {
+  if (lines.length === 0 && !live) return null;
+  if (!pro) {
+    if (!offered) return null;
+    return (
+      <>
+        <SectionTitle>Career history</SectionTitle>
+        <ProButton
+          label="Season-by-season history"
+          reason="Every season a player has spent at your club: appearances, goals, assists and ability."
+          onLocked={onLocked}
+          onPress={() => {}}
+        />
+      </>
+    );
+  }
+  const rows = [
+    ...(live ? [{ ...live, ability: undefined as number | undefined, current: true }] : []),
+    ...[...lines].reverse().map((line) => ({ ...line, current: false })),
+  ];
+  return (
+    <>
+      <SectionTitle>Career history</SectionTitle>
+      <Card>
+        <View style={styles.historyHead}>
+          <Text style={[styles.historyCell, styles.historySeasonCell]}>Season</Text>
+          <Text style={[styles.historyCell, styles.historyClubCell]}>Club</Text>
+          <Text style={styles.historyCell}>Apps</Text>
+          <Text style={styles.historyCell}>Gls</Text>
+          <Text style={styles.historyCell}>Ast</Text>
+          <Text style={styles.historyCell}>Abl</Text>
+        </View>
+        {rows.map((row) => (
+          <View key={`${row.season}-${row.clubName}`} style={styles.historyRow}>
+            <Text style={[styles.historyValue, styles.historySeasonCell]}>
+              S{row.season}
+            </Text>
+            <Text style={[styles.historyValue, styles.historyClubCell]} numberOfLines={1}>
+              {row.clubName}
+            </Text>
+            <Text style={styles.historyValue}>{row.appearances}</Text>
+            <Text style={styles.historyValue}>{row.goals}</Text>
+            <Text style={styles.historyValue}>{row.assists}</Text>
+            <Text style={styles.historyValue}>{row.ability ?? '—'}</Text>
+          </View>
+        ))}
+        {live ? <Text style={styles.historyNote}>The top row is the season in progress.</Text> : null}
+      </Card>
+    </>
   );
 }
 
@@ -511,6 +617,14 @@ function AttributeCell({ label, value }: { label: string; value: number }) {
 }
 
 const styles = StyleSheet.create({
+  renameButton: { marginTop: spacing.lg },
+  historyHead: { flexDirection: 'row', paddingBottom: spacing.xs, borderBottomWidth: 1, borderBottomColor: colors.border },
+  historyRow: { flexDirection: 'row', paddingVertical: 6 },
+  historyCell: { width: 40, color: colors.faint, fontSize: 10, fontWeight: '700', textAlign: 'right', textTransform: 'uppercase' },
+  historyValue: { width: 40, color: colors.text, fontSize: 13, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  historySeasonCell: { width: 56, textAlign: 'left' },
+  historyClubCell: { flex: 1, width: undefined, textAlign: 'left', paddingRight: spacing.sm },
+  historyNote: { color: colors.faint, fontSize: 11, marginTop: spacing.sm },
   actionLabel: {
     color: colors.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase',
     letterSpacing: 0.5, marginBottom: spacing.xs,

@@ -462,6 +462,13 @@ export interface TransferWindowState {
    * windows saved before planning existed have none.
    */
   planned?: PlannedMove[];
+  /**
+   * A window opened halfway through the season rather than between seasons.
+   * Matches go on being played while it is open, and it shuts by itself before
+   * `closesBeforeRound` is played.
+   */
+  midSeason?: boolean;
+  closesBeforeRound?: number;
 }
 
 /** A player the manager is keeping an eye on. */

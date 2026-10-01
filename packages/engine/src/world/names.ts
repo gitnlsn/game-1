@@ -121,7 +121,24 @@ export const NAME_POOL_BY_CODE = new Map(NAME_POOLS.map((p) => [p.code, p]));
  * Share of a league's players who are home-grown. Brazilian squads are
  * overwhelmingly Brazilian; English ones much less so.
  */
-const DOMESTIC_SHARE: Record<string, number> = { BRA: 0.85, ENG: 0.6 };
+const DOMESTIC_SHARE: Record<string, number> = {
+  BRA: 0.85, ENG: 0.6, ARG: 0.85, ITA: 0.55, ESP: 0.6, GER: 0.55, FRA: 0.6, POR: 0.5, NED: 0.6,
+};
+
+/**
+ * Where a league recruits from, for the leagues the name data does not measure.
+ * Rough weights from where each league's foreign players have come from
+ * historically -- the shape matters, not the exact numbers.
+ */
+const FALLBACK_FOREIGN_MIX: Record<string, readonly (readonly [string, number])[]> = {
+  ESP: [['ARG', 30], ['FRA', 20], ['BRA', 18], ['POR', 14], ['URU', 12], ['COL', 10], ['NED', 6], ['SEN', 6], ['GER', 4], ['ITA', 4]],
+  ITA: [['BRA', 22], ['ARG', 22], ['FRA', 14], ['ESP', 10], ['NED', 8], ['URU', 8], ['GER', 6], ['SEN', 6], ['NGA', 6], ['POR', 6], ['BEL', 6], ['COL', 4]],
+  GER: [['NED', 14], ['FRA', 14], ['BEL', 8], ['ESP', 6], ['BRA', 8], ['ITA', 4], ['ENG', 6], ['GHA', 6], ['JPN', 8], ['CIV', 4], ['POR', 4], ['SCO', 2]],
+  FRA: [['SEN', 22], ['CIV', 20], ['BEL', 10], ['POR', 10], ['BRA', 10], ['NGA', 8], ['GHA', 6], ['ESP', 6], ['ARG', 6], ['NED', 4], ['ITA', 4]],
+  ARG: [['URU', 30], ['PAR', 26], ['COL', 18], ['CHI', 14], ['ECU', 8], ['ESP', 4]],
+  POR: [['BRA', 50], ['ESP', 10], ['ARG', 8], ['COL', 8], ['URU', 6], ['SEN', 6], ['NGA', 6], ['FRA', 6], ['GHA', 4], ['CIV', 4], ['JPN', 2]],
+  NED: [['BEL', 30], ['GER', 12], ['GHA', 8], ['NGA', 8], ['FRA', 8], ['ESP', 6], ['POR', 6], ['ENG', 4], ['JPN', 6], ['BRA', 4], ['ARG', 4]],
+};
 const DEFAULT_DOMESTIC_SHARE = 0.62;
 
 /**
@@ -131,7 +148,9 @@ const DEFAULT_DOMESTIC_SHARE = 0.62;
  */
 export function pickNationality(rng: Rng, domestic: NamePool): NamePool {
   if (rng.chance(DOMESTIC_SHARE[domestic.code] ?? DEFAULT_DOMESTIC_SHARE)) return domestic;
-  const mix = (LEAGUE_FOREIGN_MIX[domestic.code] ?? []).filter(([code]) => NAME_POOL_BY_CODE.has(code));
+  const mix = (LEAGUE_FOREIGN_MIX[domestic.code] ?? FALLBACK_FOREIGN_MIX[domestic.code] ?? []).filter(
+    ([code]) => NAME_POOL_BY_CODE.has(code),
+  );
   if (mix.length === 0) return rng.pick(NAME_POOLS.filter((p) => p !== domestic));
   const [code] = mix[rng.weightedIndex(mix.map(([, n]) => n))]!;
   return NAME_POOL_BY_CODE.get(code)!;
