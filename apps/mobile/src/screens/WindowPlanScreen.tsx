@@ -69,7 +69,7 @@ export function WindowPlanScreen() {
           <Card style={styles.results}>
             <SectionTitle>Done</SectionTitle>
             <Text style={styles.resultsSummary}>
-              {results.filter((r) => r.ok).length} of {results.length} moves went through.
+              {results.filter((r) => r.ok).length} of {results.length} move{results.length === 1 ? '' : 's'} went through.
               {results.some((r) => !r.ok) ? ' The rest are still in your plan to change or drop.' : ''}
             </Text>
             {results.map((r) => (
@@ -143,7 +143,7 @@ export function WindowPlanScreen() {
             const group = lines.filter((line) => line.direction === key);
             if (group.length === 0) return null;
             return (
-              <View key={key}>
+              <View key={key} style={styles.group}>
                 <SectionTitle>{title}</SectionTitle>
                 {group.map((line) => (
                   <Card key={line.move.id} style={styles.line}>
@@ -192,7 +192,7 @@ export function WindowPlanScreen() {
       {lines.length > 0 ? (
         <View style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}>
           <Button
-            label={`Confirm all ${lines.length} move${lines.length === 1 ? '' : 's'}`}
+            label={lines.length === 1 ? 'Confirm this move' : `Confirm all ${lines.length} moves`}
             onPress={() => setConfirming(true)}
           />
         </View>
@@ -200,13 +200,13 @@ export function WindowPlanScreen() {
 
       <ConfirmDialog
         visible={confirming}
-        title="Make every move?"
+        title={lines.length === 1 ? 'Make this move?' : 'Make every move?'}
         message={
           'Each deal is made in turn — departures first, then signings — and checked again as it ' +
           'is made. Any that no longer work stay in your plan.' +
           (warnings.length > 0 ? ` There ${warnings.length === 1 ? 'is a warning' : `are ${warnings.length} warnings`} above.` : '')
         }
-        confirmLabel="Confirm all"
+        confirmLabel={lines.length === 1 ? 'Confirm' : 'Confirm all'}
         onConfirm={() => {
           setConfirming(false);
           setResults(confirmPlan(career));
@@ -272,6 +272,7 @@ const styles = StyleSheet.create({
   warnings: { marginTop: spacing.md, marginBottom: spacing.sm, borderColor: colors.warn },
   warningText: { color: colors.warn, fontSize: 12, lineHeight: 18 },
   emptyCard: { marginTop: spacing.md },
+  group: { marginTop: spacing.md },
   line: { marginBottom: spacing.sm },
   lineTop: { flexDirection: 'row', alignItems: 'center' },
   lineName: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },

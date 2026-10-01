@@ -40,3 +40,11 @@ export function plannedLabel(move: PlannedMove): string {
   }
 }
 
+
+/** Said when a season is about to start over moves never confirmed. */
+export function unconfirmedWarning(count: number): string {
+  return (
+    `You have ${count} planned move${count === 1 ? '' : 's'} you have not confirmed. ` +
+    'Starting the season shuts the window and they will not happen.'
+  );
+}

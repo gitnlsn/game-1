@@ -7,7 +7,6 @@ import {
   browseTargets,
   currentAbility,
   effectiveWageBill,
-  expectedWage,
   formatMoney,
   incomingOffers,
   isShortlisted,
@@ -32,6 +31,7 @@ import {
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { TargetRow } from '../components/TargetRow';
+import { RenewDialog } from '../components/RenewDialog';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
@@ -59,6 +59,7 @@ export function TransfersScreen() {
   const [tab, setTab] = useState<Tab>('offers');
   const [position, setPosition] = useState<string>('any');
   const [message, setMessage] = useState<string | undefined>();
+  const [renewing, setRenewing] = useState<Player | undefined>();
 
   const club = career ? managedClub(career) : undefined;
   const window = career ? transferWindow(career) : undefined;
@@ -260,7 +261,6 @@ export function TransfersScreen() {
                 const moves = plannedFor(career, { playerId: player.id }).filter(
                   (m) => m.kind === 'release' || m.kind === 'renew',
                 );
-                const wage = Math.round(expectedWage(player) * 1.1);
                 return (
                   <Card key={player.id} style={styles.card}>
                     <Pressable onPress={() => open(player)} accessibilityRole="button">
@@ -283,14 +283,9 @@ export function TransfersScreen() {
                           }
                         />
                         <Button
-                          label={`Renew · ${formatMoney(wage)}/wk`}
+                          label="Renew…"
                           style={styles.action}
-                          onPress={() =>
-                            plan(
-                              { kind: 'renew', playerId: player.id, wage, years: 3 },
-                              `Planned: three more years for ${player.displayName}.`,
-                            )
-                          }
+                          onPress={() => setRenewing(player)}
                         />
                       </View>
                     )}
@@ -452,6 +447,19 @@ export function TransfersScreen() {
           </>
         ) : null}
       </ScrollView>
+
+      <RenewDialog
+        player={renewing}
+        onCancel={() => setRenewing(undefined)}
+        onPlan={(wage, years) => {
+          if (!renewing) return;
+          plan(
+            { kind: 'renew', playerId: renewing.id, wage, years },
+            `Planned: ${years} more year${years === 1 ? '' : 's'} for ${renewing.displayName}.`,
+          );
+          setRenewing(undefined);
+        }}
+      />
 
       {planned.length > 0 && preview ? (
         <View style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}>

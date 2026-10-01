@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -14,7 +14,6 @@ import {
   scoutValuation,
   scoutCapacity,
   appraiseTarget,
-  expectedWage,
   plannedFor,
   plannedMoves,
   planMove,
@@ -38,6 +37,7 @@ import {
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle, Segmented, StatBar } from '../components/ui';
 import { ProgressionChart } from '../components/ProgressionChart';
+import { RenewDialog } from '../components/RenewDialog';
 import { plannedLabel } from '../game/moveText';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -368,6 +368,7 @@ function PlayerActions({
   onChange: () => void;
   onReview: () => void;
 }) {
+  const [renewing, setRenewing] = useState(false);
   const windowOpen = transferWindow(career) !== undefined;
   const moves = windowOpen ? plannedFor(career, { playerId: player.id }) : [];
 
@@ -416,7 +417,6 @@ function PlayerActions({
   }
 
   const listingKind = career.listings[player.id];
-  const renewWage = Math.round(expectedWage(player) * 1.1);
 
   return (
     <>
@@ -474,13 +474,10 @@ function PlayerActions({
                   }}
                 />
                 <Button
-                  label={`Renew · ${formatMoney(renewWage)}/wk`}
+                  label="Renew…"
                   variant="secondary"
                   style={styles.actionButton}
-                  onPress={() => {
-                    planMove(career, { kind: 'renew', playerId: player.id, wage: renewWage, years: 3 });
-                    onChange();
-                  }}
+                  onPress={() => setRenewing(true)}
                 />
               </View>
             )}
@@ -490,6 +487,17 @@ function PlayerActions({
           </>
         ) : null}
       </Card>
+      {renewing ? (
+        <RenewDialog
+          player={player}
+          onCancel={() => setRenewing(false)}
+          onPlan={(wage, years) => {
+            planMove(career, { kind: 'renew', playerId: player.id, wage, years });
+            setRenewing(false);
+            onChange();
+          }}
+        />
+      ) : null}
     </>
   );
 }

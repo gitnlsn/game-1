@@ -22,6 +22,7 @@ import {
   type TrainingFocus,
   type PositionGroup,
   type PotentialEstimate,
+  type SquadAlertGroup,
   type SquadMember,
   type SquadRole,
 } from '@eleven-deep/engine';
@@ -180,19 +181,10 @@ export function SquadScreen() {
         />
 
         {alerts.length > 0 ? (
-          <Card style={styles.alerts}>
-            <Text style={styles.alertsTitle}>Needs your attention</Text>
-            {alerts.map((alert, index) => (
-              <Pressable
-                key={`${alert.kind}-${alert.playerId ?? index}`}
-                disabled={!alert.playerId}
-                onPress={() => alert.playerId && navigation.navigate('player', { playerId: alert.playerId })}
-                accessibilityRole={alert.playerId ? 'button' : 'text'}
-              >
-                <Text style={styles.alertText}>• {alert.message}</Text>
-              </Pressable>
-            ))}
-          </Card>
+          <AlertsCard
+            groups={alerts}
+            onOpen={(playerId) => navigation.navigate('player', { playerId })}
+          />
         ) : null}
 
         <View style={styles.viewRow}>
@@ -201,11 +193,10 @@ export function SquadScreen() {
         <Pressable
           onPress={() => navigation.navigate('scouting')}
           accessibilityRole="button"
-          style={styles.scoutLink}
+          style={({ pressed }) => [styles.scoutLink, pressed ? styles.pressed : null]}
         >
-          <Text style={styles.scoutLinkText}>
-            Scouting and shortlist · {career.shortlist.length} watched ›
-          </Text>
+          <Text style={styles.scoutLinkText}>Scouting and shortlist</Text>
+          <Text style={styles.scoutLinkMeta}>{career.shortlist.length} watched  ›</Text>
         </Pressable>
 
         {sections.map((section) => (
@@ -226,6 +217,58 @@ export function SquadScreen() {
         ))}
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * What needs doing, one group per kind of problem. The advice is said once;
+ * the players it applies to are chips you can open, bordered and arrowed so
+ * they read as things to tap.
+ */
+function AlertsCard({
+  groups,
+  onOpen,
+}: {
+  groups: SquadAlertGroup[];
+  onOpen: (playerId: string) => void;
+}) {
+  return (
+    <Card style={styles.alerts}>
+      <Text style={styles.alertsTitle}>Needs your attention</Text>
+      {groups.map((group, index) => (
+        <View key={group.kind} style={[styles.alertGroup, index > 0 ? styles.alertDivided : null]}>
+          <Text style={styles.alertHeading}>
+            {group.title}
+            {group.players.length > 0 ? <Text style={styles.alertCount}>  {group.players.length}</Text> : null}
+          </Text>
+          <Text style={styles.alertAdvice}>
+            {group.positions.length > 0 ? `${group.positions.join(', ')}. ` : ''}
+            {group.advice}
+          </Text>
+          {group.players.length > 0 ? (
+            <View style={styles.chips}>
+              {group.players.map((player) => (
+                <Pressable
+                  key={player.id}
+                  onPress={() => onOpen(player.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${player.displayName}`}
+                  style={({ pressed }) => [styles.playerChip, pressed ? styles.pressed : null]}
+                >
+                  <Text style={[styles.chipPos, { color: positionColor(player.position) }]}>
+                    {player.position}
+                  </Text>
+                  <Text style={styles.chipName} numberOfLines={1}>
+                    {player.displayName}
+                  </Text>
+                  <Text style={styles.chipArrow}>›</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ))}
+    </Card>
   );
 }
 
@@ -357,11 +400,44 @@ const styles = StyleSheet.create({
   list: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
   alerts: { marginBottom: spacing.md, borderColor: colors.warn },
   alertsTitle: { color: colors.warn, fontSize: 12, fontWeight: '800', marginBottom: spacing.xs },
-  alertText: { color: colors.text, fontSize: 12, lineHeight: 18 },
+  alertGroup: { paddingVertical: spacing.sm },
+  alertDivided: { borderTopWidth: 1, borderTopColor: colors.border },
+  alertHeading: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  alertCount: { color: colors.warn, fontWeight: '800' },
+  alertAdvice: { color: colors.muted, fontSize: 12, marginTop: 2, lineHeight: 17 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
+  playerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.borderBright,
+    backgroundColor: colors.surfaceAlt,
+    maxWidth: '100%',
+  },
+  chipPos: { fontSize: 10, fontWeight: '800' },
+  chipName: { color: colors.text, fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  chipArrow: { color: colors.muted, fontSize: 14, marginLeft: 2 },
+  pressed: { opacity: 0.6 },
   viewRow: { marginBottom: spacing.xs },
   segmented: {},
-  scoutLink: { paddingVertical: spacing.sm, alignSelf: 'flex-end' },
-  scoutLinkText: { color: colors.info, fontSize: 12, fontWeight: '600' },
+  scoutLink: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  scoutLinkText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  scoutLinkMeta: { color: colors.muted, fontSize: 12 },
   section: { marginTop: spacing.sm },
   sectionNote: { color: colors.faint, fontSize: 11, marginBottom: spacing.sm, marginTop: -2 },
   growth: { color: colors.muted, fontSize: 11, marginTop: spacing.xs, fontVariant: ['tabular-nums'] },

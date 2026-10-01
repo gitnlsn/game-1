@@ -27,7 +27,7 @@ import {
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, Divider, KeyValue, OutcomeDot, ScreenHeader, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { unconfirmedWarning } from './SeasonSummaryScreen';
+import { unconfirmedWarning } from '../game/moveText';
 import { colors, spacing } from '../theme';
 import { ordinal } from '../format';
 import { useGame } from '../game/GameContext';

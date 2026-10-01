@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { formatMoney, isSacked, managedLeague, plannedMoves } from '@eleven-deep/engine';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { unconfirmedWarning } from '../game/moveText';
 import { Button, Card, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -196,13 +197,6 @@ export function SeasonSummaryScreen() {
           onCancel={() => setConfirmingSeason(false)}
         />
       </View>
-  );
-}
-
-export function unconfirmedWarning(count: number): string {
-  return (
-    `You have ${count} planned move${count === 1 ? '' : 's'} you have not confirmed. ` +
-    'Starting the season shuts the window and they will not happen.'
   );
 }
 

@@ -41,8 +41,6 @@ export const SQUAD_VIEW_TUNING = {
   prospectMinutesShare: 0.25,
   /** Rounds into the season before minutes mean anything. */
   minutesAlertFromRound: 8,
-  /** Most alerts to show at once; past that a list stops being read. */
-  maxAlerts: 4,
 } as const;
 
 export interface SquadMember {
@@ -158,68 +156,79 @@ export function squadDepth(career: Career): PositionDepth[] {
 
 export type SquadAlertKind = 'expiring_key' | 'prospect_benched' | 'thin_position' | 'surplus';
 
-export interface SquadAlert {
+/**
+ * One kind of thing worth acting on, with everyone it applies to. Grouped
+ * rather than one line per player: the advice is about the situation, and
+ * saying it once per player only buries the names.
+ */
+export interface SquadAlertGroup {
   kind: SquadAlertKind;
-  message: string;
-  playerId?: string;
+  title: string;
+  /** What to do about it, said once for the whole group. */
+  advice: string;
+  players: Player[];
+  /** For thin positions, which ones. */
+  positions: Position[];
 }
 
-/**
- * The few things about the squad worth acting on now. Not a report: anything
- * here should have an obvious next step.
- */
-export function squadAlerts(career: Career): SquadAlert[] {
+/** The few things about the squad worth acting on now, each with an obvious next step. */
+export function squadAlerts(career: Career): SquadAlertGroup[] {
   const V = SQUAD_VIEW_TUNING;
   const club = managedClub(career);
   const members = squadMembers(career);
-  const alerts: SquadAlert[] = [];
-
-  for (const m of members) {
-    if (m.role === 'key' && m.expiring) {
-      alerts.push({
-        kind: 'expiring_key',
-        playerId: m.player.id,
-        message: `${m.player.displayName} is in his last year. Renew him or sell him while he still has value.`,
-      });
+  const groups: SquadAlertGroup[] = [];
+  const add = (group: Omit<SquadAlertGroup, 'positions'> & { positions?: Position[] }) => {
+    if (group.players.length > 0 || (group.positions?.length ?? 0) > 0) {
+      groups.push({ positions: [], ...group });
     }
-  }
+  };
+
+  add({
+    kind: 'expiring_key',
+    title: 'First-choice players in their last year',
+    advice: 'Renew them, or sell while they still have value.',
+    players: members.filter((m) => m.role === 'key' && m.expiring).map((m) => m.player),
+  });
 
   const roundsPlayed = career.season.played.get(club.id) ?? 0;
-  if (roundsPlayed >= V.minutesAlertFromRound) {
-    for (const m of members) {
-      if (m.role !== 'prospect' || m.loanedTo) continue;
-      const share = m.player.status.minutes / (roundsPlayed * 90);
-      if (share < V.prospectMinutesShare) {
-        alerts.push({
-          kind: 'prospect_benched',
-          playerId: m.player.id,
-          message: `${m.player.displayName} is not getting games. Minutes are what develop him; a loan would.`,
-        });
-      }
-    }
-  }
+  add({
+    kind: 'prospect_benched',
+    title: 'Prospects not getting games',
+    advice: 'Minutes are what develop them. A loan would.',
+    players:
+      roundsPlayed < V.minutesAlertFromRound
+        ? []
+        : members
+            .filter(
+              (m) =>
+                m.role === 'prospect' &&
+                !m.loanedTo &&
+                m.player.status.minutes / (roundsPlayed * 90) < V.prospectMinutesShare,
+            )
+            .map((m) => m.player),
+  });
 
   const formation = FORMATIONS[currentTeamSheet(career).formation] ?? FORMATIONS[DEFAULT_FORMATION]!;
-  const seen = new Set<Position>();
-  for (const position of formation) {
-    if (seen.has(position)) continue;
-    seen.add(position);
-    const slots = formation.filter((p) => p === position).length;
-    if (depthAt(club, position) <= slots) {
-      alerts.push({
-        kind: 'thin_position',
-        message: `No cover at ${position}: one injury and someone plays out of position.`,
-      });
-    }
-  }
+  const thin = [...new Set(formation)].filter(
+    (position) => depthAt(club, position) <= formation.filter((p) => p === position).length,
+  );
+  add({
+    kind: 'thin_position',
+    title: 'No cover',
+    advice: 'One injury and someone plays out of position.',
+    players: [],
+    positions: thin,
+  });
 
-  const surplus = members.filter((m) => m.role === 'surplus');
+  const surplus = members.filter((m) => m.role === 'surplus').map((m) => m.player);
   if (surplus.length >= 2) {
-    alerts.push({
+    add({
       kind: 'surplus',
-      message: `${surplus.length} players are surplus to requirements. Their wages could go elsewhere.`,
+      title: 'Surplus to requirements',
+      advice: 'Their wages could go elsewhere. Sell, loan or release.',
+      players: surplus,
     });
   }
 
-  return alerts.slice(0, V.maxAlerts);
+  return groups;
 }

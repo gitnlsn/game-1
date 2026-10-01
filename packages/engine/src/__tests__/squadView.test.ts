@@ -73,7 +73,10 @@ describe('squad roles', () => {
     const key = squadMembers(c).find((m) => m.role === 'key')!.player;
     key.contract.yearsRemaining = 1;
 
-    expect(squadAlerts(c).some((a) => a.kind === 'expiring_key' && a.playerId === key.id)).toBe(true);
+    const group = squadAlerts(c).find((a) => a.kind === 'expiring_key');
+    expect(group?.players.map((p) => p.id)).toContain(key.id);
+    // One group however many players it covers.
+    expect(squadAlerts(c).filter((a) => a.kind === 'expiring_key')).toHaveLength(1);
   });
 });
 
