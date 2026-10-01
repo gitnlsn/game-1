@@ -102,7 +102,6 @@ import {
   completeTransferWindow,
   type SeasonSummary,
 } from './career.js';
-import { pruneManagerState } from './manager.js';
 
 /**
  * A career being played rather than simulated: the world, the season in
@@ -544,6 +543,7 @@ export function endSeason(career: Career): SeasonSummary {
   const summary = closeSeason(career.world, career.rng, result, {
     deferWindow: true,
     managedClubId: career.managedClubId,
+    listedPlayerIds: Object.keys(career.listings).filter((id) => career.listings[id] === 'transfer'),
   });
   career.history.push(summary);
 
@@ -595,6 +595,9 @@ export function isSacked(career: Career): boolean {
  * Closes the window -- the AI does its own business -- and starts the new season.
  */
 export function startNextSeason(career: Career): Transfer[] {
+  // Before the AI trades, so a listed player goes where you would have sent him
+  // and not to whoever the loan market happens to reach first.
+  placeListedLoans(career);
   const transfers = completeTransferWindow(career.world, career.rng, career.managedClubId);
 
   // The summary was written before the AI had traded; fold its business in.
@@ -697,8 +700,9 @@ export function loanSuitors(career: Career, playerId: string): Club[] {
     .sort((a, b) => b.reputation - a.reputation);
 }
 
-/** Sends a player out on loan. */
+/** Sends a player out on loan. Only while the window is open. */
 export function sendOnLoan(career: Career, playerId: string, toClubId: string): LoanOutcome {
+  if (!transferWindow(career)) return { agreed: false, reason: 'window_closed' };
   return loanOut(career.world, career.managedClubId, toClubId, playerId);
 }
 
@@ -748,9 +752,14 @@ export function transferWindow(career: Career): TransferWindowState | undefined 
   return career.world.transferWindow?.open ? career.world.transferWindow : undefined;
 }
 
-/** Bids on the table for your players. */
+/** Bids on the table for your players -- still unanswered, for players still at the club. */
 export function incomingOffers(career: Career): TransferOffer[] {
-  return transferWindow(career)?.incoming.filter((o) => o.status === 'pending') ?? [];
+  const squad = new Set(managedClub(career).squad.map((p) => p.id));
+  return (
+    transferWindow(career)?.incoming.filter(
+      (o) => o.status === 'pending' && squad.has(o.playerId),
+    ) ?? []
+  );
 }
 
 /** Everyone you could sign, priced by the same rules the AI plays by. */
@@ -764,6 +773,7 @@ export function bidFor(
   fee: number,
   wageOffer?: number,
 ): BidOutcome {
+  if (!transferWindow(career)) return { accepted: false, reason: 'window_closed' };
   return makeBid(career.rng, career.world, career.managedClubId, playerId, fee, wageOffer);
 }
 
@@ -772,6 +782,8 @@ export function answerOffer(
   offerId: string,
   response: 'accept' | 'reject',
 ): Transfer | undefined {
+  // A closed window keeps its unanswered bids on record; they are history now.
+  if (!transferWindow(career)) return undefined;
   return respondToOffer(career.world, offerId, response);
 }
 
@@ -879,3 +891,65 @@ export function setTactics(career: Career, patch: Partial<Tactics>): Tactics {
   });
   return next;
 }
+
+// --- The manager's own records -------------------------------------------
+
+/** Whether a player belongs to the managed club, at it or out on loan from it. */
+export function ownsPlayer(career: Career, player: Player): boolean {
+  if (player.clubId === career.managedClubId) {
+    // Borrowed players are at the club but not the club's.
+    return !career.world.loans.some(
+      (loan) => loan.playerId === player.id && loan.clubId === career.managedClubId,
+    );
+  }
+  return career.world.loans.some(
+    (loan) => loan.playerId === player.id && loan.parentClubId === career.managedClubId,
+  );
+}
+
+/**
+ * Drops what no longer applies: players who left the game, shortlisted players
+ * who have since joined you, and listings, training and curves for players who
+ * are not yours any more. Run whenever the squad may have changed hands.
+ */
+export function pruneManagerState(career: Career): void {
+  const { players } = career.world;
+  const own = (id: string) => {
+    const player = players.get(id);
+    return player !== undefined && ownsPlayer(career, player);
+  };
+
+  career.shortlist = career.shortlist.filter((entry) => {
+    const player = players.get(entry.playerId);
+    return player !== undefined && !ownsPlayer(career, player);
+  });
+  for (const id of Object.keys(career.listings)) if (!own(id)) delete career.listings[id];
+  for (const id of Object.keys(career.training)) if (!own(id)) delete career.training[id];
+
+  const watched = new Set(career.shortlist.map((entry) => entry.playerId));
+  for (const id of Object.keys(career.progression)) {
+    if (!own(id) && !watched.has(id)) delete career.progression[id];
+  }
+}
+
+/**
+ * Sends out everyone listed for loan who is still at the club, to the smallest
+ * club that would play him: a loan is for minutes, and those are surest where
+ * he would walk into the side. Runs as the window closes.
+ */
+export function placeListedLoans(career: Career): { playerId: string; clubName: string }[] {
+  const placed: { playerId: string; clubName: string }[] = [];
+  for (const [playerId, kind] of Object.entries(career.listings)) {
+    if (kind !== 'loan') continue;
+    if (loanOf(career.world, playerId)) continue;
+    const suitors = loanSuitors(career, playerId);
+    const club = suitors[suitors.length - 1];
+    if (!club) continue;
+    if (sendOnLoan(career, playerId, club.id).agreed) {
+      placed.push({ playerId, clubName: club.name });
+      delete career.listings[playerId];
+    }
+  }
+  return placed;
+}
+

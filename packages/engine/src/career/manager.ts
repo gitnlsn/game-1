@@ -1,7 +1,14 @@
-import type { Club, Player, PotentialEstimate } from '../types.js';
-import { appraiseTarget, transferTargets, type BrowseOptions, type MarketListing } from '../transfers/market.js';
+import { Rng } from '../rng/index.js';
+import type { Club, ListingKind, Player, PotentialEstimate, TransferOffer } from '../types.js';
+import {
+  appraiseTarget,
+  generateIncomingOffers,
+  transferTargets,
+  type BrowseOptions,
+  type MarketListing,
+} from '../transfers/market.js';
 import { findClub } from '../world/index.js';
-import { scoutReport, type Career } from './controller.js';
+import { managedClub, ownsPlayer, scoutReport, transferWindow, type Career } from './controller.js';
 
 /*
  * What the manager does with individual players: who he is watching, who he
@@ -68,47 +75,69 @@ export function searchMarket(career: Career, options: CareerBrowseOptions = {}):
   return limit ? filtered.slice(0, limit) : filtered;
 }
 
-// --- Housekeeping ------------------------------------------------------------
+// --- Listing your own players -----------------------------------------------
 
-/** Whether a player belongs to the managed club, at it or out on loan from it. */
-export function ownsPlayer(career: Career, player: Player): boolean {
-  if (player.clubId === career.managedClubId) {
-    // Borrowed players are at the club but not the club's.
-    return !career.world.loans.some(
-      (loan) => loan.playerId === player.id && loan.clubId === career.managedClubId,
-    );
+/**
+ * Puts one of your players up for sale or for loan, or takes him off the market
+ * with `undefined`. Returns any new bids it brought in.
+ *
+ * Listed for sale, a player draws more bids, and from clubs that would not
+ * otherwise have bothered, at a little under the usual asking price. Listed
+ * during an open window, the bids arrive straight away; listed during the
+ * season, they arrive when the window opens.
+ *
+ * Listed for loan, he goes to a club that will play him when the next season
+ * starts, unless you have already loaned him out yourself.
+ */
+export function setListing(
+  career: Career,
+  playerId: string,
+  kind: ListingKind | undefined,
+): TransferOffer[] {
+  const player = managedClub(career).squad.find((p) => p.id === playerId);
+  // Borrowed players are not yours to sell.
+  if (!player || !ownsPlayer(career, player)) return [];
+
+  if (kind === undefined) {
+    delete career.listings[playerId];
+    return [];
   }
-  return career.world.loans.some(
-    (loan) => loan.playerId === player.id && loan.parentClubId === career.managedClubId,
-  );
+  career.listings[playerId] = kind;
+  return kind === 'transfer' ? refreshIncomingOffers(career, [playerId]) : [];
 }
+
+export function listingOf(career: Career, playerId: string): ListingKind | undefined {
+  return career.listings[playerId];
+}
+
+/**
+ * Fresh bids for players just listed in an open window.
+ *
+ * Drawn from a generator of its own rather than the career's, seeded from what
+ * it is about: listing a player must not change the results of next season's
+ * matches, which every other draw from the career generator would.
+ */
+export function refreshIncomingOffers(career: Career, playerIds: readonly string[]): TransferOffer[] {
+  const window = transferWindow(career);
+  if (!window || playerIds.length === 0) return [];
+
+  const listed = new Set(
+    Object.keys(career.listings).filter((id) => career.listings[id] === 'transfer'),
+  );
+  const rng = new Rng(`offers:${career.world.seed}:${window.season}:${[...playerIds].sort().join(',')}`);
+  const offers = generateIncomingOffers(rng, career.world, career.managedClubId, {
+    listed,
+    onlyPlayerIds: new Set(playerIds),
+    existing: window.incoming,
+  });
+  window.incoming.push(...offers);
+  return offers;
+}
+
+// --- Lookups ---------------------------------------------------------------
 
 /** The club a player is at, if any. */
 export function clubOf(career: Career, player: Player): Club | undefined {
   return player.clubId ? findClub(career.world, player.clubId) : undefined;
 }
 
-/**
- * Drops what no longer applies: players who left the game, shortlisted players
- * who have since joined you, and listings, training and curves for players who
- * are not yours any more. Run whenever the squad may have changed hands.
- */
-export function pruneManagerState(career: Career): void {
-  const { players } = career.world;
-  const own = (id: string) => {
-    const player = players.get(id);
-    return player !== undefined && ownsPlayer(career, player);
-  };
-
-  career.shortlist = career.shortlist.filter((entry) => {
-    const player = players.get(entry.playerId);
-    return player !== undefined && !ownsPlayer(career, player);
-  });
-  for (const id of Object.keys(career.listings)) if (!own(id)) delete career.listings[id];
-  for (const id of Object.keys(career.training)) if (!own(id)) delete career.training[id];
-
-  const watched = new Set(career.shortlist.map((entry) => entry.playerId));
-  for (const id of Object.keys(career.progression)) {
-    if (!own(id) && !watched.has(id)) delete career.progression[id];
-  }
-}

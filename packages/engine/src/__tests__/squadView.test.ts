@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { managedClub, scoutReport, startCareer, type Career } from '../career/controller.js';
+import {
+  managedClub,
+  pruneManagerState,
+  scoutReport,
+  startCareer,
+  type Career,
+} from '../career/controller.js';
 import { squadAlerts, squadDepth, squadMembers } from '../career/squadView.js';
 import {
   isShortlisted,
-  pruneManagerState,
   searchMarket,
   shortlistRows,
   toggleShortlist,

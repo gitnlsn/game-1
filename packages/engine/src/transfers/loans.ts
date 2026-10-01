@@ -46,7 +46,8 @@ export type LoanRejection =
   | 'squad_too_small'
   | 'borrower_full'
   | 'borrower_will_not_take'
-  | 'unknown_club';
+  | 'unknown_club'
+  | 'window_closed';
 
 export interface LoanOutcome {
   agreed: boolean;

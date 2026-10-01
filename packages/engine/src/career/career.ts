@@ -151,6 +151,8 @@ export interface CloseSeasonOptions {
   deferWindow?: boolean;
   /** The club the AI must not shop on behalf of. */
   managedClubId?: string;
+  /** The managed club's players listed for sale, who draw more bids. */
+  listedPlayerIds?: readonly string[];
 }
 
 export function closeSeason(
@@ -235,7 +237,9 @@ export function closeSeason(
     const window = createTransferWindow(world.season);
     window.completed.push(...transfers);
     if (options.managedClubId) {
-      window.incoming = generateIncomingOffers(rng, world, options.managedClubId);
+      window.incoming = generateIncomingOffers(rng, world, options.managedClubId, {
+        listed: new Set(options.listedPlayerIds ?? []),
+      });
     }
     world.transferWindow = window;
     // Loans wait for the manager, the same as the rest of the window.

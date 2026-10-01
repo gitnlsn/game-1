@@ -23,9 +23,11 @@ import {
   wageBill,
   type Career,
   type MatchResult,
+  plannedMoves,
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, Divider, KeyValue, OutcomeDot, ScreenHeader, SectionTitle } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { unconfirmedWarning } from './SeasonSummaryScreen';
 import { colors, spacing } from '../theme';
 import { ordinal } from '../format';
 import { useGame } from '../game/GameContext';
@@ -356,8 +358,10 @@ export function ClubScreen() {
         visible={confirmingSeason}
         title={`Start season ${career.world.season + 1}?`}
         message={
-          'The window shuts and the other clubs do their remaining business. ' +
-          'Anything you were still weighing up goes with it.'
+          plannedMoves(career).length > 0
+            ? unconfirmedWarning(plannedMoves(career).length)
+            : 'The window shuts and the other clubs do their remaining business. ' +
+              'Anything you were still weighing up goes with it.'
         }
         confirmLabel="Start the season"
         onConfirm={async () => {

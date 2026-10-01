@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { formatMoney, isSacked, managedLeague } from '@eleven-deep/engine';
+import { formatMoney, isSacked, managedLeague, plannedMoves } from '@eleven-deep/engine';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Button, Card, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -15,6 +16,7 @@ export function SeasonSummaryScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { career, busy, beginNextSeason } = useGame();
+  const [confirmingSeason, setConfirmingSeason] = useState(false);
 
   // Read the season just finished out of the career rather than carrying it as a
   // route param: the world mutates in place, so a captured object goes stale.
@@ -169,13 +171,38 @@ export function SeasonSummaryScreen() {
               label={`Start season ${career.world.season + 1}`}
               loading={busy}
               onPress={async () => {
+                // Unconfirmed moves are easy to forget; starting the season drops them.
+                if (plannedMoves(career).length > 0) {
+                  setConfirmingSeason(true);
+                  return;
+                }
                 await beginNextSeason();
                 navigation.navigate('tabs');
               }}
             />
           </View>
         )}
+        <ConfirmDialog
+          visible={confirmingSeason}
+          title={`Start season ${career.world.season + 1}?`}
+          message={unconfirmedWarning(plannedMoves(career).length)}
+          confirmLabel="Start anyway"
+          destructive
+          onConfirm={async () => {
+            setConfirmingSeason(false);
+            await beginNextSeason();
+            navigation.navigate('tabs');
+          }}
+          onCancel={() => setConfirmingSeason(false)}
+        />
       </View>
+  );
+}
+
+export function unconfirmedWarning(count: number): string {
+  return (
+    `You have ${count} planned move${count === 1 ? '' : 's'} you have not confirmed. ` +
+    'Starting the season shuts the window and they will not happen.'
   );
 }
 

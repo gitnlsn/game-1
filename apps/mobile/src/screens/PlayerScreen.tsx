@@ -13,6 +13,15 @@ import {
   scoutsAvailable,
   scoutValuation,
   scoutCapacity,
+  appraiseTarget,
+  expectedWage,
+  plannedFor,
+  plannedMoves,
+  planMove,
+  setListing,
+  transferWindow,
+  unplanMove,
+  type Career,
   managedClub,
   ownsPlayer,
   isShortlisted,
@@ -20,7 +29,10 @@ import {
   type AttributeKey,
   type Player,
 } from '@eleven-deep/engine';
-import { Badge, Button, Card, Divider, KeyValue, SectionTitle, StatBar } from '../components/ui';
+import { Badge, Button, Card, Divider, KeyValue, SectionTitle, Segmented, StatBar } from '../components/ui';
+import { plannedLabel } from '../game/moveText';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, conditionColor, formColor, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
@@ -43,6 +55,7 @@ const LABELS: Record<AttributeKey, string> = {
 
 export function PlayerScreen({ route }: Props) {
   const { career, version, refresh } = useGame();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { playerId } = route.params;
 
@@ -122,6 +135,15 @@ export function PlayerScreen({ route }: Props) {
           </Text>
         </Card>
       ) : null}
+
+      <PlayerActions
+        career={career}
+        player={player}
+        isOwn={isOwn && !loan}
+        owned={owned}
+        onChange={refresh}
+        onReview={() => navigation.navigate('windowPlan')}
+      />
 
       <SectionTitle>Scouting report</SectionTitle>
       <Card>
@@ -241,6 +263,158 @@ export function PlayerScreen({ route }: Props) {
   );
 }
 
+const LISTING_OPTIONS = [
+  { value: 'none', label: 'Not listed' },
+  { value: 'transfer', label: 'For sale' },
+  { value: 'loan', label: 'For loan' },
+] as const;
+
+/**
+ * What you can do about a player from his own page. For your players: put him on
+ * the market, and in the window plan his release or a new contract. For anyone
+ * else in the window: plan to sign him.
+ */
+function PlayerActions({
+  career,
+  player,
+  isOwn,
+  owned,
+  onChange,
+  onReview,
+}: {
+  career: Career;
+  player: Player;
+  isOwn: boolean;
+  owned: boolean;
+  onChange: () => void;
+  onReview: () => void;
+}) {
+  const windowOpen = transferWindow(career) !== undefined;
+  const moves = windowOpen ? plannedFor(career, { playerId: player.id }) : [];
+
+  if (!isOwn) {
+    if (owned || !windowOpen) return null;
+    const listing = appraiseTarget(career.world, career.managedClubId, player.id);
+    if (!listing) return null;
+    const reachable = listing.forSale && listing.wouldJoin && listing.affordable;
+    return (
+      <>
+        <SectionTitle>Transfer window</SectionTitle>
+        <Card>
+          <KeyValue
+            label="Asking price"
+            value={listing.askingPrice === 0 ? 'Free' : formatMoney(listing.askingPrice)}
+            bold
+          />
+          <KeyValue label="Wages" value={`${formatMoney(listing.expectedWage)}/wk`} />
+          {moves.length > 0 ? (
+            <View style={styles.plannedRow}>
+              <Badge label={plannedLabel(moves[0]!)} color={colors.info} />
+              <Button label="Review plan" variant="secondary" onPress={onReview} />
+            </View>
+          ) : (
+            <Button
+              label={
+                !listing.forSale
+                  ? 'His club will not sell'
+                  : !listing.wouldJoin
+                    ? 'He would not join you'
+                    : !listing.affordable
+                      ? 'Beyond your budget'
+                      : 'Add to plan'
+              }
+              disabled={!reachable}
+              style={styles.scout}
+              onPress={() => {
+                planMove(career, { kind: 'buy', playerId: player.id, fee: listing.askingPrice });
+                onChange();
+              }}
+            />
+          )}
+        </Card>
+      </>
+    );
+  }
+
+  const listingKind = career.listings[player.id];
+  const renewWage = Math.round(expectedWage(player) * 1.1);
+
+  return (
+    <>
+      <SectionTitle>Actions</SectionTitle>
+      <Card>
+        <Text style={styles.actionLabel}>On the market</Text>
+        <Segmented
+          fill
+          options={LISTING_OPTIONS}
+          value={listingKind ?? 'none'}
+          onChange={(value) => {
+            setListing(career, player.id, value === 'none' ? undefined : value);
+            onChange();
+          }}
+        />
+        <Text style={styles.actionNote}>
+          {listingKind === 'transfer'
+            ? windowOpen
+              ? 'Listed: more clubs bid, at a little under the usual price. Their bids are on the Offers tab.'
+              : 'Listed: when the window opens, more clubs will bid for him, at a little under the usual price.'
+            : listingKind === 'loan'
+              ? 'Listed for loan: when the season starts he goes to the smallest club that will play him, unless you loan him yourself.'
+              : 'List him for sale to bring in buyers, or for loan to get him games.'}
+        </Text>
+
+        {windowOpen ? (
+          <>
+            <Divider />
+            <Text style={styles.actionLabel}>This window</Text>
+            {moves.length > 0 ? (
+              moves.map((move) => (
+                <View key={move.id} style={styles.plannedRow}>
+                  <Badge label={plannedLabel(move)} color={colors.info} />
+                  <Pressable
+                    onPress={() => {
+                      unplanMove(career, move.id);
+                      onChange();
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.undo}>Undo</Text>
+                  </Pressable>
+                </View>
+              ))
+            ) : (
+              <View style={styles.actionButtons}>
+                <Button
+                  label="Plan release"
+                  variant="danger"
+                  style={styles.actionButton}
+                  onPress={() => {
+                    planMove(career, { kind: 'release', playerId: player.id });
+                    onChange();
+                  }}
+                />
+                <Button
+                  label={`Renew · ${formatMoney(renewWage)}/wk`}
+                  variant="secondary"
+                  style={styles.actionButton}
+                  onPress={() => {
+                    planMove(career, { kind: 'renew', playerId: player.id, wage: renewWage, years: 3 });
+                    onChange();
+                  }}
+                />
+              </View>
+            )}
+            {plannedMoves(career).length > 0 ? (
+              <Button label="Review your plan" variant="secondary" style={styles.scout} onPress={onReview} />
+            ) : null}
+          </>
+        ) : null}
+      </Card>
+    </>
+  );
+}
+
 function AttributeCell({ label, value }: { label: string; value: number }) {
   return (
     <View style={styles.attributeCell}>
@@ -250,6 +424,18 @@ function AttributeCell({ label, value }: { label: string; value: number }) {
 }
 
 const styles = StyleSheet.create({
+  actionLabel: {
+    color: colors.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase',
+    letterSpacing: 0.5, marginBottom: spacing.xs,
+  },
+  actionNote: { color: colors.faint, fontSize: 11, marginTop: spacing.sm, lineHeight: 16 },
+  actionButtons: { flexDirection: 'row', gap: spacing.sm },
+  actionButton: { flex: 1 },
+  plannedRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: spacing.sm, gap: spacing.sm,
+  },
+  undo: { color: colors.info, fontSize: 13, fontWeight: '700' },
   star: { paddingHorizontal: spacing.sm },
   starText: { color: colors.faint, fontSize: 22 },
   starOn: { color: colors.gold },

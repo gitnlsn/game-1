@@ -23,6 +23,7 @@ export type GameStackParamList = {
   seasonSummary: undefined;
   transfers: undefined;
   scouting: undefined;
+  windowPlan: undefined;
   sacked: undefined;
   liveMatch: undefined;
 };

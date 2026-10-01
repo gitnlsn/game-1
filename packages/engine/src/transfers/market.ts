@@ -602,7 +602,8 @@ export type BidRejection =
   | 'would_not_join'
   | 'seller_will_not_sell'
   | 'buyer_squad_full'
-  | 'unknown_player';
+  | 'unknown_player'
+  | 'window_closed';
 
 export interface BidOutcome {
   accepted: boolean;
@@ -723,7 +724,26 @@ export function offerContract(
   return true;
 }
 
-let offerCounter = 0;
+export const LISTING_TUNING = {
+  /**
+   * A listed player is one his club has said it will sell, so buyers stop
+   * holding out for an upgrade worth a premium and bid on any improvement.
+   */
+  listedImprovement: 0,
+  /** Share of the usual asking price a buyer bids for a listed player. */
+  listedFeeShare: 0.85,
+  /** Most bids a listed player draws in one window; an unlisted one draws one. */
+  listedMaxOffers: 2,
+} as const;
+
+export interface IncomingOfferOptions {
+  /** Players the manager has put up for sale. */
+  listed?: ReadonlySet<string>;
+  /** Only consider these players -- for fresh bids after a player is listed mid-window. */
+  onlyPlayerIds?: ReadonlySet<string>;
+  /** Bids already made this window, so nobody bids twice for the same man. */
+  existing?: readonly TransferOffer[];
+}
 
 /**
  * The bids AI clubs would have made for your players, now needing your answer.
@@ -736,12 +756,18 @@ export function generateIncomingOffers(
   rng: Rng,
   world: World,
   managedClubId: string,
+  options: IncomingOfferOptions = {},
 ): TransferOffer[] {
   const T = TRANSFER_TUNING;
+  const L = LISTING_TUNING;
   const managed = findClub(world, managedClubId);
   if (!managed) return [];
 
+  const listed = options.listed ?? new Set<string>();
+  const existing = options.existing ?? [];
   const offers: TransferOffer[] = [];
+  const all = () => [...existing, ...offers];
+  const bidsFor = (playerId: string) => all().filter((o) => o.playerId === playerId).length;
 
   for (const buyer of rng.shuffle(allClubs(world))) {
     if (buyer.id === managedClubId) continue;
@@ -752,11 +778,17 @@ export function generateIncomingOffers(
 
     for (const need of squadNeeds(buyer).slice(0, T.positionsShoppedPerWindow)) {
       for (const player of managed.squad) {
+        if (options.onlyPlayerIds && !options.onlyPlayerIds.has(player.id)) continue;
         if (depthAt(managed, player.position) <= 1) continue;
+        const isListed = listed.has(player.id);
+        if (isListed && bidsFor(player.id) >= L.listedMaxOffers) continue;
+        if (all().some((o) => o.playerId === player.id && o.buyerClubId === buyer.id)) continue;
+
         const quality =
           ability(player.attributes, need.position) *
           positionFamiliarity(player.position, need.position);
-        if (quality < need.current + T.improvementThreshold) continue;
+        const threshold = isListed ? L.listedImprovement : T.improvementThreshold;
+        if (quality < need.current + threshold) continue;
         if (!playerWouldJoin(player, managed, buyer)) continue;
         if (!buyerCanAfford(buyer, player, managed)) continue;
         if (quality > bestScore) {
@@ -767,16 +799,25 @@ export function generateIncomingOffers(
     }
 
     if (!best) continue;
-    if (offers.some((o) => o.playerId === best!.id)) continue;
+    // An unlisted player draws one bid. Checked after choosing, as it always
+    // was: a buyer whose first choice is taken does not go looking for another.
+    if (!listed.has(best.id) && bidsFor(best.id) >= 1) continue;
 
+    const asking = askingPrice(managed, best);
     offers.push({
-      id: `o${++offerCounter}`,
+      /*
+       * Named after what it is rather than counted: a counter in module scope
+       * restarts with the app and would hand out ids a saved window already uses.
+       */
+      id: `o${world.season}-${buyer.id}-${best.id}`,
       playerId: best.id,
       playerName: best.displayName,
       buyerClubId: buyer.id,
       buyerClubName: buyer.name,
       sellerClubId: managedClubId,
-      fee: askingPrice(managed, best),
+      fee: listed.has(best.id)
+        ? Math.round(Math.max(marketValue(best), asking * L.listedFeeShare))
+        : asking,
       wage: Math.round(expectedWage(best) * rng.float(T.moveWageMin, T.moveWageMax)),
       years: rng.int(2, 5),
       status: 'pending',
@@ -819,6 +860,12 @@ export function respondToOffer(
   player.contract = { wage: offer.wage, yearsRemaining: offer.years };
   joinSquad(buyer, player);
   offer.status = 'accepted';
+  // He can only go once; any other bid for him lapses.
+  for (const other of window.incoming) {
+    if (other !== offer && other.playerId === player.id && other.status === 'pending') {
+      other.status = 'rejected';
+    }
+  }
 
   const transfer: Transfer = {
     playerId: player.id,
