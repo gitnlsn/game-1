@@ -24,7 +24,14 @@ import {
   shopTransferWindow,
 } from '../transfers/market.js';
 import { TRANSFER_TUNING } from '../transfers/market.js';
-import { coachingQuality, developPlayer, promoteYouth, shouldRetire } from './aging.js';
+import {
+  agePlayerKeepingAbility,
+  coachingQuality,
+  exactAbility,
+  developPlayer,
+  promoteYouth,
+  shouldRetire,
+} from './aging.js';
 import { currentAbility } from '../world/players.js';
 import { resetSeasonStatus } from '../world/status.js';
 
@@ -153,6 +160,12 @@ export interface CloseSeasonOptions {
   managedClubId?: string;
   /** The managed club's players listed for sale, who draw more bids. */
   listedPlayerIds?: readonly string[];
+  /**
+   * Set when players have already developed through the season, holding each
+   * one's ability at its start. The close season then only ages them, and
+   * measures each season's development against these.
+   */
+  developedInSeason?: Readonly<Record<string, number>>;
 }
 
 export function closeSeason(
@@ -186,7 +199,7 @@ export function closeSeason(
    */
   const returningFromLoan = recallLoans(world);
 
-  const retirements = ageAndRetire(world, rng, seasonMatches, development);
+  const retirements = ageAndRetire(world, rng, seasonMatches, development, options.developedInSeason);
   updateReputations(world, season.tables ?? [season.table]);
   const promotions = applyPromotionAndRelegation(world, season.tables ?? [season.table]);
   // After the swap, so a promoted club spends like a top-flight club.
@@ -351,6 +364,7 @@ function ageAndRetire(
   rng: Rng,
   seasonMatches: number,
   development: DevelopmentAccumulator,
+  developedInSeason?: Readonly<Record<string, number>>,
 ): number {
   let retirements = 0;
 
@@ -361,13 +375,21 @@ function ageAndRetire(
 
     for (const player of club.squad) {
       const minutes = player.status.minutes;
-      const before = currentAbility(player);
-      developPlayer(rng, player, { minutes, seasonMatches, coaching });
+      let before = currentAbility(player);
+      let after: () => number = () => currentAbility(player);
+      if (developedInSeason) {
+        // Measured to the decimal, the way the season's steps were.
+        before = developedInSeason[player.id] ?? exactAbility(player);
+        after = () => exactAbility(player);
+        agePlayerKeepingAbility(player, { minutes, seasonMatches, coaching });
+      } else {
+        developPlayer(rng, player, { minutes, seasonMatches, coaching });
+      }
       recordDevelopment(
         development,
         player,
         club.name,
-        currentAbility(player) - before,
+        after() - before,
         minutes / (seasonMatches * 90),
       );
       if (shouldRetire(rng, player, minutes)) {
@@ -383,7 +405,8 @@ function ageAndRetire(
 
   // Free agents age too, with no club to coach them, and drop out if they retire.
   world.freeAgents = world.freeAgents.filter((player) => {
-    developPlayer(rng, player, { minutes: 0, seasonMatches, coaching: 0.85 });
+    if (developedInSeason) agePlayerKeepingAbility(player, { minutes: 0, seasonMatches, coaching: 0.85 });
+    else developPlayer(rng, player, { minutes: 0, seasonMatches, coaching: 0.85 });
     if (shouldRetire(rng, player, 0)) {
       world.players.delete(player.id);
       retirements++;

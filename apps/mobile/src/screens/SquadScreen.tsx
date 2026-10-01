@@ -14,8 +14,12 @@ import {
   squadAlerts,
   squadDepth,
   squadMembers,
+  seasonChange,
+  trainingFocus,
   type Career,
   type ListingKind,
+  type Player,
+  type TrainingFocus,
   type PositionGroup,
   type PotentialEstimate,
   type SquadMember,
@@ -110,6 +114,25 @@ function buildSections(career: Career, view: ViewKey, members: SquadMember[]): S
   }
 }
 
+const FOCUS_NAMES: Record<TrainingFocus, string> = {
+  balanced: 'Balanced',
+  finishing: 'Finishing',
+  passing: 'Passing',
+  defending: 'Defending',
+  physical: 'Physical',
+  aerial: 'Aerial',
+  goalkeeping: 'Goalkeeping',
+};
+
+function growthLine(career: Career, player: Player): string {
+  const change = seasonChange(career, player);
+  const moved =
+    change === undefined || Math.abs(change) < 0.05
+      ? 'No change yet this season'
+      : `${change > 0 ? '+' : ''}${change.toFixed(1)} this season`;
+  return `${moved} · Training: ${FOCUS_NAMES[trainingFocus(career, player.id)]}`;
+}
+
 export function SquadScreen() {
   const navigation = useNavigation<Nav>();
   const { career, version } = useGame();
@@ -195,6 +218,7 @@ export function SquadScreen() {
                 member={member}
                 report={scoutReport(career, member.player)}
                 listing={career.listings[member.player.id]}
+                {...(view === 'development' ? { growth: growthLine(career, member.player) } : {})}
                 onPress={() => navigation.navigate('player', { playerId: member.player.id })}
               />
             ))}
@@ -209,11 +233,14 @@ function PlayerRow({
   member,
   report,
   listing,
+  growth,
   onPress,
 }: {
   member: SquadMember;
   report: PotentialEstimate;
   listing: ListingKind | undefined;
+  /** This season's change and training, for the growth view. */
+  growth?: string;
   onPress: () => void;
 }) {
   const { player, role, expiring, loanedTo } = member;
@@ -310,6 +337,7 @@ function PlayerRow({
           <Badge label={listing === 'transfer' ? 'Transfer listed' : 'Loan listed'} color={colors.warn} />
         ) : null}
       </View>
+      {growth ? <Text style={styles.growth}>{growth}</Text> : null}
       </Card>
     </Pressable>
   );
@@ -336,6 +364,7 @@ const styles = StyleSheet.create({
   scoutLinkText: { color: colors.info, fontSize: 12, fontWeight: '600' },
   section: { marginTop: spacing.sm },
   sectionNote: { color: colors.faint, fontSize: 11, marginBottom: spacing.sm, marginTop: -2 },
+  growth: { color: colors.muted, fontSize: 11, marginTop: spacing.xs, fontVariant: ['tabular-nums'] },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   playerCard: { marginBottom: spacing.sm, padding: spacing.sm },
   playerTop: { flexDirection: 'row', alignItems: 'center' },

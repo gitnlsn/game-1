@@ -92,6 +92,8 @@ export interface SavedCareer {
   listings: Record<string, ListingKind>;
   training: Record<string, TrainingFocus>;
   progression: Record<string, ProgressionPoint[]>;
+  developedWeeks: number;
+  seasonStartAbility: Record<string, number>;
 }
 
 export function toSavedCareer(career: Career): SavedCareer {
@@ -132,6 +134,8 @@ export function toSavedCareer(career: Career): SavedCareer {
     listings: career.listings,
     training: career.training,
     progression: career.progression,
+    developedWeeks: career.developedWeeks,
+    seasonStartAbility: career.seasonStartAbility,
   };
 }
 
@@ -284,6 +288,8 @@ const MIGRATIONS: Record<number, Migration> = {
     listings: {},
     training: {},
     progression: {},
+    developedWeeks: 0,
+    seasonStartAbility: {},
   }),
 };
 
@@ -401,6 +407,10 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
     listings: saved.listings ?? {},
     training: saved.training ?? {},
     progression: saved.progression ?? {},
+    // An older career starts developing through the season from the next step,
+    // which covers everything played so far.
+    developedWeeks: saved.developedWeeks ?? 0,
+    seasonStartAbility: saved.seasonStartAbility ?? {},
   };
 }
 

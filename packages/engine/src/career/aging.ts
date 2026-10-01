@@ -1,11 +1,11 @@
 import { joinSquad } from '../world/squads.js';
 import { Rng, clamp } from '../rng/index.js';
-import type { AttributeKey, Club, Player } from '../types.js';
+import type { AttributeKey, Club, Player, TrainingFocus } from '../types.js';
 import { expectedWage } from '../economy/valuation.js';
 import { academyBoost } from '../economy/levers.js';
 import { NAME_POOL_BY_CODE } from '../world/names.js';
 import { calibrateAbility, currentAbility, developmentFactor, generatePlayer } from '../world/players.js';
-import { abilityIn, SQUAD_SHAPE } from '../world/positions.js';
+import { abilityIn, POSITION_WEIGHTS, SQUAD_SHAPE } from '../world/positions.js';
 import { targetAbility } from '../transfers/needs.js';
 import type { Position } from '../types.js';
 
@@ -96,23 +96,7 @@ export function developPlayer(
 ): void {
   const A = AGING_TUNING;
   player.age += 1;
-
-  // Physical decline and mental growth happen regardless of overall level, so an
-  // ageing playmaker keeps their vision while losing a yard of pace.
-  if (player.age >= A.physicalDecayFrom) {
-    const years = player.age - A.physicalDecayFrom + 1;
-    for (const key of PHYSICAL_KEYS) {
-      player.attributes[key] = clamp(
-        Math.round(player.attributes[key] - A.physicalDecayPerYear * Math.min(years, 6) * 0.35),
-        1, 99,
-      );
-    }
-  }
-  if (player.age <= A.mentalGrowthUntil) {
-    for (const key of MENTAL_KEYS) {
-      player.attributes[key] = clamp(Math.round(player.attributes[key] + A.mentalGrowthPerYear), 1, 99);
-    }
-  }
+  applyAgeShape(player);
 
   // Then move the overall level toward what the age curve says it should be.
   const ability = abilityIn(player.attributes, player.position);
@@ -134,6 +118,212 @@ export function developPlayer(
 
   const next = clamp(ability + gap * rate + rng.gaussian(0, A.developmentNoise), 15, 99);
   calibrateAbility(player.attributes, player.position, next);
+}
+
+/**
+ * Physical decline and mental growth happen regardless of overall level, so an
+ * ageing playmaker keeps his vision while losing a yard of pace. Reads the age
+ * he has just turned.
+ */
+function applyAgeShape(player: Player): void {
+  const A = AGING_TUNING;
+  if (player.age >= A.physicalDecayFrom) {
+    const years = player.age - A.physicalDecayFrom + 1;
+    for (const key of PHYSICAL_KEYS) {
+      player.attributes[key] = clamp(
+        Math.round(player.attributes[key] - A.physicalDecayPerYear * Math.min(years, 6) * 0.35),
+        1, 99,
+      );
+    }
+  }
+  if (player.age <= A.mentalGrowthUntil) {
+    for (const key of MENTAL_KEYS) {
+      player.attributes[key] = clamp(Math.round(player.attributes[key] + A.mentalGrowthPerYear), 1, 99);
+    }
+  }
+}
+
+// --- Developing through the season ------------------------------------------
+
+/*
+ * A career develops players a little at a time through the season rather than
+ * all at once at the end of it, so a manager can watch a prospect come on and
+ * see what his training is doing. The harnesses keep `developPlayer`: the steps
+ * are built to land, on average, exactly where it does, which is what keeps the
+ * benchmarks it was tuned against meaningful.
+ */
+
+/** Which attributes each training focus works on. */
+export const TRAINING_FOCUS_KEYS: Record<TrainingFocus, readonly AttributeKey[]> = {
+  balanced: [],
+  finishing: ['finishing', 'composure', 'dribbling'],
+  passing: ['passing', 'vision', 'crossing'],
+  defending: ['tackling', 'positioning', 'workRate'],
+  physical: ['pace', 'strength', 'stamina'],
+  aerial: ['heading', 'strength'],
+  goalkeeping: ['reflexes', 'handling', 'distribution'],
+};
+
+export const TRAINING_TUNING = {
+  /** How much faster a focused attribute grows than an unfocused one. */
+  focusedMultiplier: 2.5,
+  unfocusedMultiplier: 0.6,
+  /**
+   * Share of a step's growth spent on focused attributes his position does not
+   * use -- finishing for a centre half. They make him a different player, not a
+   * better one where he plays, and the cost is real: it comes out of his growth.
+   */
+  offPositionShare: 0.3,
+  /** Ability-equivalent weight that off-position share is spread at. */
+  offPositionWeight: 0.25,
+} as const;
+
+/**
+ * His ability to the decimal: what the attributes say, plus whatever growth has
+ * accumulated below a whole attribute point and not landed yet. Whole-number
+ * attributes would otherwise swallow every small step.
+ */
+export function exactAbility(player: Player): number {
+  const weights = POSITION_WEIGHTS[player.position];
+  let total = abilityIn(player.attributes, player.position) + (player.abilityCarry ?? 0);
+  for (const [key, amount] of Object.entries(player.progress ?? {})) {
+    total += (weights[key as AttributeKey] ?? 0) * (amount ?? 0);
+  }
+  return total;
+}
+
+export interface DevelopmentStepContext extends DevelopmentContext {
+  /** Share of the season this step covers, 0 to 1. Steps in a season sum to 1. */
+  fraction: number;
+  focus?: TrainingFocus;
+}
+
+/**
+ * One step of a season's development. Uses the age he will turn at the end of
+ * it, as `developPlayer` does, and converts its once-a-season rate so that steps
+ * covering a whole season close the same share of the gap. Returns the change
+ * in ability.
+ */
+export function developStep(rng: Rng, player: Player, context: DevelopmentStepContext): number {
+  const A = AGING_TUNING;
+  if (context.fraction <= 0) return 0;
+
+  const ability = exactAbility(player);
+  const target = player.hiddenPotential * developmentFactor(player.age + 1);
+  const gap = target - ability;
+
+  const available = Math.max(1, context.seasonMatches * 90);
+  const share = clamp(context.minutes / available, 0, 1);
+  const playingFactor = Math.min(1, share / A.fullMinutesShare);
+
+  let rate = rng.float(A.developmentRateMin, A.developmentRateMax);
+  if (gap > 0) {
+    rate *= (A.benchDevelopmentFloor + (1 - A.benchDevelopmentFloor) * playingFactor) * context.coaching;
+  } else {
+    rate *= 1 - A.declineReliefFromPlaying * playingFactor;
+  }
+  // Closing r of the gap once is closing 1-(1-r)^f of it in each of 1/f steps.
+  const stepRate = 1 - Math.pow(1 - Math.min(rate, 0.99), context.fraction);
+  const noise = rng.gaussian(0, A.developmentNoise * Math.sqrt(context.fraction));
+  const next = clamp(ability + gap * stepRate + noise, 15, 99);
+
+  const focusKeys = TRAINING_FOCUS_KEYS[context.focus ?? 'balanced'];
+  if (focusKeys.length === 0) applyUniform(player, next);
+  else applyFocused(player, next - ability, focusKeys);
+  return next - ability;
+}
+
+/** Lands a new ability evenly across the attributes his position uses. */
+function applyUniform(player: Player, next: number): void {
+  // Anything a focus left half-landed is already counted in `next`.
+  delete player.progress;
+  calibrateAbility(player.attributes, player.position, next);
+  setCarry(player, next - abilityIn(player.attributes, player.position));
+}
+
+function setCarry(player: Player, carry: number): void {
+  if (Math.abs(carry) < 0.001) delete player.abilityCarry;
+  else player.abilityCarry = Math.round(carry * 1000) / 1000;
+}
+
+/**
+ * Lands a change mostly on the focused attributes. Each attribute keeps its own
+ * fraction of a point until it adds up to a whole one, so a focus shows up as
+ * those numbers climbing while the rest hold still.
+ */
+function applyFocused(player: Player, change: number, focusKeys: readonly AttributeKey[]): void {
+  const T = TRAINING_TUNING;
+  const weights = POSITION_WEIGHTS[player.position];
+  const relevant = (Object.keys(weights) as AttributeKey[]).filter((k) => weights[k] !== undefined);
+  const offPosition = focusKeys.filter((k) => weights[k] === undefined);
+  // Only growth is redirected; a decline falls where it falls.
+  const onShare = change > 0 && offPosition.length > 0 ? 1 - T.offPositionShare : 1;
+
+  const multiplier = (key: AttributeKey) =>
+    change > 0 && focusKeys.includes(key) ? T.focusedMultiplier : change > 0 ? T.unfocusedMultiplier : 1;
+  const denominator = relevant.reduce((sum, k) => sum + weights[k]! * multiplier(k), 0);
+
+  const progress = { ...(player.progress ?? {}) };
+  // The carry belongs to the uniform path; fold it in where it will land.
+  const carry = player.abilityCarry ?? 0;
+  delete player.abilityCarry;
+
+  const add = (key: AttributeKey, amount: number) => {
+    const total = (progress[key] ?? 0) + amount;
+    const whole = Math.trunc(total);
+    const before = player.attributes[key];
+    player.attributes[key] = clamp(before + whole, 1, 99);
+    const rest = total - whole;
+    if (Math.abs(rest) < 0.001) delete progress[key];
+    else progress[key] = Math.round(rest * 1000) / 1000;
+  };
+
+  for (const key of relevant) {
+    add(key, ((change * onShare + carry) * multiplier(key)) / denominator);
+  }
+  if (onShare < 1) {
+    const each = (change * (1 - onShare)) / (offPosition.length * T.offPositionWeight);
+    for (const key of offPosition) add(key, each);
+  }
+
+  if (Object.keys(progress).length === 0) delete player.progress;
+  else player.progress = progress;
+}
+
+/**
+ * The once-a-season half of ageing, for a player who developed through the
+ * season: he turns a year older and his attributes change shape -- pace going,
+ * reading of the game coming.
+ *
+ * `developPlayer` changes the shape first and then closes a share of the gap
+ * from there, so part of what the shape added survives the close: the share the
+ * gap-closing does not take back. The same share survives here, which is what
+ * keeps the two paths level for players who barely develop at all.
+ */
+export function agePlayerKeepingAbility(
+  player: Player,
+  context: DevelopmentContext = DEFAULT_CONTEXT,
+): void {
+  const A = AGING_TUNING;
+  const before = exactAbility(player);
+  const rawBefore = abilityIn(player.attributes, player.position);
+  player.age += 1;
+  applyAgeShape(player);
+  const shapeChange = abilityIn(player.attributes, player.position) - rawBefore;
+
+  const gap = player.hiddenPotential * developmentFactor(player.age) - before;
+  const share = clamp(context.minutes / Math.max(1, context.seasonMatches * 90), 0, 1);
+  const playingFactor = Math.min(1, share / A.fullMinutesShare);
+  const meanRate = (A.developmentRateMin + A.developmentRateMax) / 2;
+  const rate =
+    gap > 0
+      ? meanRate * (A.benchDevelopmentFloor + (1 - A.benchDevelopmentFloor) * playingFactor) * context.coaching
+      : meanRate * (1 - A.declineReliefFromPlaying * playingFactor);
+
+  const next = clamp(before + shapeChange * (1 - Math.min(rate, 1)), 15, 99);
+  delete player.progress;
+  calibrateAbility(player.attributes, player.position, next);
+  setCarry(player, next - abilityIn(player.attributes, player.position));
 }
 
 export function shouldRetire(rng: Rng, player: Player, minutes = 0): boolean {

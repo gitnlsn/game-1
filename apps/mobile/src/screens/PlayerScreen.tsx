@@ -22,6 +22,13 @@ import {
   transferWindow,
   unplanMove,
   type Career,
+  type TrainingFocus,
+  POSITION_WEIGHTS,
+  TRAINING_FOCUS_KEYS,
+  progressionOf,
+  seasonChange,
+  setTrainingFocus,
+  trainingFocus,
   managedClub,
   ownsPlayer,
   isShortlisted,
@@ -29,7 +36,8 @@ import {
   type AttributeKey,
   type Player,
 } from '@eleven-deep/engine';
-import { Badge, Button, Card, Divider, KeyValue, SectionTitle, Segmented, StatBar } from '../components/ui';
+import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle, Segmented, StatBar } from '../components/ui';
+import { ProgressionChart } from '../components/ProgressionChart';
 import { plannedLabel } from '../game/moveText';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -82,6 +90,9 @@ export function PlayerScreen({ route }: Props) {
   // Out on loan he is not at the club, but he is still yours.
   const owned = ownsPlayer(career, player);
   const shortlisted = isShortlisted(career, player.id);
+  const curve = progressionOf(career, player.id);
+  const change = owned ? seasonChange(career, player) : undefined;
+  const focus = trainingFocus(career, player.id);
   // Goalkeeping numbers are noise for an outfielder; show them last and muted.
   const groups = player.position === 'GK' ? [GROUPS[3]!, ...GROUPS.slice(0, 3)] : GROUPS;
 
@@ -188,6 +199,47 @@ export function PlayerScreen({ route }: Props) {
         ) : null}
       </Card>
 
+      <SectionTitle>Progression</SectionTitle>
+      <Card>
+        {curve.length >= 2 ? (
+          <>
+            <ProgressionChart points={curve} />
+            {change !== undefined ? (
+              <Text style={styles.reportExplain}>
+                {Math.abs(change) < 0.05
+                  ? 'No change in ability this season yet.'
+                  : `${change > 0 ? '+' : ''}${change.toFixed(1)} ability this season.`}
+              </Text>
+            ) : null}
+          </>
+        ) : (
+          <Text style={styles.reportExplain}>
+            {owned || shortlisted
+              ? 'Players develop a little every month. Come back after a few matches to see his curve.'
+              : 'Shortlist him to follow how he develops.'}
+          </Text>
+        )}
+      </Card>
+
+      {owned ? (
+        <>
+          <SectionTitle>Training</SectionTitle>
+          <Card>
+            <ChipRow
+              options={FOCUS_OPTIONS.filter((o) =>
+                player.position === 'GK' ? o.value !== 'finishing' : o.value !== 'goalkeeping',
+              )}
+              value={focus}
+              onChange={(value) => {
+                setTrainingFocus(career, player.id, value);
+                refresh();
+              }}
+            />
+            <Text style={styles.actionNote}>{focusNote(player, focus)}</Text>
+          </Card>
+        </>
+      ) : null}
+
       {isOwn ? (
         <>
           <SectionTitle>Condition</SectionTitle>
@@ -260,6 +312,33 @@ export function PlayerScreen({ route }: Props) {
         </View>
       ))}
     </ScrollView>
+  );
+}
+
+const FOCUS_OPTIONS: readonly { value: TrainingFocus; label: string }[] = [
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'finishing', label: 'Finishing' },
+  { value: 'passing', label: 'Passing' },
+  { value: 'defending', label: 'Defending' },
+  { value: 'physical', label: 'Physical' },
+  { value: 'aerial', label: 'Aerial' },
+  { value: 'goalkeeping', label: 'Goalkeeping' },
+];
+
+/** What a focus does for this player, including when it costs him. */
+function focusNote(player: Player, focus: TrainingFocus): string {
+  if (focus === 'balanced') {
+    return 'He works on everything his position needs. Growth is spread evenly.';
+  }
+  const keys = TRAINING_FOCUS_KEYS[focus];
+  const names = keys.map((k) => LABELS[k].toLowerCase()).join(', ');
+  const weights = POSITION_WEIGHTS[player.position];
+  const off = keys.filter((k) => weights[k] === undefined);
+  const base = `His ${names} grow faster; the rest of his game more slowly.`;
+  if (off.length === 0) return `${base} How much he grows overall does not change.`;
+  return (
+    `${base} ${off.map((k) => LABELS[k]).join(' and ')} ${off.length === 1 ? 'is' : 'are'} not part of ` +
+    `a ${player.position}'s game, so some of his growth goes where it will not show in his rating.`
   );
 }
 

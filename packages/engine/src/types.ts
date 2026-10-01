@@ -93,6 +93,14 @@ export interface Player {
    * needs somewhere to say that where he plays is not who owns him.
    */
   clubId: string | undefined;
+  /**
+   * Development that has not yet added up to a whole attribute point, in
+   * ability points. Only set for careers, which develop players through the
+   * season in steps too small to land on whole-number attributes.
+   */
+  abilityCarry?: number;
+  /** The same, per attribute, for a player training with a focus. */
+  progress?: Partial<Record<AttributeKey, number>>;
 }
 
 /**
