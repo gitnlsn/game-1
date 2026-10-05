@@ -44,6 +44,7 @@ import {
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { ContractRow } from '../components/ContractRow';
 import { OfferCard } from '../components/OfferCard';
+import { CompareSheet, type CompareTarget } from '../components/CompareSheet';
 import { ProButton, usePaywall } from '../components/ProGate';
 import { TargetRow } from '../components/TargetRow';
 import { RenewDialog } from '../components/RenewDialog';
@@ -77,6 +78,7 @@ export function TransfersScreen() {
   const [message, setMessage] = useState<string | undefined>();
   const [renewing, setRenewing] = useState<Player | undefined>();
   const paywall = usePaywall();
+  const [comparing, setComparing] = useState<CompareTarget | undefined>();
 
   const club = career ? managedClub(career) : undefined;
   const window = career ? transferWindow(career) : undefined;
@@ -429,6 +431,16 @@ export function TransfersScreen() {
                   band={scoutReport(career, listing.player)}
                   {...(compare ? { comparison: compare(listing.player) } : {})}
                   check={check}
+                  {...(compare
+                    ? {
+                        onCompare: () =>
+                          setComparing({
+                            player: listing.player,
+                            comparison: compare(listing.player),
+                            wage: check?.cost.wage ?? listing.expectedWage,
+                          }),
+                      }
+                    : {})}
                   value={marketValue(listing.player)}
                   canScout={scouts > 0}
                   onOpen={() => open(listing.player)}
@@ -478,6 +490,7 @@ export function TransfersScreen() {
       />
 
       {paywall.element}
+      <CompareSheet target={comparing} onClose={() => setComparing(undefined)} />
 
       {planned.length > 0 && preview ? (
         <View style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}>

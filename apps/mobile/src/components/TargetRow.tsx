@@ -30,6 +30,7 @@ export function TargetRow({
   comparison,
   value,
   check,
+  onCompare,
 }: {
   listing: MarketListing;
   band: PotentialEstimate;
@@ -48,6 +49,8 @@ export function TargetRow({
   value?: number;
   /** Signing him, checked against the plan. Only while a window is open. */
   check?: MoveCheck | undefined;
+  /** Opens him beside the starter he is measured against. */
+  onCompare?: () => void;
 }) {
   const { player } = listing;
   const blocked = blockedReason ?? (!listing.wouldJoin
@@ -94,9 +97,18 @@ export function TargetRow({
       </Pressable>
       <Divider />
       {comparison ? (
-        <Text style={[styles.compare, { color: sideLine(comparison, player.position).tint }]}>
-          {sideLine(comparison, player.position).text}
-        </Text>
+        <Pressable
+          onPress={onCompare}
+          disabled={!onCompare}
+          accessibilityRole={onCompare ? 'button' : 'text'}
+          accessibilityLabel={`${sideLine(comparison, player.position).text}. Compare`}
+          style={({ pressed }) => [styles.compareRow, pressed ? styles.comparePressed : null]}
+        >
+          <Text style={[styles.compare, { color: sideLine(comparison, player.position).tint }]}>
+            {sideLine(comparison, player.position).text}
+          </Text>
+          {onCompare ? <Text style={styles.compareLink}>Compare ›</Text> : null}
+        </Pressable>
       ) : null}
       <KeyValue
         label="Asking price"
@@ -153,7 +165,10 @@ const styles = StyleSheet.create({
   card: { marginBottom: spacing.sm },
   cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
   cardMeta: { color: colors.faint, fontSize: 12, marginTop: 2 },
-  compare: { fontSize: 13, fontWeight: '600', marginBottom: spacing.xs },
+  compareRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs, borderRadius: 6 },
+  comparePressed: { opacity: 0.6 },
+  compare: { flex: 1, fontSize: 13, fontWeight: '600' },
+  compareLink: { color: colors.info, fontSize: 13, fontWeight: '700' },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   pos: { fontSize: 11, fontWeight: '800', width: 28 },
   rating: { fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },

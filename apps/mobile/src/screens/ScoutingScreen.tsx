@@ -21,6 +21,7 @@ import {
 } from '@eleven-deep/engine';
 import { Card, ChipRow, EmptyNote, SectionTitle, Segmented } from '../components/ui';
 import { TargetRow } from '../components/TargetRow';
+import { CompareSheet, type CompareTarget } from '../components/CompareSheet';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import { ProButton, usePaywall } from '../components/ProGate';
@@ -70,6 +71,7 @@ export function ScoutingScreen() {
   const { career, version, refresh } = useGame();
   const [view, setView] = useState<Tab>('shortlist');
   const paywall = usePaywall();
+  const [comparing, setComparing] = useState<CompareTarget | undefined>();
   const [position, setPosition] = useState<string>('any');
   const [age, setAge] = useState<(typeof AGES)[number]['value']>('any');
   const [potential, setPotential] = useState<(typeof POTENTIAL)[number]['value']>('any');
@@ -170,7 +172,17 @@ export function ScoutingScreen() {
               key={row.listing.player.id}
               listing={row.listing}
               band={row.report}
-              {...(compare ? { comparison: compare(row.listing.player) } : {})}
+              {...(compare
+                ? {
+                    comparison: compare(row.listing.player),
+                    onCompare: () =>
+                      setComparing({
+                        player: row.listing.player,
+                        comparison: compare(row.listing.player),
+                        wage: row.listing.expectedWage,
+                      }),
+                  }
+                : {})}
               value={marketValue(row.listing.player)}
               canScout={left > 0}
               shortlisted
@@ -208,7 +220,13 @@ export function ScoutingScreen() {
                 key={listing.player.id}
                 listing={listing}
                 band={scoutReport(career, listing.player)}
-                {...(compare ? { comparison: compare(listing.player) } : {})}
+                {...(compare
+                  ? {
+                      comparison: compare(listing.player),
+                      onCompare: () =>
+                        setComparing({ player: listing.player, comparison: compare(listing.player), wage: listing.expectedWage }),
+                    }
+                  : {})}
                 value={marketValue(listing.player)}
                 canScout={left > 0}
                 shortlisted={isShortlisted(career, listing.player.id)}
@@ -221,6 +239,7 @@ export function ScoutingScreen() {
         </>
       )}
       {paywall.element}
+      <CompareSheet target={comparing} onClose={() => setComparing(undefined)} />
     </ScrollView>
   );
 }

@@ -9,6 +9,7 @@ import {
   type ShortlistRow,
 } from '@eleven-deep/engine';
 import { Card, Chip, EmptyNote, SectionTitle } from '../components/ui';
+import { CompareRow } from '../components/CompareRow';
 import { ATTRIBUTE_GROUPS, ATTRIBUTE_LABELS } from '../attributes';
 import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
@@ -71,31 +72,31 @@ export function CompareScreen() {
       ) : (
         <>
           <Card>
-            <Row label="" values={compared.map((r) => r.listing.player.displayName)} header />
-            <Row label="Position" values={compared.map((r) => r.listing.player.position)} />
-            <Row label="Club" values={compared.map((r) => r.listing.sellerClubName || 'Free agent')} />
-            <Row label="Age" values={compared.map((r) => `${r.listing.player.age}`)} numbers={compared.map((r) => -r.listing.player.age)} />
-            <Row
+            <CompareRow label="" values={compared.map((r) => r.listing.player.displayName)} header />
+            <CompareRow label="Position" values={compared.map((r) => r.listing.player.position)} />
+            <CompareRow label="Club" values={compared.map((r) => r.listing.sellerClubName || 'Free agent')} />
+            <CompareRow label="Age" values={compared.map((r) => `${r.listing.player.age}`)} numbers={compared.map((r) => -r.listing.player.age)} />
+            <CompareRow
               label="Ability"
               values={compared.map((r) => currentAbility(r.listing.player).toFixed(0))}
               numbers={compared.map((r) => currentAbility(r.listing.player))}
             />
-            <Row
+            <CompareRow
               label="Could become"
               values={compared.map((r) => `${r.report.low}–${r.report.high}`)}
               numbers={compared.map((r) => r.report.estimate)}
             />
-            <Row
+            <CompareRow
               label="Asking"
               values={compared.map((r) => (r.forSale ? (r.listing.askingPrice === 0 ? 'Free' : formatMoney(r.listing.askingPrice)) : 'Not for sale'))}
               numbers={compared.map((r) => (r.forSale ? -r.listing.askingPrice : Number.NEGATIVE_INFINITY))}
             />
-            <Row
+            <CompareRow
               label="Wage"
               values={compared.map((r) => `${formatMoney(r.listing.expectedWage)}/wk`)}
               numbers={compared.map((r) => -r.listing.expectedWage)}
             />
-            <Row label="Would join" values={compared.map((r) => (r.listing.wouldJoin ? 'Yes' : 'No'))} />
+            <CompareRow label="Would join" values={compared.map((r) => (r.listing.wouldJoin ? 'Yes' : 'No'))} />
           </Card>
 
           {groups.map((group) => (
@@ -103,7 +104,7 @@ export function CompareScreen() {
               <SectionTitle>{group.title}</SectionTitle>
               <Card>
                 {group.keys.map((key: AttributeKey) => (
-                  <Row
+                  <CompareRow
                     key={key}
                     label={ATTRIBUTE_LABELS[key]}
                     values={compared.map((r) => `${r.listing.player.attributes[key]}`)}
@@ -120,54 +121,10 @@ export function CompareScreen() {
   );
 }
 
-/**
- * One line of the comparison. With `numbers`, the best is picked out -- higher
- * is better, so a row where less is better passes its values negated.
- */
-function Row({
-  label,
-  values,
-  numbers,
-  header,
-}: {
-  label: string;
-  values: string[];
-  numbers?: number[];
-  header?: boolean;
-}) {
-  const best = numbers ? Math.max(...numbers) : undefined;
-  const clear = numbers ? numbers.filter((n) => n === best).length === 1 : false;
-  return (
-    <View style={styles.row}>
-      <Text style={styles.label} numberOfLines={1}>
-        {label}
-      </Text>
-      {values.map((value, index) => (
-        <Text
-          key={index}
-          numberOfLines={header ? 2 : 1}
-          style={[
-            styles.value,
-            header ? styles.header : null,
-            clear && numbers![index] === best ? styles.best : null,
-          ]}
-        >
-          {value}
-        </Text>
-      ))}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg },
   intro: { color: colors.muted, fontSize: 13 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm, marginBottom: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, gap: spacing.xs },
-  label: { width: 92, color: colors.muted, fontSize: 12 },
-  value: { flex: 1, color: colors.text, fontSize: 13, textAlign: 'right', fontVariant: ['tabular-nums'] },
-  header: { fontWeight: '700', fontSize: 12 },
-  best: { color: colors.accent, fontWeight: '700' },
   note: { color: colors.faint, fontSize: 11, marginTop: spacing.lg, textAlign: 'center', lineHeight: 16 },
 });
