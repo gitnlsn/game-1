@@ -1,4 +1,4 @@
-import type { MoveFailure, PlannedMove } from '@eleven-deep/engine';
+import type { MoveFailure, MoveResult, PlannedMove } from '@eleven-deep/engine';
 
 /** Why a planned move did not go through, in a sentence a manager would say. */
 export const MOVE_FAILURE: Record<MoveFailure, string> = {
@@ -47,4 +47,22 @@ export function unconfirmedWarning(count: number): string {
     `You have ${count} planned move${count === 1 ? '' : 's'} you have not confirmed. ` +
     'Starting the season shuts the window and they will not happen.'
   );
+}
+
+/** What a move that went through did, in a few words. */
+export function describeDone(result: MoveResult): string {
+  switch (result.move.kind) {
+    case 'sell':
+      return 'Sold.';
+    case 'reject':
+      return 'Bid turned down.';
+    case 'release':
+      return 'Released.';
+    case 'loanOut':
+      return 'Out on loan.';
+    case 'renew':
+      return `Signed for ${result.move.years} more years.`;
+    case 'buy':
+      return 'Signed.';
+  }
 }

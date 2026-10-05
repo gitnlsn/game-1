@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   browseTargets,
@@ -80,6 +80,13 @@ export function TransfersScreen() {
   const [renewing, setRenewing] = useState<Player | undefined>();
   const paywall = usePaywall();
   const [comparing, setComparing] = useState<CompareTarget | undefined>();
+  // A plan confirmed on the review screen comes back here with what happened.
+  const done = useRoute<RouteProp<RootStackParamList, 'transfers'>>().params?.done;
+  useEffect(() => {
+    if (!done) return;
+    setMessage(done);
+    navigation.setParams({ done: undefined });
+  }, [done, navigation]);
 
   const club = career ? managedClub(career) : undefined;
   const window = career ? transferWindow(career) : undefined;

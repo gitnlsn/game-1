@@ -19,7 +19,7 @@ import { Button, Card, Divider, EmptyNote, SectionTitle } from '../components/ui
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { colors, positionColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
-import { MOVE_FAILURE } from '../game/moveText';
+import { describeDone, MOVE_FAILURE } from '../game/moveText';
 import type { RootStackParamList } from '../nav/routes';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -218,8 +218,23 @@ export function WindowPlanScreen() {
         confirmLabel={lines.length === 1 ? 'Confirm' : 'Confirm all'}
         onConfirm={() => {
           setConfirming(false);
-          setResults(confirmPlan(career));
+          const made = confirmPlan(career);
           refresh();
+          /*
+           * All done: back to the window, which says what happened. Anything
+           * refused is still in the plan, so then this screen stays, with the
+           * reasons, because this is where it gets changed or dropped.
+           */
+          if (made.every((r) => r.ok)) {
+            navigation.popTo('transfers', {
+              done: [
+                `Done: ${made.length === 1 ? 'the move went' : `all ${made.length} moves went`} through.`,
+                ...made.map((r) => `✓ ${r.playerName}: ${describeDone(r).replace(/\.$/, '').toLowerCase()}.`),
+              ].join('\n'),
+            });
+          } else {
+            setResults(made);
+          }
         }}
         onCancel={() => setConfirming(false)}
       />
@@ -275,23 +290,6 @@ function ElevenCard({ eleven }: { eleven: PlanEleven }) {
       </Card>
     </>
   );
-}
-
-function describeDone(result: MoveResult): string {
-  switch (result.move.kind) {
-    case 'sell':
-      return 'Sold.';
-    case 'reject':
-      return 'Bid turned down.';
-    case 'release':
-      return 'Released.';
-    case 'loanOut':
-      return 'Out on loan.';
-    case 'renew':
-      return `Signed for ${result.move.years} more years.`;
-    case 'buy':
-      return 'Signed.';
-  }
 }
 
 function Compare({ label, before, after, bad }: { label: string; before: string; after: string; bad?: boolean }) {

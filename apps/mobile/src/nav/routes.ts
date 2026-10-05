@@ -21,7 +21,11 @@ export type GameStackParamList = {
   teamSelection: undefined;
   matchResult: { round: number };
   seasonSummary: undefined;
-  transfers: undefined;
+  /**
+   * `done` carries the outcome of a confirmed plan back to the window: plain
+   * lines of text, said once and cleared, not anything read from the career.
+   */
+  transfers: { done?: string } | undefined;
   scouting: undefined;
   windowPlan: undefined;
   sacked: undefined;

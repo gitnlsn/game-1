@@ -191,7 +191,13 @@ export function ScoutingScreen() {
               onScout={() => scout(row.listing.player.id, row.listing.player.displayName)}
               {...(row.forSale ? {} : { blockedReason: 'His club will not sell him now' })}
               {...(windowOpen
-                ? { action: { label: 'Go to the window', onPress: () => navigation.navigate('transfers') } }
+                ? {
+                    action: {
+                      label: 'Go to the window',
+                      // Back to the window if it is already open underneath, not a second copy of it.
+                      onPress: () => navigation.popTo('transfers'),
+                    },
+                  }
                 : {})}
             />
           ))
