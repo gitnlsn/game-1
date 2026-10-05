@@ -16,7 +16,7 @@ describe('an outfielder in goal', () => {
     const starters = lineup.slots.map((slot) => slot.player.id);
     const keeperAt = lineup.slots.findIndex((slot) => slot.position === 'GK');
     const strikerAt = lineup.slots.findIndex((slot) => slot.position === 'ST');
-    const swapped = [...starters];
+    const swapped: (string | undefined)[] = [...starters];
     swapped[keeperAt] = starters[strikerAt];
     swapped[strikerAt] = starters[keeperAt];
 
