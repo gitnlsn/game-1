@@ -42,8 +42,13 @@ export const PYRAMID_BENCHMARKS: readonly Benchmark[] = [
   /* ...but the lower one still has to be able to run itself. */
   { key: 'tierDebtGapPct', label: 'Clubs in debt, tier 2 minus tier 1', target: 0, tolerance: 22, decimals: 1 },
   { key: 'lowerTierCashToRevenuePct', label: 'Tier 2 cash as % of revenue', target: 20, tolerance: 55, decimals: 1 },
-  /* A knockout where the better side always wins is not worth playing. */
-  { key: 'cupUpsetPct', label: 'Cup ties won by the smaller club %', target: 33, tolerance: 12, decimals: 1 },
+  /*
+   * A knockout where the better side always wins is not worth playing. Measured
+   * across divisions only: between two clubs of the same division, "the smaller
+   * one" is often a reputation point or two apart and wins half the time by
+   * definition, which says nothing about the cup.
+   */
+  { key: 'cupUpsetPct', label: 'Cup ties won by the lower-division club %', target: 33, tolerance: 12, decimals: 1 },
   { key: 'cupWinnerFromLowerTierPct', label: 'Cups won from outside the top flight %', target: 12, tolerance: 12, decimals: 1 },
 ];
 
@@ -90,24 +95,28 @@ export function validatePyramid(options: PyramidOptions = {}): PyramidReport {
   const lowerCashRatios: number[] = [];
 
   for (let season = 0; season < seasons; season++) {
+    // Taken before a ball is kicked: who was bigger is a fact about the draw,
+    // not about where the season left them.
+    const tier = new Map(
+      world.leagues.flatMap((league, index) => league.clubs.map((club) => [club.id, index] as const)),
+    );
+
     const state = createSeasonState(world, rng, { economy: true, playerState: true, cup: true });
     while (state.nextRound <= state.totalRounds) playRound(state);
 
-    const reputations = new Map(allClubs(world).map((club) => [club.id, club.reputation]));
     const cup = state.cup;
     if (cup) {
       cupsPlayed++;
       for (const tie of cup.ties) {
         if (!tie.winnerClubId) continue;
-        const home = reputations.get(tie.homeClubId) ?? 0;
-        const away = reputations.get(tie.awayClubId) ?? 0;
+        const home = tier.get(tie.homeClubId) ?? 0;
+        const away = tier.get(tie.awayClubId) ?? 0;
         if (home === away) continue;
         cupTies++;
-        const favourite = home > away ? tie.homeClubId : tie.awayClubId;
+        const favourite = home < away ? tie.homeClubId : tie.awayClubId;
         if (tie.winnerClubId !== favourite) cupUpsets++;
       }
-      const topFlight = new Set(world.leagues[0]!.clubs.map((club) => club.id));
-      if (cup.winnerClubId && !topFlight.has(cup.winnerClubId)) cupsWonBelow++;
+      if (cup.winnerClubId && (tier.get(cup.winnerClubId) ?? 0) > 0) cupsWonBelow++;
     }
 
     // Measured before the close season moves anybody, so a division's numbers
