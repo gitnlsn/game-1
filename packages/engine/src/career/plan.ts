@@ -1,4 +1,5 @@
-import type { PlannedMove, Player, PositionGroup, TransferOffer } from '../types.js';
+import type { PlannedMove, Player, Position, PositionGroup, TransferOffer } from '../types.js';
+import { managedFormation, strongestEleven, type Eleven } from './squadView.js';
 import { expectedWage, formatMoney } from '../economy/valuation.js';
 import {
   appraiseTarget,
@@ -313,6 +314,68 @@ export function planPreview(career: Career): PlanPreview {
   }
 
   return { before, after, lines, warnings, salesIncome };
+}
+
+// --- The eleven the plan leaves ------------------------------------------------
+
+export interface ElevenChange {
+  position: Position;
+  out?: Player;
+  in?: Player;
+  /** The new man's slot rating less the old one's. */
+  delta: number;
+}
+
+export interface PlanEleven {
+  before: Eleven;
+  after: Eleven;
+  /** Slots whose player changes, biggest swing first. */
+  changes: ElevenChange[];
+}
+
+/**
+ * The strongest eleven now and once every planned move is made. The answer to
+ * "does this window make us better?", which counting heads per position is not.
+ */
+export function planEleven(career: Career): PlanEleven {
+  const club = managedClub(career);
+  const formation = managedFormation(career);
+  const moves = plannedMoves(career);
+
+  const leaving = new Set(
+    moves
+      .filter((m) => m.kind === 'sell' || m.kind === 'release' || m.kind === 'loanOut')
+      .flatMap((m) => movePlayerId(career, m) ?? []),
+  );
+  const arriving = moves
+    .flatMap((m) => (m.kind === 'buy' ? [career.world.players.get(m.playerId)] : []))
+    .filter((p): p is Player => p !== undefined);
+
+  const before = strongestEleven(club.squad, formation);
+  const after = strongestEleven(
+    [...club.squad.filter((p) => !leaving.has(p.id)), ...arriving],
+    formation,
+  );
+
+  // Pair the slots position by position, best with best, and keep those that change.
+  const changes: ElevenChange[] = [];
+  for (const position of new Set(formation)) {
+    const was = before.slots.filter((s) => s.position === position).sort((a, b) => b.rating - a.rating);
+    const now = after.slots.filter((s) => s.position === position).sort((a, b) => b.rating - a.rating);
+    for (let i = 0; i < Math.max(was.length, now.length); i++) {
+      const a = was[i];
+      const b = now[i];
+      if (a?.player.id === b?.player.id) continue;
+      changes.push({
+        position,
+        ...(a ? { out: a.player } : {}),
+        ...(b ? { in: b.player } : {}),
+        delta: (b?.rating ?? 0) - (a?.rating ?? 0),
+      });
+    }
+  }
+  changes.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+  return { before, after, changes };
 }
 
 // --- Checking one move before it is planned ------------------------------------

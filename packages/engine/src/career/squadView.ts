@@ -98,7 +98,7 @@ function strongestSquad(squad: readonly Player[], formation: readonly Position[]
   return { starters, bench, slots };
 }
 
-interface StartingSlot {
+export interface StartingSlot {
   position: Position;
   player: Player;
   rating: number;
@@ -109,8 +109,21 @@ function slotRating(player: Player, position: Position): number {
   return abilityIn(player.attributes, position) * positionFamiliarity(player.position, position);
 }
 
-function managedFormation(career: Career): readonly Position[] {
+export function managedFormation(career: Career): readonly Position[] {
   return FORMATIONS[currentTeamSheet(career).formation] ?? FORMATIONS[DEFAULT_FORMATION]!;
+}
+
+export interface Eleven {
+  slots: StartingSlot[];
+  /** Mean slot rating, the side's strength in one number. */
+  average: number;
+}
+
+/** The strongest eleven a squad can field in a formation, fitness aside. */
+export function strongestEleven(squad: readonly Player[], formation: readonly Position[]): Eleven {
+  const { slots } = strongestSquad(squad, formation);
+  const average = slots.length ? slots.reduce((sum, slot) => sum + slot.rating, 0) / slots.length : 0;
+  return { slots, average };
 }
 
 export const COMPARISON_TUNING = {

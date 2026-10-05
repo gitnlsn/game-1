@@ -16,6 +16,7 @@ import {
 } from '../career/controller.js';
 import {
   checkMove,
+  planEleven,
   clearPlan,
   confirmPlan,
   plannedMoves,
@@ -24,6 +25,7 @@ import {
   unplanMove,
 } from '../career/plan.js';
 import { setListing } from '../career/manager.js';
+import { sideComparer, squadMembers } from '../career/squadView.js';
 import { deserializeCareer, serializeCareer } from '../career/persistence.js';
 import { effectiveWageBill } from '../transfers/loans.js';
 import { allClubs } from '../world/index.js';
@@ -332,5 +334,35 @@ describe('checking a move before it is planned', () => {
     expect(check.cost.bank).toBe(offer.fee);
     expect(check.cost.budget).toBe(0);
     expect(club.squad.some((p) => p.id === offer.playerId)).toBe(true);
+  });
+});
+
+describe('the eleven a plan leaves', () => {
+  it('is unchanged with nothing planned', () => {
+    const c = toWindow('eleven-empty');
+    const { before, after, changes } = planEleven(c);
+    expect(after.average).toBeCloseTo(before.average);
+    expect(changes).toEqual([]);
+  });
+
+  it('is stronger for signing someone who would start', () => {
+    const c = toWindow('eleven-buy');
+    const compare = sideComparer(c);
+    const upgrade = browseTargets(c, { limit: 300 }).find((l) => compare(l.player).verdict === 'upgrade')!;
+    planMove(c, { kind: 'buy', playerId: upgrade.player.id, fee: upgrade.askingPrice });
+
+    const { before, after, changes } = planEleven(c);
+    expect(after.average).toBeGreaterThan(before.average);
+    expect(changes.some((ch) => ch.in?.id === upgrade.player.id && ch.delta > 0)).toBe(true);
+  });
+
+  it('is weaker for releasing a starter', () => {
+    const c = toWindow('eleven-release');
+    const starter = squadMembers(c).find((m) => m.role === 'key' && depthAt(managedClub(c), m.player.position) > 1)!.player;
+    planMove(c, { kind: 'release', playerId: starter.id });
+
+    const { before, after, changes } = planEleven(c);
+    expect(after.average).toBeLessThan(before.average);
+    expect(changes.some((ch) => ch.out?.id === starter.id)).toBe(true);
   });
 });

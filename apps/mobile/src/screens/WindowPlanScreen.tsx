@@ -6,10 +6,12 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   confirmPlan,
   formatMoney,
+  planEleven,
   planPreview,
   transferWindow,
   unplanMove,
   type MoveResult,
+  type PlanEleven,
   type PlannedLine,
   type PositionGroup,
 } from '@eleven-deep/engine';
@@ -43,6 +45,10 @@ export function WindowPlanScreen() {
 
   const preview = useMemo(
     () => (career && transferWindow(career) ? planPreview(career) : undefined),
+    [career, version],
+  );
+  const eleven = useMemo(
+    () => (career && transferWindow(career) ? planEleven(career) : undefined),
     [career, version],
   );
 
@@ -93,6 +99,8 @@ export function WindowPlanScreen() {
             />
           </Card>
         ) : null}
+
+        {eleven && lines.length > 0 ? <ElevenCard eleven={eleven} /> : null}
 
         <SectionTitle>Where it leaves you</SectionTitle>
         <Card>
@@ -219,6 +227,56 @@ export function WindowPlanScreen() {
   );
 }
 
+/**
+ * The strongest eleven before and after the plan: whether the window makes the
+ * side better, in one number, with the shirts that change hands under it.
+ */
+function ElevenCard({ eleven }: { eleven: PlanEleven }) {
+  const { before, after, changes } = eleven;
+  const delta = after.average - before.average;
+  const tint = delta > 0.05 ? colors.accent : delta < -0.05 ? colors.danger : colors.muted;
+  return (
+    <>
+      <SectionTitle>Your best eleven</SectionTitle>
+      <Card style={styles.eleven}>
+        <View style={styles.compare}>
+          <Text style={styles.compareLabel}>Average rating</Text>
+          <Text style={styles.compareBefore}>{before.average.toFixed(1)}</Text>
+          <Text style={styles.arrow}>→</Text>
+          <Text style={[styles.compareAfter, { color: tint }]}>
+            {after.average.toFixed(1)} ({delta >= 0 ? '+' : '−'}
+            {Math.abs(delta).toFixed(1)})
+          </Text>
+        </View>
+        {changes.length === 0 ? (
+          <Text style={styles.note}>The same eleven start. This plan is about the squad, not the side.</Text>
+        ) : (
+          <>
+            <Divider />
+            {changes.map((change, index) => (
+              <View key={`${change.position}-${index}`} style={styles.changeRow}>
+                <Text style={[styles.changePos, { color: positionColor(change.position) }]}>{change.position}</Text>
+                <Text style={styles.changeNames} numberOfLines={1}>
+                  {change.out?.displayName ?? 'Nobody'} → {change.in?.displayName ?? 'nobody'}
+                </Text>
+                <Text
+                  style={[
+                    styles.changeDelta,
+                    { color: change.delta > 0 ? colors.accent : change.delta < 0 ? colors.danger : colors.muted },
+                  ]}
+                >
+                  {change.delta >= 0 ? '+' : '−'}
+                  {Math.abs(change.delta).toFixed(0)}
+                </Text>
+              </View>
+            ))}
+          </>
+        )}
+      </Card>
+    </>
+  );
+}
+
 function describeDone(result: MoveResult): string {
   switch (result.move.kind) {
     case 'sell':
@@ -270,6 +328,11 @@ const styles = StyleSheet.create({
   depthValue: { color: colors.text, fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
   depthChange: { fontSize: 11, fontWeight: '700' },
   note: { color: colors.faint, fontSize: 11, marginTop: spacing.sm, lineHeight: 16 },
+  eleven: { marginBottom: spacing.md },
+  changeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 3 },
+  changePos: { fontSize: 11, fontWeight: '800', width: 28 },
+  changeNames: { flex: 1, color: colors.text, fontSize: 13 },
+  changeDelta: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
   warnings: { marginTop: spacing.md, marginBottom: spacing.sm, borderColor: colors.warn },
   warningText: { color: colors.warn, fontSize: 12, lineHeight: 18 },
   emptyCard: { marginTop: spacing.md },
