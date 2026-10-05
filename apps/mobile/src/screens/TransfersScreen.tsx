@@ -44,6 +44,7 @@ import {
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle } from '../components/ui';
 import { ContractRow } from '../components/ContractRow';
 import { OfferCard } from '../components/OfferCard';
+import { WindowChecklist } from '../components/WindowChecklist';
 import { CompareSheet, type CompareTarget } from '../components/CompareSheet';
 import { ProButton, usePaywall } from '../components/ProGate';
 import { TargetRow } from '../components/TargetRow';
@@ -151,6 +152,11 @@ export function TransfersScreen() {
     .filter((m) => !m.loanedTo && m.player.contract.yearsRemaining <= 1)
     .map((m) => ({ ...m, advice: contractAdvice(m.role, m.player.age) }))
     .sort((a, b) => currentAbility(b.player) - currentAbility(a.player));
+  // What is still undecided: a bid nobody has answered, a contract nobody has acted on.
+  const bidsOpen = bidsByPlayer.filter((bids) => bids.every((o) => plannedFor(career, { offerId: o.id }).length === 0)).length;
+  const contractsOpen = expiring.filter((e) =>
+    plannedFor(career, { playerId: e.player.id }).every((m) => m.kind === 'reject'),
+  ).length;
 
   const plan = (request: MoveRequest, note: string) => {
     planMove(career, request);
@@ -175,13 +181,34 @@ export function TransfersScreen() {
             tint={wageRoom <= 0 ? colors.danger : colors.text}
           />
         </View>
-        <ChipRow options={TABS} value={tab} onChange={setTab} />
+        <ChipRow
+          options={TABS.map((t) => {
+            const open = t.value === 'offers' ? bidsOpen : t.value === 'squad' ? contractsOpen : 0;
+            return open > 0 ? { ...t, label: `${t.label} · ${open}` } : t;
+          })}
+          value={tab}
+          onChange={setTab}
+        />
       </View>
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: spacing.xl * 5 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
+        <WindowChecklist
+          window={window}
+          nextRound={career.season.nextRound}
+          bidsOpen={bidsOpen}
+          bidsTotal={bidsByPlayer.length}
+          contractsOpen={contractsOpen}
+          wageRoom={preview?.after.wageRoom ?? wageRoom}
+          planned={planned.length}
+          onBids={() => setTab('offers')}
+          onContracts={() => setTab('squad')}
+          onMarket={() => setTab('market')}
+          onReview={() => navigation.navigate('windowPlan')}
+        />
+
         <ProButton
           label="Assistant's plan"
           reason="Your assistant drafts the window for you: renewals, sales, loans and signings, each with the reason."
