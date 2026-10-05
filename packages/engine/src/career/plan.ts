@@ -165,7 +165,7 @@ function totals(career: Career): PlanTotals {
 }
 
 /** What a buy would cost in wages: what `makeBid` pays when no wage is offered. */
-function signingWage(player: Player): number {
+export function signingWage(player: Player): number {
   const T = TRANSFER_TUNING;
   return Math.max(
     Math.round(expectedWage(player) * T.moveWageMin),

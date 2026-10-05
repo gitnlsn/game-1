@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../rng/index.js';
-import { createWorld } from '../world/index.js';
+import { allClubs, createWorld } from '../world/index.js';
+import { managedClub, startCareer } from '../career/controller.js';
+import { deserializeCareer, serializeCareer } from '../career/persistence.js';
 import { currentAbility, generatePlayer } from '../world/players.js';
 import {
   contractMultiplier,
@@ -136,5 +138,33 @@ describe('club finances', () => {
     const best = squad[0]!;
     const worst = squad[squad.length - 1]!;
     expect(best.contract.wage).toBeGreaterThan(worst.contract.wage);
+  });
+});
+
+describe('wage budgets across divisions', () => {
+  it('starts every club in a two-division career inside its wage budget', () => {
+    for (const seed of ['wages-a', 'wages-b']) {
+      const career = startCareer({ seed, divisions: 2, cup: false });
+      for (const club of allClubs(career.world)) {
+        expect(wageBill(club.squad), `${seed} ${club.name}`).toBeLessThanOrEqual(club.finances.wageBudget);
+      }
+    }
+  });
+
+  it('repairs a save from before the fix: a club over budget loads inside it', () => {
+    const career = startCareer({ seed: 'wages-save', divisions: 2, cup: false });
+    const club = managedClub(career);
+    const saved = JSON.parse(serializeCareer(career));
+    // As a v11 save of the bug looked: the same squad on a third more money.
+    const stored = saved.clubs.find((c: { id: string }) => c.id === club.id);
+    for (const player of stored.squad) player.contract.wage = Math.round(player.contract.wage * 1.35);
+    saved.version = 11;
+
+    const loaded = managedClub(deserializeCareer(JSON.stringify(saved)));
+    expect(wageBill(loaded.squad)).toBeLessThanOrEqual(loaded.finances.wageBudget);
+    // Who earns most is kept: the order of wages does not change.
+    const order = (squad: { id: string; contract: { wage: number } }[]) =>
+      [...squad].sort((a, b) => b.contract.wage - a.contract.wage).map((p) => p.id);
+    expect(order(loaded.squad).slice(0, 5)).toEqual(order(stored.squad).slice(0, 5));
   });
 });

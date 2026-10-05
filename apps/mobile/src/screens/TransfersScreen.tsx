@@ -5,8 +5,10 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   browseTargets,
+  contractAdvice,
   currentAbility,
   departureImpact,
+  draftAssistantPlan,
   effectiveWageBill,
   formatMoney,
   incomingOffers,
@@ -29,20 +31,23 @@ import {
   toggleShortlist,
   transferWindow,
   unplanMove,
+  type ContractAdvice,
   type MoveRequest,
   type PlannedMove,
   type Player,
   type TransferOffer,
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle } from '../components/ui';
-import { ContractRow, contractAdvice, type ContractAdvice } from '../components/ContractRow';
+import { ContractRow } from '../components/ContractRow';
 import { OfferCard } from '../components/OfferCard';
+import { ProButton, usePaywall } from '../components/ProGate';
 import { TargetRow } from '../components/TargetRow';
 import { RenewDialog } from '../components/RenewDialog';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import type { RootStackParamList } from '../nav/routes';
 import { plannedLabel } from '../game/moveText';
+import { POSITION_FILTERS } from '../game/positionFilters';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Tab = 'offers' | 'squad' | 'market';
@@ -67,6 +72,7 @@ export function TransfersScreen() {
   const [position, setPosition] = useState<string>('any');
   const [message, setMessage] = useState<string | undefined>();
   const [renewing, setRenewing] = useState<Player | undefined>();
+  const paywall = usePaywall();
 
   const club = career ? managedClub(career) : undefined;
   const window = career ? transferWindow(career) : undefined;
@@ -156,6 +162,25 @@ export function TransfersScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: spacing.xl * 5 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
+        <ProButton
+          label="Assistant's plan"
+          reason="Your assistant drafts the window for you: renewals, sales, loans and signings, each with the reason."
+          onLocked={paywall.show}
+          onPress={() => {
+            const drafted = draftAssistantPlan(career);
+            setMessage(
+              [
+                drafted.moves.length === 0
+                  ? 'Your assistant has nothing to add to the plan.'
+                  : `Your assistant added ${drafted.moves.length} move${drafted.moves.length === 1 ? '' : 's'} to the plan. Review them before confirming.`,
+                ...drafted.notes,
+              ].join('\n\n'),
+            );
+            refresh();
+          }}
+          style={styles.assistant}
+        />
+
         {message ? (
           <Card style={styles.message}>
             <Text style={styles.messageText}>{message}</Text>
@@ -366,13 +391,7 @@ export function TransfersScreen() {
             </Card>
             <ChipRow
               style={styles.filter}
-              options={[
-                { value: 'any', label: 'All' },
-                { value: 'GK', label: 'GK' },
-                { value: 'CB', label: 'CB' },
-                { value: 'CM', label: 'CM' },
-                { value: 'ST', label: 'ST' },
-              ]}
+              options={POSITION_FILTERS}
               value={position}
               onChange={setPosition}
             />
@@ -420,6 +439,7 @@ export function TransfersScreen() {
 
       <RenewDialog
         player={renewing}
+        wageRoom={preview?.after.wageRoom ?? wageRoom}
         onCancel={() => setRenewing(undefined)}
         onPlan={(wage, years) => {
           if (!renewing) return;
@@ -430,6 +450,8 @@ export function TransfersScreen() {
           setRenewing(undefined);
         }}
       />
+
+      {paywall.element}
 
       {planned.length > 0 && preview ? (
         <View style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}>
@@ -524,6 +546,7 @@ const styles = StyleSheet.create({
   closed: { margin: spacing.lg },
   closedText: { color: colors.muted, fontSize: 13, fontStyle: 'italic' },
   message: { marginBottom: spacing.md, borderColor: colors.accent },
+  assistant: { marginBottom: spacing.md },
   messageText: { color: colors.text, fontSize: 13 },
   empty: { color: colors.faint, fontSize: 13, fontStyle: 'italic' },
   groupNote: { color: colors.muted, fontSize: 12, marginTop: -spacing.xs, marginBottom: spacing.sm, lineHeight: 17 },

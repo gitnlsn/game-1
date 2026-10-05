@@ -420,6 +420,31 @@ export function resetSeasonRecord(club: Club): void {
 }
 
 /**
+ * Re-sizes a club's opening finances for the league it actually plays in.
+ *
+ * Clubs are generated in one batch for the whole pyramid, so their finances are
+ * first sized for a single league of every club at top-flight money. Left like
+ * that, wages are fitted to a budget the club never has: the season starts,
+ * budgets are set for the real league -- half the home games, a lower tier's TV
+ * share -- and half the clubs in a two-division world are over their wage budget
+ * before a ball is kicked.
+ */
+export function sizeFinancesForLeague(
+  club: Club,
+  generatedFor: { clubCount: number; tier: number },
+  league: { clubCount: number; tier: number },
+): void {
+  const E = ECONOMY_TUNING;
+  const before = expectedAnnualRevenue(club.reputation, generatedFor.clubCount, generatedFor.tier);
+  const after = expectedAnnualRevenue(club.reputation, league.clubCount, league.tier);
+  if (before === after || before <= 0) return;
+
+  club.finances.balance = Math.round(club.finances.balance * (after / before));
+  club.finances.wageBudget = Math.round((after * E.wageBudgetShare) / E.wageWeeksPerSeason);
+  fitWagesToBudget(club);
+}
+
+/**
  * Brings a freshly generated squad inside the club's wage budget by scaling every
  * contract proportionally.
  *

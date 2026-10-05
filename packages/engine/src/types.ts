@@ -440,14 +440,18 @@ export interface TransferOffer {
  * plan is confirmed, and then everything is checked again at the moment it is
  * made: a plan is an intention, not a reservation.
  */
-export type PlannedMove =
+export type PlannedMove = (
   | { id: string; kind: 'buy'; playerId: string; fee: number }
   /** Accept a bid on the table for one of your players. */
   | { id: string; kind: 'sell'; offerId: string }
   | { id: string; kind: 'reject'; offerId: string }
   | { id: string; kind: 'loanOut'; playerId: string; toClubId: string }
   | { id: string; kind: 'release'; playerId: string }
-  | { id: string; kind: 'renew'; playerId: string; wage: number; years: number };
+  | { id: string; kind: 'renew'; playerId: string; wage: number; years: number }
+) & {
+  /** Why the assistant suggested it. Absent on moves the manager drafted. */
+  reason?: string;
+};
 
 /** The close-season window, while a human manager is acting in it. */
 export interface TransferWindowState {

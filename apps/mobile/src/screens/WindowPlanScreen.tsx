@@ -164,6 +164,7 @@ export function WindowPlanScreen() {
                       </Pressable>
                     </View>
                     <Text style={styles.lineTitle}>{line.title}</Text>
+                    {line.move.reason ? <Text style={styles.reason}>{line.move.reason}</Text> : null}
                     {line.fee !== 0 || line.wageChange !== 0 ? (
                       <Text style={styles.lineMoney}>
                         {[
@@ -278,6 +279,7 @@ const styles = StyleSheet.create({
   lineName: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
   remove: { color: colors.danger, fontSize: 12, fontWeight: '700' },
   lineTitle: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  reason: { color: colors.text, fontSize: 12, marginTop: spacing.xs, lineHeight: 17 },
   lineMoney: { color: colors.faint, fontSize: 12, marginTop: 2, fontVariant: ['tabular-nums'] },
   stale: { color: colors.danger, fontSize: 12, marginTop: spacing.xs },
   footer: {

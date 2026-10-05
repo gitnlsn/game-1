@@ -4,6 +4,7 @@ import {
   currentAbility,
   expectedWage,
   formatMoney,
+  type ContractAdvice,
   type DepartureImpact,
   type PlannedMove,
   type Player,
@@ -13,8 +14,6 @@ import { Badge, Button, Card, KeyValue } from './ui';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
 import { departureLine } from '../game/compareText';
 import { plannedLabel } from '../game/moveText';
-
-export type ContractAdvice = 'renew' | 'decide' | 'release';
 
 /**
  * How the advice shows: a tag by the name and the card's left edge. The card
@@ -34,16 +33,6 @@ const ROLE_LABEL: Record<SquadRole, string> = {
   backup: 'Backup',
   surplus: 'Surplus',
 };
-
-/**
- * What to do about a contract that is running down, from where he stands and
- * how old he is. Advice, not a rule: every row still offers both.
- */
-export function contractAdvice(role: SquadRole, age: number): ContractAdvice {
-  if ((role === 'key' && age <= 31) || role === 'prospect') return 'renew';
-  if (role === 'surplus' || (role === 'backup' && age >= 29)) return 'release';
-  return 'decide';
-}
 
 /**
  * One expiring contract with what the decision turns on: what keeping him

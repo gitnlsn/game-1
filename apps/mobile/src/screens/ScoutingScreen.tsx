@@ -25,17 +25,11 @@ import { colors, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import { ProButton, usePaywall } from '../components/ProGate';
 import type { RootStackParamList } from '../nav/routes';
+import { POSITION_FILTERS } from '../game/positionFilters';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Tab = 'shortlist' | 'search';
 
-const POSITIONS = [
-  { value: 'any', label: 'All' },
-  ...(['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'AM', 'LW', 'RW', 'ST'] as const).map((p) => ({
-    value: p,
-    label: p,
-  })),
-];
 
 const AGES = [
   { value: 'any', label: 'Any age' },
@@ -193,7 +187,7 @@ export function ScoutingScreen() {
       ) : (
         <>
           <SectionTitle>Filters</SectionTitle>
-          <ChipRow style={styles.filter} options={POSITIONS} value={position} onChange={setPosition} />
+          <ChipRow style={styles.filter} options={POSITION_FILTERS} value={position} onChange={setPosition} />
           <ChipRow style={styles.filter} options={AGES} value={age} onChange={setAge} />
           <ChipRow style={styles.filter} options={POTENTIAL} value={potential} onChange={setPotential} />
           <ChipRow style={styles.filter} options={REACH} value={reach} onChange={setReach} />

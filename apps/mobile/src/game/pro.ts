@@ -7,6 +7,7 @@ import { useGame } from './GameContext';
 export const PRO_PERKS = [
   { id: 'slots', title: 'Three careers at once', detail: 'Keep up to three save slots and switch between them from the title screen.' },
   { id: 'sim', title: 'Sim to the end of the season', detail: 'Play out the rest of the season in one go. It stops for anything that needs you.' },
+  { id: 'window', title: 'Your assistant drafts the window', detail: 'One tap plans the renewals, sales, loans and signings worth making, each with the reason. You review it and confirm.' },
   { id: 'assistant', title: 'Your assistant picks the team', detail: 'Before every match, the fittest and most in-form eleven in your formation. Your instructions stay as you set them.' },
   { id: 'countries', title: 'Eight more countries', detail: 'England, Spain, Italy, Germany, France, Argentina, Portugal and the Netherlands, each with its own clubs and players.' },
   { id: 'records', title: 'Club records and player histories', detail: 'Every season, all-time appearances and scorers, biggest wins, and each player’s seasons at your club.' },

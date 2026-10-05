@@ -254,6 +254,20 @@ export function squadMembers(career: Career): SquadMember[] {
   return members;
 }
 
+/** What to do about a contract that is running down. */
+export type ContractAdvice = 'renew' | 'decide' | 'release';
+
+/**
+ * From where he stands and how old he is. Advice, not a rule: first-choice
+ * players in their prime and prospects are worth keeping; surplus players and
+ * ageing backups are not; everyone else is the manager's call.
+ */
+export function contractAdvice(role: SquadRole, age: number): ContractAdvice {
+  if ((role === 'key' && age <= 31) || role === 'prospect') return 'renew';
+  if (role === 'surplus' || (role === 'backup' && age >= 29)) return 'release';
+  return 'decide';
+}
+
 export interface PositionDepth {
   group: PositionGroup;
   /** Natural players in the group, on loan excluded. */

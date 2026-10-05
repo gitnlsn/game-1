@@ -18,6 +18,8 @@ import type {
 } from '../types.js';
 import { createSeasonState } from '../league/season.js';
 import { ensurePlayerIdsAbove } from '../world/players.js';
+import { fitWagesToBudget } from '../economy/finances.js';
+import { wageBill } from '../economy/valuation.js';
 import type { CupState } from '../league/cup.js';
 import type { Career } from './controller.js';
 import type { BoardState } from './board.js';
@@ -25,7 +27,7 @@ import { BOARD_TUNING, createBoardState, refreshExpectation } from './board.js';
 import type { SeasonSummary } from './career.js';
 import { recordsFromHistory, type ClubRecords } from './records.js';
 
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 /**
  * What a saved match keeps. Goals are kept everywhere because the scorer charts
@@ -321,6 +323,20 @@ const MIGRATIONS: Record<number, Migration> = {
       records: recordsFromHistory(history, saved.managedClubId as string, leagues),
       sandbox: false,
     };
+  },
+  /**
+   * v12 repairs wages. Worlds of more than one division were generated with
+   * every club's finances sized for a single league of all of them, so wages
+   * were fitted to a budget the club never had and half the clubs started over
+   * their wage budget -- unable to renew anyone, the managed club included. The
+   * repair is what generation now does: a club over its budget has its wages
+   * scaled to fit, keeping who earns most.
+   */
+  11: (saved) => {
+    for (const club of (saved.clubs as Club[]) ?? []) {
+      if (wageBill(club.squad) > club.finances.wageBudget) fitWagesToBudget(club);
+    }
+    return { ...saved, version: 12 };
   },
 };
 

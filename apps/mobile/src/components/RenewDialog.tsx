@@ -32,10 +32,13 @@ function lengthNote(player: Player, years: number): string {
  */
 export function RenewDialog({
   player,
+  wageRoom,
   onPlan,
   onCancel,
 }: {
   player: Player | undefined;
+  /** Weekly room left once the rest of the plan is made, to warn before it is refused. */
+  wageRoom?: number;
   onPlan: (wage: number, years: number) => void;
   onCancel: () => void;
 }) {
@@ -63,6 +66,12 @@ export function RenewDialog({
             value={change === 0 ? 'None' : `+${formatMoney(change)}/wk`}
             tint={change > 0 ? colors.warn : colors.muted}
           />
+          {wageRoom !== undefined && change > wageRoom ? (
+            <Text style={styles.warning}>
+              Your plan leaves {formatMoney(Math.max(0, wageRoom))}/wk of wage room. This renewal will be refused
+              unless you free up {formatMoney(change - Math.max(0, wageRoom))}/wk first.
+            </Text>
+          ) : null}
           <Text style={styles.label}>Length</Text>
           <Segmented fill options={YEARS} value={years} onChange={setYears} />
           <Text style={styles.note}>{lengthNote(player, count)}</Text>
@@ -78,6 +87,7 @@ export function RenewDialog({
 }
 
 const styles = StyleSheet.create({
+  warning: { color: colors.warn, fontSize: 12, lineHeight: 17, marginTop: spacing.sm },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.72)',

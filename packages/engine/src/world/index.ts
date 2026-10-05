@@ -1,5 +1,6 @@
 import { Rng } from '../rng/index.js';
 import type { Club, League, Player, World } from '../types.js';
+import { sizeFinancesForLeague } from '../economy/finances.js';
 import { generateClubs } from './clubs.js';
 import { resetPlayerIds } from './players.js';
 
@@ -70,6 +71,17 @@ export function createWorld(options: CreateWorldOptions): World {
     tier: i + 1,
     clubs: ranked.slice(i * clubCount, (i + 1) * clubCount),
   }));
+
+  // Generated as one league of every club; size each for the one it is in.
+  for (const league of leagues) {
+    for (const club of league.clubs) {
+      sizeFinancesForLeague(
+        club,
+        { clubCount: clubs.length, tier: 1 },
+        { clubCount: league.clubs.length, tier: league.tier },
+      );
+    }
+  }
 
   return {
     seed: options.seed,
