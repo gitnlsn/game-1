@@ -12,6 +12,7 @@ import {
   type TeamRating,
 } from './ratings.js';
 import { resolveTactics, tacticShapes, type Tactics, type TacticShapes } from './tactics.js';
+import { positionFamiliarity } from '../world/positions.js';
 
 /**
  * Every magic number in the match engine lives here. These are calibrated
@@ -38,6 +39,12 @@ export const MATCH_TUNING = {
    */
   shotChanceCeiling: 0.72,
   conversionCeiling: 0.55,
+  /**
+   * The same ceiling when the man in goal is not a keeper. The packed box that
+   * justifies the ordinary ceiling does nothing for someone who does not know
+   * where to stand, so a striker in goal concedes like one.
+   */
+  outfieldKeeperConversionCeiling: 0.8,
   /** Exponent on the attack-vs-defence ratio when creating a shot. */
   shotExponent: 0.7,
   /** Baseline chance a shot is on target. */
@@ -203,6 +210,8 @@ interface TeamState {
   keeperShotStopping: number;
   /** How cleanly the keeper holds what he reaches. Low handling spills rebounds. */
   keeperHandling: number;
+  /** Whether the man in goal is a goalkeeper by trade. */
+  keeperIsNatural: boolean;
   /** Feeds possession retention. */
   keeperDistribution: number;
   goals: number;
@@ -468,6 +477,7 @@ function createTeamState(club: Club, sheet: TeamSheet | undefined, boost: number
     goalkeepingBase: 1,
     keeperShotStopping: 1,
     keeperHandling: 50,
+    keeperIsNatural: true,
     keeperDistribution: 50,
     goals: 0,
     shots: 0,
@@ -500,7 +510,14 @@ function refreshRating(team: TeamState): void {
    * keep the ball -- so two keepers of equal overall rating now play differently.
    */
   const keeper = team.onPitch.find((slot) => slot.position === 'GK')?.player;
-  const keeperEffect = keeper ? effectiveness(keeper) : 1;
+  /*
+   * Familiarity is folded in here because nothing else reaches the duel: the
+   * keeper rating a selection screen shows already carries it, and without it
+   * a striker's positioning, composure and strength made him half a keeper.
+   */
+  const familiarity = keeper ? positionFamiliarity(keeper.position, 'GK') : 1;
+  const keeperEffect = keeper ? effectiveness(keeper) * familiarity : 1;
+  team.keeperIsNatural = familiarity === 1;
   /*
    * Spread across five attributes rather than two or three. Averaging fewer
    * inputs makes keeper quality more variable across the league, and a wider
@@ -716,7 +733,7 @@ function resolveAttack(
   const conversion = clamp(
     T.conversionBase * Math.pow(finishing / defender.keeperShotStopping, T.conversionExponent),
     0.08,
-    T.conversionCeiling,
+    defender.keeperIsNatural ? T.conversionCeiling : T.outfieldKeeperConversionCeiling,
   );
 
   if (rng.chance(conversion)) {
