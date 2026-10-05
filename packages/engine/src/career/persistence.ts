@@ -16,7 +16,7 @@ import type {
   TeamSheet,
   TransferWindowState,
 } from '../types.js';
-import { createSeasonState } from '../league/season.js';
+import { createSeasonState, drawCupIfDue } from '../league/season.js';
 import { ensurePlayerIdsAbove } from '../world/players.js';
 import { fitWagesToBudget } from '../economy/finances.js';
 import { wageBill } from '../economy/valuation.js';
@@ -431,6 +431,8 @@ export function fromSavedCareer(input: SavedCareer | AnySave): Career {
   season.points = new Map(saved.season.points);
   season.played = new Map(saved.season.played);
   season.teamSheets = new Map(saved.season.teamSheets ?? []);
+  // A save from before ties were drawn a matchday ahead may sit on an undrawn one.
+  drawCupIfDue(season);
 
   const board = saved.board ?? createBoardState(world, saved.managedClubId);
   /*

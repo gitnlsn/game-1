@@ -61,7 +61,7 @@ import {
   stepMatch,
   type MatchInProgress,
 } from '../match/engine.js';
-import type { CupState, CupTie } from '../league/cup.js';
+import { currentTies, settleCupTie, type CupState, type CupTie } from '../league/cup.js';
 import {
   loanCandidates,
   loanOf,
@@ -830,8 +830,22 @@ export function beginLiveMatch(career: Career): LiveMatch | undefined {
 
 /** Blows the whistle, books the result and closes the round. */
 export function endLiveMatch(live: LiveMatch, career: Career): MatchResult {
-  while (!matchComplete(live.match)) stepMatch(live.match);
-  const result = playFixture(career.season, live.fixture, finishMatch(live.match));
+  // A cup tie level at the whistle is not over: extra time, then penalties.
+  const cup = career.season.cup;
+  const tie =
+    cup && live.fixture.competitionId === cup.competitionId
+      ? currentTies(cup).find(
+          (t) => t.homeClubId === live.fixture.homeClubId && t.awayClubId === live.fixture.awayClubId,
+        )
+      : undefined;
+  let finished: MatchResult;
+  if (tie) {
+    finished = settleCupTie(tie, live.match);
+  } else {
+    while (!matchComplete(live.match)) stepMatch(live.match);
+    finished = finishMatch(live.match);
+  }
+  const result = playFixture(career.season, live.fixture, finished);
   expireSelection(career);
   offerManagedSponsor(career, [result]);
   developIfDue(career);

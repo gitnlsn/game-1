@@ -15,6 +15,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const NOTABLE: MatchEvent['type'][] = ['goal', 'red_card', 'yellow_card', 'injury', 'substitution'];
 
+/** Where the replay clock stops for an ordinary match; extra time runs past it. */
 const FULL_TIME = 96;
 /** Real seconds a replayed match takes end to end. */
 const REPLAY_DURATION_MS = 10_000;
@@ -36,8 +37,22 @@ export function MatchScreen({ route }: Props) {
     );
   }, [career, round]);
 
+  /*
+   * The cup tie this was, if it was one. A tie level after ninety minutes plays
+   * on, so the clock has to run to the last thing that happened rather than to
+   * the usual whistle, or extra time's goals never reach the scoreline.
+   */
+  const tie = useMemo(() => {
+    const cup = career?.season.cup;
+    if (!result || !cup || result.competitionId !== cup.competitionId) return undefined;
+    return cup.ties.find((t) => t.homeClubId === result.homeClubId && t.awayClubId === result.awayClubId);
+  }, [career, result]);
+  const fullTime = tie?.extraTime
+    ? Math.max(FULL_TIME, ...(result?.events.map((e) => e.minute + 1) ?? []))
+    : FULL_TIME;
+
   const replaying = settings.matchMode === 'replay';
-  const [clock, setClock] = useState(replaying ? 0 : FULL_TIME);
+  const [clock, setClock] = useState(replaying ? 0 : fullTime);
   const skipped = useRef(false);
 
   /*
@@ -56,10 +71,10 @@ export function MatchScreen({ route }: Props) {
     const tick = () => {
       if (skipped.current || done) return;
       const progress = (Date.now() - started) / REPLAY_DURATION_MS;
-      const minute = Math.min(FULL_TIME, Math.round(progress * FULL_TIME));
+      const minute = Math.min(fullTime, Math.round(progress * fullTime));
       // Only re-render when the displayed minute actually changes.
       setClock((current) => (current === minute ? current : minute));
-      if (minute >= FULL_TIME) done = true;
+      if (minute >= fullTime) done = true;
       else frame = requestAnimationFrame(tick);
     };
 
@@ -73,7 +88,7 @@ export function MatchScreen({ route }: Props) {
       cancelAnimationFrame(frame);
       clearInterval(backstop);
     };
-  }, [replaying]);
+  }, [replaying, fullTime]);
 
   if (!career || !result) {
     return (
@@ -93,14 +108,25 @@ export function MatchScreen({ route }: Props) {
   const shown = result.events.filter((e) => e.minute <= clock);
   const homeGoals = shown.filter((e) => e.type === 'goal' && e.clubId === result.homeClubId).length;
   const awayGoals = shown.filter((e) => e.type === 'goal' && e.clubId === result.awayClubId).length;
-  const finished = clock >= FULL_TIME;
+  const finished = clock >= fullTime;
+  // Stoppage is not shown; extra time is, as the minutes it is.
+  const shownMinute = tie?.extraTime && clock > 90 ? Math.min(clock, 120) : Math.min(clock, 90);
 
   const ownGoals = home ? homeGoals : awayGoals;
   const theirGoals = home ? awayGoals : homeGoals;
   const outcome = ownGoals > theirGoals ? 'Winning' : ownGoals === theirGoals ? 'Level' : 'Losing';
-  const finalOutcome = ownGoals > theirGoals ? 'Won' : ownGoals === theirGoals ? 'Drew' : 'Lost';
-  const outcomeColor =
-    ownGoals > theirGoals ? colors.accent : ownGoals === theirGoals ? colors.muted : colors.danger;
+  const through = tie?.winnerClubId === club.id;
+  // A knockout is never drawn: level after extra time means it went to penalties.
+  const finalOutcome =
+    ownGoals > theirGoals ? 'Won' : ownGoals < theirGoals ? 'Lost' : tie?.shootout ? (through ? 'Won' : 'Lost') : 'Drew';
+  const settled = tie?.shootout
+    ? `After extra time · ${through ? 'won' : 'lost'} ${Math.max(tie.shootout.home, tie.shootout.away)}–${Math.min(tie.shootout.home, tie.shootout.away)} on penalties`
+    : tie?.extraTime
+      ? 'After extra time'
+      : undefined;
+  const outcomeColor = finished
+    ? finalOutcome === 'Won' ? colors.accent : finalOutcome === 'Lost' ? colors.danger : colors.muted
+    : ownGoals > theirGoals ? colors.accent : ownGoals === theirGoals ? colors.muted : colors.danger;
 
   const notable = shown.filter((e) => NOTABLE.includes(e.type)).reverse();
 
@@ -109,7 +135,7 @@ export function MatchScreen({ route }: Props) {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.clockRow}>
           <Badge label={finished ? finalOutcome.toUpperCase() : outcome.toUpperCase()} color={outcomeColor} />
-          <Text style={styles.clock}>{finished ? 'FT' : `${Math.min(clock, 90)}'`}</Text>
+          <Text style={styles.clock}>{finished ? (tie?.extraTime ? 'AET' : 'FT') : `${shownMinute}'`}</Text>
         </View>
 
         <View style={styles.scoreline}>
@@ -123,6 +149,7 @@ export function MatchScreen({ route }: Props) {
             {home ? opponent?.name : club.name}
           </Text>
         </View>
+        {finished && settled ? <Text style={styles.settled}>{settled}</Text> : null}
 
         {finished ? (
           <Card style={styles.statsCard}>
@@ -184,7 +211,7 @@ export function MatchScreen({ route }: Props) {
             variant="secondary"
             onPress={() => {
               skipped.current = true;
-              setClock(FULL_TIME);
+              setClock(fullTime);
             }}
           />
         )}
@@ -229,6 +256,7 @@ const styles = StyleSheet.create({
     color: colors.text, fontSize: 40, fontWeight: '800',
     paddingHorizontal: spacing.md, fontVariant: ['tabular-nums'],
   },
+  settled: { color: colors.muted, fontSize: 13, textAlign: 'center', marginTop: -spacing.md, marginBottom: spacing.lg },
   statsCard: { marginBottom: spacing.lg },
   statRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
   statValue: {

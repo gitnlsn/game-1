@@ -60,9 +60,9 @@ export interface CupTieSlot {
   /** After ninety minutes. */
   score?: CalendarScore;
   /**
-   * Goals scored *in* extra time, not an aggregate: `resolveCupTie` plays a
-   * separate thirty-minute match and stores it on its own. Kept in the engine's
-   * terms; the view adds the two together to show a final score.
+   * Goals scored *in* extra time, not an aggregate: the engine stores the
+   * ninety and the thirty separately. Kept in the engine's terms; the view adds
+   * the two together to show a final score.
    */
   extraTime?: CalendarScore;
   shootout?: CalendarScore;

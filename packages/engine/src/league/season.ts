@@ -183,10 +183,16 @@ function spreadAroundCup(fixtures: readonly Fixture[]): Fixture[] {
 }
 
 /**
- * Ties for the cup round due on this matchday, drawn now because who is in them
- * depends on who survived the last one.
+ * Ties for the cup round due on the next matchday, drawn as soon as it is next
+ * because who is in them depends on who survived the last one.
+ *
+ * Drawn when the matchday comes up rather than when it is played, so a club
+ * drawn to play can see the tie coming: drawing at kick-off left the managed
+ * club with no fixture on every cup day, told it had a bye, and played its tie
+ * without it. The draw is deterministic, so when it happens changes nothing
+ * else. Safe to call any number of times.
  */
-function drawCupIfDue(state: SeasonState): void {
+export function drawCupIfDue(state: SeasonState): void {
   const cup = state.cup;
   if (!cup || cupComplete(cup)) return;
   if (cupRoundMatchday(cup) !== state.nextRound) return;
@@ -390,6 +396,11 @@ export function playFixture(
     applyMatchdayIncome(home, away, pointsPerGame);
   }
 
+  // Without a winner the draw would quietly drop both clubs from the cup.
+  if (tie && !tie.winnerClubId) {
+    throw new Error(`playFixture: cup tie ${tie.homeClubId} v ${tie.awayClubId} has no winner`);
+  }
+
   // A cup tie earns no league points, the same as in `playRound`.
   if (!tie && home && away) {
     const homePoints =
@@ -489,6 +500,7 @@ function closeRound(state: SeasonState): void {
     advanceCupRound(state.cup);
   }
   state.nextRound += 1;
+  drawCupIfDue(state);
 }
 
 /**

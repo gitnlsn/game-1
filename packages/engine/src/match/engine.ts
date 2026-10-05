@@ -288,6 +288,16 @@ export function startMatch(
   };
 }
 
+/**
+ * Plays on past the whistle: extra time in a cup tie. Everything carries --
+ * the scoreline, sendings off, substitutions made, legs that have already run
+ * ninety minutes -- because it is the same match, not a new one.
+ */
+export function extendMatch(match: MatchInProgress, minutes: number, attackRate: number): void {
+  match.finalMinute = match.minute + minutes + match.rng.int(0, 2);
+  match.attackRate = attackRate;
+}
+
 export function matchComplete(match: MatchInProgress): boolean {
   return match.minute >= match.finalMinute;
 }

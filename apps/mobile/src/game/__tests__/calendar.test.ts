@@ -215,20 +215,26 @@ describe('seasonCalendar', () => {
     }
   });
 
-  it('says the draw is still to come, never that it is a bye', () => {
+  it('shows the tie on the matchday it is due, and the draw still to come after it', () => {
     const career = cupCareer();
-    // Stop on matchday 5 itself: the round is drawn when it is played, so at
-    // this point there is no fixture and no opponent yet.
+    // Stop on matchday 5 itself, before it is played. The round is drawn as
+    // soon as it is next, so the club can see who it has got.
     while (career.season.nextRound < 5) advanceRound(career);
 
-    const entry = entryAt(seasonCalendar(career), 5);
-
+    const calendar = seasonCalendar(career);
+    const entry = entryAt(calendar, 5);
     expect(entry.status).toBe('current');
-    expect(entry.kind).toBe('cupRound');
-    if (entry.kind !== 'cupRound') throw new Error('expected a cup round');
-    expect(entry.state).toBe('undrawn');
-    expect(entry.roundName).not.toBe('');
-    expect(entry.roundShort).not.toBe('');
+    expect(entry.kind).toBe('cupTie');
+    if (entry.kind !== 'cupTie') throw new Error('expected a cup tie');
+    expect(entry.opponentName).not.toBe('');
+    expect(entry.score).toBeUndefined();
+
+    // The next round depends on this one, so it cannot be drawn yet.
+    const next = entryAt(calendar, CUP_TUNING.rounds[1]!);
+    expect(next.kind).toBe('cupRound');
+    if (next.kind !== 'cupRound') throw new Error('expected a cup round');
+    expect(next.state).toBe('undrawn');
+    expect(next.roundName).not.toBe('');
   });
 
   it('marks every later cup round as out, once knocked out', () => {

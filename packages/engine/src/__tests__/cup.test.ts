@@ -8,7 +8,16 @@ import {
   resolveShootout,
 } from '../league/cup.js';
 import { createSeasonState, currentTable, isMidweek, playRound } from '../league/season.js';
-import { cupRoundName } from '../career/controller.js';
+import {
+  advanceRound,
+  beginLiveMatch,
+  cupRoundName,
+  endLiveMatch,
+  isSeasonComplete,
+  nextFixture,
+  startCareer,
+} from '../career/controller.js';
+import { extendMatch, matchComplete, startMatch, stepMatch } from '../match/engine.js';
 import { allClubs, createWorld } from '../world/index.js';
 import type { SeasonState } from '../league/season.js';
 
@@ -226,5 +235,78 @@ describe('a cup tie is a midweek match', () => {
     };
 
     expect(share(true)).toBeLessThan(share(false));
+  });
+});
+
+describe('extra time', () => {
+  it('carries on the same match: whoever was sent off stays off', () => {
+    const world = createWorld({ seed: 'extra-time-state' });
+    const [home, away] = allClubs(world);
+    const match = startMatch(new Rng('extra-time-state'), home!, away!);
+    while (!matchComplete(match)) stepMatch(match);
+
+    // As a red card leaves it: a man down, with nobody coming on.
+    match.home.onPitch = match.home.onPitch.slice(0, 10);
+    const ninety = match.minute;
+    extendMatch(match, 30, CUP_TUNING.extraTimeAttackRate);
+    while (!matchComplete(match)) stepMatch(match);
+
+    expect(match.minute).toBeGreaterThanOrEqual(ninety + 30);
+    expect(match.home.onPitch.length).toBeLessThanOrEqual(10);
+  });
+
+  it('counts in the result, so its goals are credited like any other', () => {
+    const state = runSeason('cup-extra-goals', true);
+    let checked = 0;
+    for (const tie of state.cup!.ties) {
+      if (!tie.extraTime) continue;
+      const result = state.results.find(
+        (r) => r.homeClubId === tie.homeClubId && r.awayClubId === tie.awayClubId &&
+          r.competitionId === state.cup!.competitionId,
+      )!;
+      expect(result.home.goals).toBe(tie.score!.home + tie.extraTime.home);
+      expect(result.away.goals).toBe(tie.score!.away + tie.extraTime.away);
+      // Every goal, extra time's included, is an event with a scorer to credit.
+      const goals = result.events.filter((e) => e.type === 'goal').length;
+      expect(goals).toBe(result.home.goals + result.away.goals);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+});
+
+describe('a cup tie played live', () => {
+  const playLiveCupTie = (seed: string) => {
+    const career = startCareer({ seed, managedClubId: 'c20' });
+    while (!nextFixture(career)?.isCup && !isSeasonComplete(career)) advanceRound(career);
+    expect(nextFixture(career)?.isCup, seed).toBe(true);
+    const fixture = nextFixture(career)!.fixture;
+    endLiveMatch(beginLiveMatch(career)!, career);
+    const tie = career.season.cup!.ties.find(
+      (t) => t.homeClubId === fixture.homeClubId && t.awayClubId === fixture.awayClubId,
+    )!;
+    return { career, tie };
+  };
+
+  it('gets a winner, and the winner goes through', () => {
+    for (const seed of ['live-cup-a', 'live-cup-b', 'live-cup-c']) {
+      const { career, tie } = playLiveCupTie(seed);
+      expect(tie.winnerClubId, seed).toBeDefined();
+      const loser = tie.winnerClubId === tie.homeClubId ? tie.awayClubId : tie.homeClubId;
+      expect(career.season.cup!.remaining, seed).toContain(tie.winnerClubId);
+      expect(career.season.cup!.remaining, seed).not.toContain(loser);
+    }
+  });
+
+  it('goes to extra time when the ninety is level', () => {
+    let level = 0;
+    for (let i = 0; i < 40 && level === 0; i++) {
+      const { tie } = playLiveCupTie(`live-cup-level-${i}`);
+      if (tie.score!.home !== tie.score!.away) continue;
+      level++;
+      expect(tie.extraTime).toBeDefined();
+      expect(tie.winnerClubId).toBeDefined();
+    }
+    expect(level).toBeGreaterThan(0);
   });
 });

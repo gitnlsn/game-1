@@ -1,6 +1,14 @@
 import type { Rng } from '../rng/index.js';
 import type { Club, Fixture, MatchResult, Player } from '../types.js';
-import { simulateMatch, type SimulateMatchOptions } from '../match/engine.js';
+import {
+  extendMatch,
+  finishMatch,
+  matchComplete,
+  startMatch,
+  stepMatch,
+  type MatchInProgress,
+  type SimulateMatchOptions,
+} from '../match/engine.js';
 import { effectiveness } from '../match/ratings.js';
 
 /**
@@ -151,9 +159,9 @@ export function currentTies(state: CupState): CupTie[] {
 /**
  * Plays a cup tie to a winner: ninety minutes, then extra time, then penalties.
  *
- * Every stage is an ordinary match, so form, fatigue, tactics and sendings off
- * all carry -- extra time is simply a short match at reduced intensity between
- * the same two sides, not a coin toss dressed up.
+ * Extra time is the same match carried on, so form, fatigue, tactics,
+ * substitutions and sendings off all carry -- and its goals are the match's
+ * goals, credited like any other.
  */
 export function resolveCupTie(
   rng: Rng,
@@ -162,33 +170,36 @@ export function resolveCupTie(
   away: Club,
   options: SimulateMatchOptions = {},
 ): MatchResult {
-  const result = simulateMatch(rng, home, away, options);
-  tie.score = { home: result.home.goals, away: result.away.goals };
+  return settleCupTie(tie, startMatch(rng, home, away, options));
+}
 
+/**
+ * Finishes a cup tie from wherever its match has got to -- kick-off, or the
+ * final whistle of a match the manager has been watching -- and settles who
+ * goes through. Both a simulated tie and a live one end here, so neither can
+ * leave a tie without a winner.
+ */
+export function settleCupTie(tie: CupTie, match: MatchInProgress): MatchResult {
+  while (!matchComplete(match)) stepMatch(match);
+  const ninety = { home: match.home.goals, away: match.away.goals };
+  tie.score = ninety;
+
+  if (ninety.home === ninety.away) {
+    // Thirty minutes more, at the pace of a side that has already played ninety.
+    extendMatch(match, 30, CUP_TUNING.extraTimeAttackRate);
+    while (!matchComplete(match)) stepMatch(match);
+    tie.extraTime = { home: match.home.goals - ninety.home, away: match.away.goals - ninety.away };
+  }
+
+  const result = finishMatch(match);
   if (result.home.goals !== result.away.goals) {
-    tie.winnerClubId = result.home.goals > result.away.goals ? home.id : away.id;
+    tie.winnerClubId = result.home.goals > result.away.goals ? result.homeClubId : result.awayClubId;
     return result;
   }
 
-  // Thirty minutes more, at the pace of a side that has already played ninety.
-  const extra = simulateMatch(rng, home, away, {
-    ...options,
-    // Never update player state twice for one tie; the ninety already did it.
-    updatePlayerState: false,
-    startMinute: 90,
-    minutes: 30,
-    attackRate: CUP_TUNING.extraTimeAttackRate,
-  });
-  tie.extraTime = { home: extra.home.goals, away: extra.away.goals };
-
-  if (extra.home.goals !== extra.away.goals) {
-    tie.winnerClubId = extra.home.goals > extra.away.goals ? home.id : away.id;
-    return result;
-  }
-
-  const shootout = resolveShootout(rng, home, away);
+  const shootout = resolveShootout(match.rng, match.home.club, match.away.club);
   tie.shootout = shootout;
-  tie.winnerClubId = shootout.home > shootout.away ? home.id : away.id;
+  tie.winnerClubId = shootout.home > shootout.away ? result.homeClubId : result.awayClubId;
   return result;
 }
 
