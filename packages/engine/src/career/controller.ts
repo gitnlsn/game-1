@@ -249,6 +249,7 @@ export function advanceRound(career: Career): MatchResult[] {
     (r) => r.homeClubId === career.managedClubId || r.awayClubId === career.managedClubId,
   );
   if (own) {
+    expireSelection(career);
     const opponentId = own.homeClubId === career.managedClubId ? own.awayClubId : own.homeClubId;
     const opponent = findClub(career.world, opponentId);
     if (opponent) {
@@ -831,6 +832,7 @@ export function beginLiveMatch(career: Career): LiveMatch | undefined {
 export function endLiveMatch(live: LiveMatch, career: Career): MatchResult {
   while (!matchComplete(live.match)) stepMatch(live.match);
   const result = playFixture(career.season, live.fixture, finishMatch(live.match));
+  expireSelection(career);
   offerManagedSponsor(career, [result]);
   developIfDue(career);
   openMidSeasonWindowIfDue(career);
@@ -1013,6 +1015,24 @@ export function setTeamSheet(career: Career, sheet: TeamSheet): TeamSheetIssue[]
       : {}),
   });
   return previewLineup(career).issues;
+}
+
+/**
+ * Ends a pick once it has been played. The eleven is chosen for one match, so
+ * it is handed back to the engine -- otherwise one visit to team selection
+ * silently decides every Quick play for the rest of the season, patched only
+ * when someone is injured. Shape and instructions are standing decisions and
+ * stay. A round the club sits out is not a match, so it does not get here.
+ */
+function expireSelection(career: Career): void {
+  const sheet = career.season.teamSheets.get(career.managedClubId);
+  if (!sheet) return;
+  const slots = (FORMATIONS[sheet.formation] ?? FORMATIONS[DEFAULT_FORMATION]!).length;
+  career.season.teamSheets.set(career.managedClubId, {
+    ...sheet,
+    starters: new Array<string | undefined>(slots).fill(undefined),
+    bench: [],
+  });
 }
 
 /** Hands selection back to the engine. */

@@ -126,20 +126,53 @@ function reslot(career: Career, sheet: TeamSheet, formation: string): TeamSheet 
   return { ...sheet, formation, starters };
 }
 
+/**
+ * The sheet with every blank slot written in as whoever the engine would put
+ * there. A sheet handed back to the engine after a match is all blanks, and
+ * editing blanks directly is unstable: swap one man out and the engine is free
+ * to pick him again for a slot nobody pinned. Explicit picks are left exactly as
+ * they are, so one who has since been injured is still reported as a forced change.
+ */
+function fillBlanks(career: Career, sheet: TeamSheet): TeamSheet {
+  const { lineup } = resolveTeamSheet(managedClub(career), sheet);
+  const length = FORMATIONS[sheet.formation]?.length ?? lineup.slots.length;
+  const starters = Array.from({ length }, (_, i) => sheet.starters[i] ?? lineup.slots[i]?.player.id);
+  return { ...sheet, starters };
+}
+
+/** A sheet with nothing pinned: the engine picks the whole eleven at kick-off. */
+function blankSheet(sheet: TeamSheet): TeamSheet {
+  const length = FORMATIONS[sheet.formation]?.length ?? sheet.starters.length;
+  return { ...sheet, starters: new Array<string | undefined>(length).fill(undefined), bench: [] };
+}
+
+/** Players asked to play somewhere they do not belong, worst first. */
+function outOfPosition(slots: readonly { position: Position; player: Player }[]): string[] {
+  return slots
+    .filter(({ position, player }) => positionFamiliarity(player.position, position) < 0.7)
+    .sort((a, b) => (a.position === 'GK' ? -1 : b.position === 'GK' ? 1 : 0))
+    .map(({ position, player }) =>
+      position === 'GK'
+        ? `${shirtName(player)} is not a goalkeeper.`
+        : `${shirtName(player)} is a ${player.position} playing ${position}.`,
+    );
+}
+
 export function TeamSelectionScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { career, busy, playRound, refresh, settings, startLive } = useGame();
 
   const [sheet, setSheet] = useState<TeamSheet | undefined>(() =>
-    career ? currentTeamSheet(career) : undefined,
+    career ? fillBlanks(career, currentTeamSheet(career)) : undefined,
   );
   const [selected, setSelected] = useState<{ slot: number } | { bench: string } | undefined>();
   /*
-   * Instructions commit as soon as they are changed, where the eleven commits at
-   * kick-off. That difference is the point rather than an inconsistency: how the
-   * side is set up is a standing decision that carries into next week, while the
-   * team is picked for one match.
+   * Everything here commits as soon as it is changed, so leaving the screen
+   * never quietly throws a choice away. What differs is how long it lasts: how
+   * the side is set up is a standing decision that carries into next week, while
+   * the eleven is picked for one match and handed back to the engine once it is
+   * played.
    */
   const [shape, setShape] = useState<Tactics | undefined>(() =>
     career ? currentTactics(career) : undefined,
@@ -178,21 +211,37 @@ export function TeamSelectionScreen() {
       .sort((a, b) => Number(isAvailable(b)) - Number(isAvailable(a)));
   }, [club, lineup]);
 
+  /*
+   * Shows `display` and stores `stored`, which differ only for Auto pick: that
+   * shows the engine's eleven but stores blanks, so the engine picks again at
+   * kick-off around anyone injured in between. Tactics are left off what is
+   * stored, because the ones on this copy may be older than the instructions
+   * just set above, and a sheet without them keeps whatever is standing.
+   */
+  const commit = useCallback(
+    (display: TeamSheet, stored: TeamSheet = display) => {
+      if (!career) return;
+      setSheet(display);
+      const { tactics: _, ...selection } = stored;
+      setTeamSheet(career, selection);
+      refresh();
+    },
+    [career, refresh],
+  );
+
   const swapInto = useCallback(
     (slotIndex: number, playerId: string) => {
-      setSheet((current) => {
-        if (!current) return current;
-        const starters = [...current.starters];
-        const existingAt = starters.indexOf(playerId);
-        const displaced = starters[slotIndex];
-        starters[slotIndex] = playerId;
-        // If he was already in the XI, the two simply trade places.
-        if (existingAt >= 0 && existingAt !== slotIndex) starters[existingAt] = displaced;
-        return { ...current, starters };
-      });
+      if (!sheet) return;
+      const starters = [...sheet.starters];
+      const existingAt = starters.indexOf(playerId);
+      const displaced = starters[slotIndex];
+      starters[slotIndex] = playerId;
+      // If he was already in the XI, the two simply trade places.
+      if (existingAt >= 0 && existingAt !== slotIndex) starters[existingAt] = displaced;
+      commit({ ...sheet, starters });
       setSelected(undefined);
     },
-    [],
+    [sheet, commit],
   );
 
   const onSlotPress = useCallback(
@@ -201,20 +250,19 @@ export function TeamSelectionScreen() {
       if ('slot' in selected) {
         if (selected.slot === index) return setSelected(undefined);
         // Trade the two slots.
-        setSheet((current) => {
-          if (!current) return current;
-          const starters = [...current.starters];
+        if (sheet) {
+          const starters = [...sheet.starters];
           const a = starters[selected.slot];
           starters[selected.slot] = starters[index];
           starters[index] = a;
-          return { ...current, starters };
-        });
+          commit({ ...sheet, starters });
+        }
         return setSelected(undefined);
       }
       swapInto(index, selected.bench);
       void playerId;
     },
-    [selected, swapInto],
+    [selected, sheet, commit, swapInto],
   );
 
   const onBenchPress = useCallback(
@@ -231,11 +279,8 @@ export function TeamSelectionScreen() {
   if (!career || !club || !lineup || !sheet) return null;
 
   const kickOff = async () => {
-    setTeamSheet(career, sheet);
-
+    // The sheet is already stored: every change above commits as it is made.
     if (settings.matchMode === 'live') {
-      // Started AFTER the sheet is stored, or the eleven just picked is not the
-      // eleven that takes the pitch.
       if (await startLive()) navigation.replace('liveMatch');
       return;
     }
@@ -249,6 +294,7 @@ export function TeamSelectionScreen() {
   };
 
   const rows = pitchRows(lineup.slots, sheet.formation);
+  const misplaced = outOfPosition(lineup.slots);
 
   return (
     <View style={styles.container}>
@@ -258,7 +304,7 @@ export function TeamSelectionScreen() {
           options={FORMATION_OPTIONS}
           value={sheet.formation}
           onChange={(formation) => {
-            setSheet((current) => (current ? reslot(career, current, formation) : current));
+            commit(fillBlanks(career, reslot(career, sheet, formation)));
             setSelected(undefined);
           }}
         />
@@ -302,6 +348,16 @@ export function TeamSelectionScreen() {
           </Card>
         ) : null}
 
+        {misplaced.length > 0 ? (
+          <Card style={styles.issues}>
+            {misplaced.map((line) => (
+              <Text key={line} style={styles.issuesText}>
+                {line}
+              </Text>
+            ))}
+          </Card>
+        ) : null}
+
         <SectionTitle>Starting eleven</SectionTitle>
         {rows.map((row) => (
           <View key={row.key} style={styles.pitchRow}>
@@ -341,7 +397,8 @@ export function TeamSelectionScreen() {
             label="Auto pick"
             variant="secondary"
             onPress={() => {
-              setSheet(suggestedTeamSheet(career, sheet.formation));
+              const auto = { ...suggestedTeamSheet(career, sheet.formation), tactics: sheet.tactics };
+              commit(auto, blankSheet(auto));
               setSelected(undefined);
             }}
             style={styles.footerButton}

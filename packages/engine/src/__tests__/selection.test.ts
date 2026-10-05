@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceRound,
+  beginLiveMatch,
   clearTeamSheet,
   currentTeamSheet,
+  endLiveMatch,
+  isSeasonComplete,
   managedClub,
+  nextFixture,
   previewLineup,
+  setTactics,
   setTeamSheet,
   startCareer,
   suggestedTeamSheet,
@@ -199,7 +204,7 @@ describe('team sheets', () => {
       const career = startCareer({ seed: 'selection-quality', managedClubId: 'c1' });
       const club = managedClub(career);
 
-      if (useWorstXI) {
+      const pickWorst = () => {
         const keeper = [...club.squad]
           .filter((p) => p.position === 'GK')
           .sort((a, b) => currentAbility(a) - currentAbility(b))[0]!;
@@ -212,9 +217,13 @@ describe('team sheets', () => {
           starters: FORMATIONS['4-3-3']!.map((pos, i) => (pos === 'GK' ? keeper.id : worst[i]!.id)),
           bench: [],
         });
-      }
+      };
 
-      for (let i = 0; i < 19; i++) advanceRound(career);
+      // A pick lasts one match, so the bad eleven is named afresh every week.
+      for (let i = 0; i < 19; i++) {
+        if (useWorstXI) pickWorst();
+        advanceRound(career);
+      }
       const row = career.season.results
         .filter((r) => r.homeClubId === 'c1' || r.awayClubId === 'c1')
         .reduce((pts, r) => {
@@ -228,5 +237,56 @@ describe('team sheets', () => {
 
     // Fielding your worst eleven every week has to cost you.
     expect(play(true)).toBeLessThan(play(false));
+  });
+});
+
+describe('a picked eleven lasts one match', () => {
+  const pinnedSheet = (career: ReturnType<typeof startCareer>): TeamSheet => {
+    const club = managedClub(career);
+    const striker = club.squad.find((p) => p.position === 'ST')!;
+    return {
+      clubId: club.id,
+      formation: '4-2-3-1',
+      starters: FORMATIONS['4-2-3-1']!.map((p) => (p === 'ST' ? striker.id : undefined)),
+      bench: [club.squad.find((p) => p.position === 'GK')!.id],
+    };
+  };
+
+  it('hands the eleven back to the engine once the match is played, keeping shape and instructions', () => {
+    const career = startCareer({ seed: 'selection-expiry', managedClubId: 'c1' });
+    setTeamSheet(career, pinnedSheet(career));
+    setTactics(career, { mentality: 1 });
+
+    advanceRound(career);
+
+    const sheet = currentTeamSheet(career);
+    expect(sheet.formation).toBe('4-2-3-1');
+    expect(sheet.tactics?.mentality).toBe(1);
+    expect(sheet.starters).toHaveLength(FORMATIONS['4-2-3-1']!.length);
+    expect(sheet.starters.every((id) => id === undefined)).toBe(true);
+    expect(sheet.bench).toEqual([]);
+  });
+
+  it('does the same after a match played live', () => {
+    const career = startCareer({ seed: 'selection-expiry-live', managedClubId: 'c1' });
+    setTeamSheet(career, pinnedSheet(career));
+
+    endLiveMatch(beginLiveMatch(career)!, career);
+
+    const sheet = currentTeamSheet(career);
+    expect(sheet.formation).toBe('4-2-3-1');
+    expect(sheet.starters.every((id) => id === undefined)).toBe(true);
+  });
+
+  it('keeps the pick through a round the club sits out', () => {
+    const career = startCareer({ seed: 'selection-expiry-bye', managedClubId: 'c1' });
+    // Play on to the first round with no match for the club: a cup bye.
+    while (nextFixture(career)) advanceRound(career);
+    expect(isSeasonComplete(career)).toBe(false);
+
+    const sheet = pinnedSheet(career);
+    setTeamSheet(career, sheet);
+    advanceRound(career);
+    expect(currentTeamSheet(career).starters).toEqual(sheet.starters);
   });
 });
