@@ -4,6 +4,7 @@ import {
   currentAbility,
   formatMoney,
   type DepartureImpact,
+  type MoveCheck,
   type PlannedMove,
   type Player,
   type PotentialEstimate,
@@ -13,6 +14,7 @@ import { Badge, Button, Card, Divider, KeyValue } from './ui';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
 import { departureLine, premium } from '../game/compareText';
 import { plannedLabel } from '../game/moveText';
+import { Consequence } from './Consequence';
 
 /**
  * Every bid for one of your players, on one card with what selling him would
@@ -26,6 +28,7 @@ export function OfferCard({
   band,
   value,
   listed,
+  acceptCheck,
   moveFor,
   onOpen,
   onAccept,
@@ -39,6 +42,8 @@ export function OfferCard({
   band: PotentialEstimate;
   value: number;
   listed: boolean;
+  /** Accepting the best bid, checked against the rest of the plan. */
+  acceptCheck?: MoveCheck | undefined;
   moveFor: (offer: TransferOffer) => PlannedMove | undefined;
   onOpen: () => void;
   onAccept: (offer: TransferOffer) => void;
@@ -143,6 +148,12 @@ export function OfferCard({
         );
       })}
 
+      {!sale && acceptCheck ? (
+        <Consequence
+          text={`Accepting ${offers[0]!.buyerClubName}: +${formatMoney(acceptCheck.cost.bank)} to the bank, not the transfer budget · ${formatMoney(-acceptCheck.cost.wage)}/wk off the wage bill`}
+          {...(acceptCheck.problem ? { problem: acceptCheck.problem } : {})}
+        />
+      ) : null}
       {!sale && open.length > 0 ? (
         <Button
           label={open.length === 1 ? 'Turn down' : `Turn down all ${open.length}`}

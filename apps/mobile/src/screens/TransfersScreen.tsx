@@ -5,10 +5,12 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   browseTargets,
+  checkMove,
   contractAdvice,
   currentAbility,
   departureImpact,
   draftAssistantPlan,
+  expectedWage,
   effectiveWageBill,
   formatMoney,
   incomingOffers,
@@ -32,6 +34,8 @@ import {
   transferWindow,
   unplanMove,
   type ContractAdvice,
+  type MarketListing,
+  type MoveCheck,
   type MoveRequest,
   type PlannedMove,
   type Player,
@@ -78,16 +82,30 @@ export function TransfersScreen() {
   const window = career ? transferWindow(career) : undefined;
 
   const offers = useMemo(() => (career ? incomingOffers(career) : []), [career, version]);
-  const targets = useMemo(
-    () =>
-      career
-        ? browseTargets(career, {
-            ...(position === 'any' ? {} : { position: position as never }),
-            limit: 40,
-          })
-        : [],
-    [career, position, version],
-  );
+  /*
+   * The engine lists who you could sign with today's wage room first. What
+   * matters in a window is the room your plan leaves, so take a wider list and
+   * re-sort it on that: players the plan can afford first, best first.
+   */
+  const signable = (t: { listing: MarketListing; check: MoveCheck | undefined }) =>
+    t.listing.wouldJoin && !t.check?.problem;
+  const targets = useMemo(() => {
+    if (!career || !transferWindow(career)) return [];
+    return browseTargets(career, {
+      ...(position === 'any' ? {} : { position: position as never }),
+      limit: 150,
+    })
+      .map((listing) => ({
+        listing,
+        check: checkMove(career, { kind: 'buy', playerId: listing.player.id, fee: listing.askingPrice }),
+      }))
+      .sort(
+        (a, b) =>
+          Number(signable(b)) - Number(signable(a)) ||
+          currentAbility(b.listing.player) - currentAbility(a.listing.player),
+      )
+      .slice(0, 40);
+  }, [career, position, version]);
   const preview = useMemo(() => (career && window ? planPreview(career) : undefined), [career, window, version]);
   const compare = useMemo(() => (career ? sideComparer(career) : undefined), [career, version]);
   // One entry per player, bids highest first, so rival bids for him sit side by side.
@@ -207,6 +225,7 @@ export function TransfersScreen() {
                   impact={departureImpact(career, player)}
                   band={scoutReport(career, player)}
                   value={marketValue(player)}
+                  acceptCheck={checkMove(career, { kind: 'sell', offerId: bids[0]!.id })}
                   listed={career.listings[player.id] === 'transfer'}
                   moveFor={(offer) => plannedFor(career, { offerId: offer.id })[0]}
                   onOpen={() => open(player)}
@@ -256,6 +275,12 @@ export function TransfersScreen() {
                         move={plannedFor(career, { playerId: player.id }).find(
                           (m) => m.kind === 'release' || m.kind === 'renew',
                         )}
+                        renewCheck={checkMove(career, {
+                          kind: 'renew',
+                          playerId: player.id,
+                          wage: Math.max(expectedWage(player), player.contract.wage),
+                          years: 3,
+                        })}
                         onOpen={() => open(player)}
                         onRenew={() => setRenewing(player)}
                         onRelease={() =>
@@ -395,7 +420,7 @@ export function TransfersScreen() {
               value={position}
               onChange={setPosition}
             />
-            {targets.map((listing) => {
+            {targets.map(({ listing, check }) => {
               const inPlan = plannedFor(career, { playerId: listing.player.id }).length > 0;
               return (
                 <TargetRow
@@ -403,6 +428,7 @@ export function TransfersScreen() {
                   listing={listing}
                   band={scoutReport(career, listing.player)}
                   {...(compare ? { comparison: compare(listing.player) } : {})}
+                  check={check}
                   value={marketValue(listing.player)}
                   canScout={scouts > 0}
                   onOpen={() => open(listing.player)}

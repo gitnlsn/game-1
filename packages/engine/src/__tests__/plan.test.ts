@@ -15,6 +15,7 @@ import {
   type Career,
 } from '../career/controller.js';
 import {
+  checkMove,
   clearPlan,
   confirmPlan,
   plannedMoves,
@@ -273,5 +274,63 @@ describe('listing players', () => {
     startNextSeason(c);
     expect(c.world.loans.some((l) => l.playerId === player!.id)).toBe(true);
     expect(c.listings[player!.id]).toBeUndefined();
+  });
+});
+
+describe('checking a move before it is planned', () => {
+  it('leaves the plan exactly as it was', () => {
+    const c = toWindow('check-pure');
+    const player = spare(c);
+    planMove(c, { kind: 'release', playerId: player.id });
+    const before = JSON.stringify(plannedMoves(c));
+
+    checkMove(c, { kind: 'renew', playerId: managedClub(c).squad[0]!.id, wage: 1_000_000, years: 2 });
+    expect(JSON.stringify(plannedMoves(c))).toBe(before);
+  });
+
+  it('says a renewal with a rise needs wage room when there is none', () => {
+    const c = toWindow('check-renew', false);
+    const club = managedClub(c);
+    const player = club.squad[0]!;
+    club.finances.wageBudget = effectiveWageBill(c.world, club);
+
+    const check = checkMove(c, { kind: 'renew', playerId: player.id, wage: player.contract.wage + 10_000, years: 2 })!;
+    expect(check.problem).toMatch(/wage room/);
+    expect(check.cost.wage).toBe(10_000);
+  });
+
+  it('passes a renewal the wage room covers, costing exactly the rise', () => {
+    const c = toWindow('check-renew-ok');
+    const player = managedClub(c).squad[0]!;
+    const check = checkMove(c, { kind: 'renew', playerId: player.id, wage: player.contract.wage + 5_000, years: 3 })!;
+    expect(check.problem).toBeUndefined();
+    expect(check.cost.wage).toBe(5_000);
+  });
+
+  it('flags a signing beyond the transfer budget', () => {
+    const c = toWindow('check-buy', false);
+    managedClub(c).finances.transferBudget = 0;
+    const target = browseTargets(c, { limit: 50 }).find((l) => l.askingPrice > 0 && l.wouldJoin)!;
+    const check = checkMove(c, { kind: 'buy', playerId: target.player.id, fee: target.askingPrice })!;
+    expect(check.problem).toMatch(/transfer budget/);
+    expect(check.cost.budget).toBe(-target.askingPrice);
+  });
+
+  it('will not release the only keeper', () => {
+    const c = toWindow('check-keeper');
+    const club = managedClub(c);
+    const keeper = club.squad.find((p) => p.position === 'GK')!;
+    club.squad = club.squad.filter((p) => p.position !== 'GK' || p.id === keeper.id);
+    expect(checkMove(c, { kind: 'release', playerId: keeper.id })!.problem).toMatch(/only GK/);
+  });
+
+  it('puts a sale fee in the bank, not the transfer budget', () => {
+    const c = toWindow('check-sell');
+    const club = managedClub(c);
+    const offer = incomingOffers(c)[0]!;
+    const check = checkMove(c, { kind: 'sell', offerId: offer.id })!;
+    expect(check.cost.bank).toBe(offer.fee);
+    expect(check.cost.budget).toBe(0);
+    expect(club.squad.some((p) => p.id === offer.playerId)).toBe(true);
   });
 });

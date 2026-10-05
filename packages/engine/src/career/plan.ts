@@ -1,5 +1,5 @@
 import type { PlannedMove, Player, PositionGroup, TransferOffer } from '../types.js';
-import { expectedWage } from '../economy/valuation.js';
+import { expectedWage, formatMoney } from '../economy/valuation.js';
 import {
   appraiseTarget,
   TRANSFER_TUNING,
@@ -8,6 +8,7 @@ import {
 import { effectiveWageBill, LOAN_TUNING, type LoanRejection } from '../transfers/loans.js';
 import { findClub } from '../world/index.js';
 import { POSITION_GROUP } from '../world/positions.js';
+import { depthAt } from '../transfers/needs.js';
 import {
   answerOffer,
   bidFor,
@@ -312,6 +313,95 @@ export function planPreview(career: Career): PlanPreview {
   }
 
   return { before, after, lines, warnings, salesIncome };
+}
+
+// --- Checking one move before it is planned ------------------------------------
+
+export interface MoveCheck {
+  /** What this move alone changes, given the rest of the plan. */
+  cost: {
+    /** Transfer budget: negative for a fee paid. */
+    budget: number;
+    /** Club bank balance: a sale's fee lands here, not in the transfer budget. */
+    bank: number;
+    /** Weekly wage bill: positive is more paid. */
+    wage: number;
+  };
+  /** Where the whole plan would leave the club with this move in it. */
+  after: { transferBudget: number; wageRoom: number; squadSize: number };
+  /** Why it would be refused when the plan is confirmed, in a sentence. */
+  problem?: string;
+}
+
+/**
+ * What a move would cost and whether it would go through, said before it is
+ * planned -- so a manager learns about the wage budget from the button, not
+ * from a refusal after confirming. Changes nothing: the move is planned on the
+ * real plan, previewed, and the plan put back as it was.
+ */
+export function checkMove(career: Career, request: MoveRequest): MoveCheck | undefined {
+  const window = transferWindow(career);
+  if (!window) return undefined;
+
+  const saved = window.planned;
+  let preview: PlanPreview;
+  let moveId: string | undefined;
+  try {
+    const planned = planMove(career, request) ?? [];
+    moveId = planned[planned.length - 1]?.id;
+    preview = planPreview(career);
+  } finally {
+    if (saved) window.planned = saved;
+    else delete window.planned;
+  }
+
+  const line = preview.lines.find((l) => l.move.id === moveId);
+  const { after } = preview;
+  const T = TRANSFER_TUNING;
+  const club = managedClub(career);
+  const player = line?.player;
+
+  const cost = {
+    budget: line?.direction === 'in' ? line.fee : 0,
+    bank: line?.move.kind === 'sell' ? line.fee : 0,
+    wage: line?.wageChange ?? 0,
+  };
+
+  const wageShort = () => `Needs ${formatMoney(-after.wageRoom)}/wk more wage room`;
+  const stale = preview.warnings.find((w) => w.moveId === moveId)?.message;
+  let problem: string | undefined = stale;
+
+  if (!problem) {
+    switch (request.kind) {
+      case 'renew':
+        if (cost.wage > 0 && after.wageRoom < 0) problem = wageShort();
+        break;
+      case 'buy': {
+        const listing = appraiseTarget(career.world, career.managedClubId, request.playerId);
+        if (listing && !listing.wouldJoin) problem = 'He would not join a club of your standing';
+        else if (after.transferBudget < 0) problem = `${formatMoney(-after.transferBudget)} over your transfer budget`;
+        else if (after.wageRoom < 0) problem = wageShort();
+        else if (after.squadSize > T.maxSquadSize) problem = `Your squad would be over ${T.maxSquadSize}`;
+        break;
+      }
+      case 'release':
+        if (player && depthAt(club, player.position) <= 1) {
+          problem = `Your only ${player.position}: he cannot be released`;
+          break;
+        }
+      // falls through: a release also cannot take the squad below the floor
+      case 'sell':
+      case 'loanOut':
+        if (after.squadSize < T.minSquadSize) problem = `Your squad would drop below ${T.minSquadSize}`;
+        break;
+    }
+  }
+
+  return {
+    cost,
+    after: { transferBudget: after.transferBudget, wageRoom: after.wageRoom, squadSize: after.squadSize },
+    ...(problem ? { problem } : {}),
+  };
 }
 
 // --- Confirming ----------------------------------------------------------------

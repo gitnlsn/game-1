@@ -4,12 +4,14 @@ import {
   currentAbility,
   formatMoney,
   type MarketListing,
+  type MoveCheck,
   type PotentialEstimate,
   type SideComparison,
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, Divider, KeyValue } from './ui';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
 import { premium, sideLine } from '../game/compareText';
+import { Consequence } from './Consequence';
 
 /**
  * A player at another club, as the market prices him. Shared by the transfer
@@ -27,6 +29,7 @@ export function TargetRow({
   blockedReason,
   comparison,
   value,
+  check,
 }: {
   listing: MarketListing;
   band: PotentialEstimate;
@@ -43,6 +46,8 @@ export function TargetRow({
   comparison?: SideComparison;
   /** His market value, to read the asking price against. */
   value?: number;
+  /** Signing him, checked against the plan. Only while a window is open. */
+  check?: MoveCheck | undefined;
 }) {
   const { player } = listing;
   const blocked = blockedReason ?? (!listing.wouldJoin
@@ -109,13 +114,20 @@ export function TargetRow({
           tint={listing.askingPrice <= value * 1.2 ? colors.accent : listing.askingPrice >= value * 1.8 ? colors.warn : colors.muted}
         />
       ) : null}
-      <KeyValue label="Wages" value={`${formatMoney(listing.expectedWage)}/wk`} />
+      {/* What signing him would actually cost a week, which is above what he expects to earn. */}
+      <KeyValue label="Wages" value={`${formatMoney(check?.cost.wage ?? listing.expectedWage)}/wk`} />
       <KeyValue
         label="Could become"
         value={`${band.low}–${band.high} · ${band.label}`}
         tint={band.confidence >= 0.6 ? colors.text : colors.faint}
       />
       {blocked ? <Badge label={blocked} color={colors.warn} style={styles.blocked} /> : null}
+      {check && !blocked && !action?.disabled ? (
+        <Consequence
+          text={`Signing: ${check.cost.budget === 0 ? 'no fee' : `${formatMoney(-check.cost.budget)} from the budget`} · +${formatMoney(check.cost.wage)}/wk · leaves ${formatMoney(Math.max(0, check.after.wageRoom))}/wk of wage room`}
+          {...(check.problem ? { problem: check.problem } : {})}
+        />
+      ) : null}
       <View style={styles.actions}>
         <Button
           label={known ? 'Nothing more to learn' : 'Send a scout'}

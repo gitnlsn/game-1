@@ -6,6 +6,7 @@ import {
   formatMoney,
   type ContractAdvice,
   type DepartureImpact,
+  type MoveCheck,
   type PlannedMove,
   type Player,
   type SquadRole,
@@ -14,6 +15,7 @@ import { Badge, Button, Card, KeyValue } from './ui';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
 import { departureLine } from '../game/compareText';
 import { plannedLabel } from '../game/moveText';
+import { Consequence } from './Consequence';
 
 /**
  * How the advice shows: a tag by the name and the card's left edge. The card
@@ -45,6 +47,7 @@ export function ContractRow({
   advice,
   impact,
   move,
+  renewCheck,
   onOpen,
   onRenew,
   onRelease,
@@ -55,6 +58,8 @@ export function ContractRow({
   advice: ContractAdvice;
   impact: DepartureImpact;
   move: PlannedMove | undefined;
+  /** Renewing on his asking, checked against the rest of the plan. */
+  renewCheck?: MoveCheck | undefined;
   onOpen: () => void;
   onRenew: () => void;
   onRelease: () => void;
@@ -95,6 +100,7 @@ export function ContractRow({
         tint={rise > 0 ? colors.warn : colors.muted}
       />
       <KeyValue label="Released, you save" value={`${formatMoney(player.contract.wage)}/wk`} />
+      {!move && renewCheck?.problem ? <Consequence problem={`Renewal: ${renewCheck.problem.toLowerCase()}`} /> : null}
 
       {move ? (
         <View style={styles.planned}>

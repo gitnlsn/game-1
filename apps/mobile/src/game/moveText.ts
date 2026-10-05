@@ -19,7 +19,7 @@ export const MOVE_FAILURE: Record<MoveFailure, string> = {
   unknown_club: 'That club is no longer there.',
   offer_gone: 'That bid is no longer on the table.',
   release_refused: 'You cannot go that short in his position, or the squad that small.',
-  renew_refused: 'He wants more than that, or the wage budget will not take it.',
+  renew_refused: 'Not enough wage room: his new wage would take you over the wage budget.',
 };
 
 /** What a planned move will do, said from the club's side. */
