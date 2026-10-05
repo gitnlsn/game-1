@@ -59,6 +59,7 @@ export interface SquadMember {
  */
 function strongestSquad(squad: readonly Player[], formation: readonly Position[]) {
   const used = new Set<string>();
+  const slots: StartingSlot[] = [];
   // Fill the scarcest positions first, so the only goalkeeper is not spent at
   // centre half by an earlier slot.
   const order = formation
@@ -74,13 +75,16 @@ function strongestSquad(squad: readonly Player[], formation: readonly Position[]
     let bestScore = -Infinity;
     for (const player of squad) {
       if (used.has(player.id)) continue;
-      const score = abilityIn(player.attributes, position) * positionFamiliarity(player.position, position);
+      const score = slotRating(player, position);
       if (score > bestScore) {
         bestScore = score;
         best = player;
       }
     }
-    if (best) used.add(best.id);
+    if (best) {
+      used.add(best.id);
+      slots.push({ position, player: best, rating: bestScore });
+    }
   }
 
   const starters = new Set(used);
@@ -91,15 +95,138 @@ function strongestSquad(squad: readonly Player[], formation: readonly Position[]
       .slice(0, EFFECTIVENESS_TUNING.benchSize)
       .map((p) => p.id),
   );
-  return { starters, bench };
+  return { starters, bench, slots };
+}
+
+interface StartingSlot {
+  position: Position;
+  player: Player;
+  rating: number;
+}
+
+/** How well a player would do in a slot, out-of-position penalty included. */
+function slotRating(player: Player, position: Position): number {
+  return abilityIn(player.attributes, position) * positionFamiliarity(player.position, position);
+}
+
+function managedFormation(career: Career): readonly Position[] {
+  return FORMATIONS[currentTeamSheet(career).formation] ?? FORMATIONS[DEFAULT_FORMATION]!;
+}
+
+export const COMPARISON_TUNING = {
+  /** Rating points either side of the man in possession that still count as level. */
+  levelMargin: 2.5,
+} as const;
+
+/**
+ * A player you might sign, measured against the starter he would have to
+ * displace. "Rated 68" means nothing on its own; "+6 on your starting centre
+ * half" is the whole decision.
+ *
+ * - upgrade: clearly better than the weakest starter in his position.
+ * - level: close enough that it would be a fight for the shirt.
+ * - backup: would not start.
+ * - no_slot: the formation you play has no place for his position.
+ */
+export interface SideComparison {
+  verdict: 'upgrade' | 'level' | 'backup' | 'no_slot';
+  /** The starter he is measured against. Absent only when nobody plays his position at all. */
+  rival?: Player;
+  /** The rival's rating in the slot, which is lower than his own if he is playing out of position. */
+  rivalRating: number;
+  /** His rating in his own position. */
+  rating: number;
+  /** rating - rivalRating. Positive is better than what you have. */
+  difference: number;
+}
+
+/**
+ * Compares players from elsewhere against the managed side. Built once and
+ * applied to a whole list, since the strongest eleven is the same for all of them.
+ */
+export function sideComparer(career: Career): (player: Player) => SideComparison {
+  const club = managedClub(career);
+  const { slots } = strongestSquad(club.squad, managedFormation(career));
+
+  return (player) => {
+    const rating = slotRating(player, player.position);
+    const inPosition = slots.filter((slot) => slot.position === player.position);
+    if (inPosition.length === 0) {
+      // Nowhere to play him, so the comparison is with whoever you have there anyway.
+      const rival = club.squad
+        .filter((p) => p.position === player.position)
+        .sort((a, b) => slotRating(b, b.position) - slotRating(a, a.position))[0];
+      const rivalRating = rival ? slotRating(rival, rival.position) : 0;
+      return { verdict: 'no_slot', ...(rival ? { rival } : {}), rivalRating, rating, difference: rating - rivalRating };
+    }
+    // The weakest starter there is the one whose shirt he would take.
+    const weakest = inPosition.reduce((a, b) => (b.rating < a.rating ? b : a));
+    const difference = rating - weakest.rating;
+    const margin = COMPARISON_TUNING.levelMargin;
+    return {
+      verdict: difference > margin ? 'upgrade' : difference < -margin ? 'backup' : 'level',
+      rival: weakest.player,
+      rivalRating: weakest.rating,
+      rating,
+      difference,
+    };
+  };
+}
+
+/**
+ * What selling one of your own would cost the side: whether he starts, and if
+ * he does, who comes into the eleven and how much weaker it is for it.
+ */
+export interface DepartureImpact {
+  starts: boolean;
+  /**
+   * For a player who does not start, the starter in his position he is behind.
+   * Absent when the formation has no place for his position.
+   */
+  behind?: Player;
+  /** Who comes into the strongest eleven once he has gone. Absent when nobody is left to. */
+  replacement?: Player;
+  /** His rating in the slot he plays. */
+  rating: number;
+  /**
+   * How much the eleven loses, in rating points. Measured over the whole side
+   * rather than his slot, because the best answer is sometimes to move someone
+   * across and bring the newcomer in elsewhere. Zero when he does not start.
+   */
+  drop: number;
+}
+
+export function departureImpact(career: Career, player: Player): DepartureImpact {
+  const club = managedClub(career);
+  const formation = managedFormation(career);
+  const before = strongestSquad(club.squad, formation);
+  const mine = before.slots.find((slot) => slot.player.id === player.id);
+  if (!mine) {
+    const behind = before.slots
+      .filter((slot) => slot.position === player.position)
+      .sort((a, b) => b.rating - a.rating)[0]?.player;
+    return { starts: false, ...(behind ? { behind } : {}), rating: slotRating(player, player.position), drop: 0 };
+  }
+
+  const after = strongestSquad(
+    club.squad.filter((p) => p.id !== player.id),
+    formation,
+  );
+  const total = (slots: StartingSlot[]) => slots.reduce((sum, slot) => sum + slot.rating, 0);
+  const replacement = after.slots.find((slot) => !before.starters.has(slot.player.id))?.player;
+  return {
+    starts: true,
+    ...(replacement ? { replacement } : {}),
+    rating: mine.rating,
+    drop: Math.max(0, total(before.slots) - total(after.slots)),
+  };
 }
 
 /** The managed squad, each player with where he stands. Loaned-out players included. */
 export function squadMembers(career: Career): SquadMember[] {
   const V = SQUAD_VIEW_TUNING;
   const club = managedClub(career);
-  const formation = FORMATIONS[currentTeamSheet(career).formation] ?? FORMATIONS[DEFAULT_FORMATION]!;
-  const { starters, bench } = strongestSquad(club.squad, formation);
+  const { starters, bench } = strongestSquad(club.squad, managedFormation(career));
 
   const roleOf = (player: Player, inSquad: boolean): SquadRole => {
     if (inSquad && starters.has(player.id)) return 'key';

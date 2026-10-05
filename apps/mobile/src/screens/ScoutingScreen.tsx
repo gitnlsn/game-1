@@ -6,12 +6,14 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   isShortlisted,
   managedClub,
+  marketValue,
   scoutCapacity,
   scoutPlayer,
   scoutReport,
   scoutsAvailable,
   searchMarket,
   shortlistRows,
+  sideComparer,
   toggleShortlist,
   transferWindow,
   type CareerBrowseOptions,
@@ -81,6 +83,7 @@ export function ScoutingScreen() {
   const [message, setMessage] = useState<string | undefined>();
 
   const shortlist = useMemo(() => (career ? shortlistRows(career) : []), [career, version]);
+  const compare = useMemo(() => (career ? sideComparer(career) : undefined), [career, version]);
   const results = useMemo(
     () =>
       career && view === 'search'
@@ -173,6 +176,8 @@ export function ScoutingScreen() {
               key={row.listing.player.id}
               listing={row.listing}
               band={row.report}
+              {...(compare ? { comparison: compare(row.listing.player) } : {})}
+              value={marketValue(row.listing.player)}
               canScout={left > 0}
               shortlisted
               onToggleShortlist={() => toggle(row.listing.player.id)}
@@ -209,6 +214,8 @@ export function ScoutingScreen() {
                 key={listing.player.id}
                 listing={listing}
                 band={scoutReport(career, listing.player)}
+                {...(compare ? { comparison: compare(listing.player) } : {})}
+                value={marketValue(listing.player)}
                 canScout={left > 0}
                 shortlisted={isShortlisted(career, listing.player.id)}
                 onToggleShortlist={() => toggle(listing.player.id)}

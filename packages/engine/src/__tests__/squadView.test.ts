@@ -6,7 +6,13 @@ import {
   startCareer,
   type Career,
 } from '../career/controller.js';
-import { squadAlerts, squadDepth, squadMembers } from '../career/squadView.js';
+import {
+  departureImpact,
+  sideComparer,
+  squadAlerts,
+  squadDepth,
+  squadMembers,
+} from '../career/squadView.js';
 import {
   isShortlisted,
   searchMarket,
@@ -135,6 +141,67 @@ describe('searching the market', () => {
   it('applies the limit after filtering', () => {
     const c = career('search-limit');
     expect(searchMarket(c, { minPotential: 0, limit: 5 })).toHaveLength(5);
+  });
+});
+
+describe('comparing with your side', () => {
+  it('measures a target against a starter in his position, with a verdict to match', () => {
+    const c = career('compare');
+    const compare = sideComparer(c);
+    const key = new Set(squadMembers(c).filter((m) => m.role === 'key').map((m) => m.player.id));
+    const others = allClubs(c.world).filter((x) => x.id !== c.managedClubId).flatMap((x) => x.squad);
+
+    for (const player of others.slice(0, 60)) {
+      const result = compare(player);
+      expect(result.difference).toBeCloseTo(result.rating - result.rivalRating);
+      if (result.verdict === 'no_slot') continue;
+      expect(key.has(result.rival!.id)).toBe(true);
+      expect(result.verdict).toBe(
+        result.difference > 2.5 ? 'upgrade' : result.difference < -2.5 ? 'backup' : 'level',
+      );
+    }
+  });
+
+  it('calls a copy of your own starter level with him', () => {
+    const c = career('compare-copy');
+    const starter = squadMembers(c).find((m) => m.role === 'key' && m.player.position !== 'GK')!.player;
+    const twin = { ...starter, id: 'twin' };
+
+    const result = sideComparer(c)(twin);
+    // Level with the weakest starter there, who may be the original or a weaker partner.
+    expect(['level', 'upgrade']).toContain(result.verdict);
+    expect(result.difference).toBeGreaterThanOrEqual(-0.001);
+  });
+
+  it('says a player outside the eleven costs the side nothing', () => {
+    const c = career('impact-bench');
+    const members = squadMembers(c);
+    const bench = members.find((m) => m.role !== 'key' && m.player.position === 'GK')!.player;
+    const keeper = members.find((m) => m.role === 'key' && m.player.position === 'GK')!.player;
+    expect(departureImpact(c, bench)).toMatchObject({ starts: false, drop: 0, behind: keeper });
+  });
+
+  it('names who comes into the eleven when a starter goes', () => {
+    const c = career('impact-starter');
+    const members = squadMembers(c);
+    const key = new Set(members.filter((m) => m.role === 'key').map((m) => m.player.id));
+
+    for (const m of members.filter((x) => x.role === 'key')) {
+      const impact = departureImpact(c, m.player);
+      expect(impact.starts).toBe(true);
+      expect(impact.drop).toBeGreaterThanOrEqual(0);
+      if (impact.replacement) expect(key.has(impact.replacement.id)).toBe(false);
+    }
+  });
+
+  it('feels the loss of the only goalkeeper hardest', () => {
+    const c = career('impact-keeper');
+    const club = managedClub(c);
+    const first = squadMembers(c).find((m) => m.role === 'key' && m.player.position === 'GK')!.player;
+    club.squad = club.squad.filter((p) => p.position !== 'GK' || p.id === first.id);
+
+    const outfield = squadMembers(c).find((m) => m.role === 'key' && m.player.position !== 'GK')!.player;
+    expect(departureImpact(c, first).drop).toBeGreaterThan(departureImpact(c, outfield).drop);
   });
 });
 

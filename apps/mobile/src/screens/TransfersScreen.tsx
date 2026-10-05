@@ -6,6 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   browseTargets,
   currentAbility,
+  departureImpact,
   effectiveWageBill,
   formatMoney,
   incomingOffers,
@@ -13,6 +14,7 @@ import {
   loanableSquad,
   loanSuitors,
   managedClub,
+  marketValue,
   plannedFor,
   plannedMoves,
   planMove,
@@ -22,14 +24,19 @@ import {
   scoutReport,
   scoutsAvailable,
   setListing,
+  sideComparer,
+  squadMembers,
   toggleShortlist,
   transferWindow,
   unplanMove,
   type MoveRequest,
   type PlannedMove,
   type Player,
+  type TransferOffer,
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, ChipRow, Divider, KeyValue, SectionTitle } from '../components/ui';
+import { ContractRow, contractAdvice, type ContractAdvice } from '../components/ContractRow';
+import { OfferCard } from '../components/OfferCard';
 import { TargetRow } from '../components/TargetRow';
 import { RenewDialog } from '../components/RenewDialog';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
@@ -76,6 +83,13 @@ export function TransfersScreen() {
     [career, position, version],
   );
   const preview = useMemo(() => (career && window ? planPreview(career) : undefined), [career, window, version]);
+  const compare = useMemo(() => (career ? sideComparer(career) : undefined), [career, version]);
+  // One entry per player, bids highest first, so rival bids for him sit side by side.
+  const bidsByPlayer = useMemo(() => {
+    const grouped = new Map<string, TransferOffer[]>();
+    for (const offer of offers) grouped.set(offer.playerId, [...(grouped.get(offer.playerId) ?? []), offer]);
+    return [...grouped.values()].map((bids) => bids.sort((a, b) => b.fee - a.fee));
+  }, [offers]);
 
   if (!career || !club) return null;
 
@@ -107,6 +121,10 @@ export function TransfersScreen() {
   const onLoan = playersOnLoan(career);
   const planned = plannedMoves(career);
   const listed = club.squad.filter((p) => career.listings[p.id] === 'transfer');
+  const expiring = squadMembers(career)
+    .filter((m) => !m.loanedTo && m.player.contract.yearsRemaining <= 1)
+    .map((m) => ({ ...m, advice: contractAdvice(m.role, m.player.age) }))
+    .sort((a, b) => currentAbility(b.player) - currentAbility(a.player));
 
   const plan = (request: MoveRequest, note: string) => {
     planMove(career, request);
@@ -153,70 +171,34 @@ export function TransfersScreen() {
               </Text>
             </Card>
           ) : (
-            offers.map((offer) => {
-              const player = career.world.players.get(offer.playerId);
-              /*
-               * What matters is not whether the fee beats his valuation -- a
-               * selling club always asks a premium, so it always does -- but what
-               * losing him would do to the squad.
-               */
-              const cover = player
-                ? club.squad.filter((p) => p.position === player.position && p.id !== player.id)
-                : [];
-              const best = cover.length ? Math.max(...cover.map((p) => currentAbility(p))) : 0;
-              const ability = player ? currentAbility(player) : 0;
-              const dropOff = ability - best;
-              const move = plannedFor(career, { offerId: offer.id })[0];
-
+            bidsByPlayer.map((bids) => {
+              const player = career.world.players.get(bids[0]!.playerId);
+              if (!player) return null;
               return (
-                <Card key={offer.id} style={styles.card}>
-                  <Text style={styles.cardTitle}>{offer.playerName}</Text>
-                  <Text style={styles.cardMeta}>
-                    {offer.buyerClubName} are interested
-                    {player ? ` · ${player.position} · rated ${ability.toFixed(0)}` : ''}
-                    {career.listings[offer.playerId] === 'transfer' ? ' · listed' : ''}
-                  </Text>
-                  <Divider />
-                  <KeyValue label="Their offer" value={formatMoney(offer.fee)} bold />
-                  <KeyValue
-                    label="Cover behind him"
-                    value={
-                      cover.length === 0
-                        ? 'None — he is your only one'
-                        : `${cover.length}, best rated ${best.toFixed(0)}`
-                    }
-                    tint={cover.length === 0 ? colors.danger : dropOff > 8 ? colors.warn : colors.muted}
-                  />
-                  <KeyValue
-                    label="You would drop"
-                    value={cover.length === 0 ? '—' : `${dropOff > 0 ? dropOff.toFixed(0) : '0'} rating`}
-                    tint={dropOff > 8 ? colors.warn : colors.muted}
-                  />
-                  {move ? (
-                    <PlannedState move={move} onUndo={() => undo(move)} />
-                  ) : (
-                    <View style={styles.actions}>
-                      <Button
-                        label="Turn down"
-                        variant="secondary"
-                        style={styles.action}
-                        onPress={() =>
-                          plan({ kind: 'reject', offerId: offer.id }, `Planned: turn down ${offer.buyerClubName}.`)
-                        }
-                      />
-                      <Button
-                        label="Accept"
-                        style={styles.action}
-                        onPress={() =>
-                          plan(
-                            { kind: 'sell', offerId: offer.id },
-                            `Planned: ${offer.playerName} to ${offer.buyerClubName}.`,
-                          )
-                        }
-                      />
-                    </View>
-                  )}
-                </Card>
+                <OfferCard
+                  key={player.id}
+                  player={player}
+                  offers={bids}
+                  impact={departureImpact(career, player)}
+                  band={scoutReport(career, player)}
+                  value={marketValue(player)}
+                  listed={career.listings[player.id] === 'transfer'}
+                  moveFor={(offer) => plannedFor(career, { offerId: offer.id })[0]}
+                  onOpen={() => open(player)}
+                  onAccept={(offer) =>
+                    plan({ kind: 'sell', offerId: offer.id }, `Planned: ${offer.playerName} to ${offer.buyerClubName}.`)
+                  }
+                  onRejectAll={(rejected) => {
+                    for (const offer of rejected) planMove(career, { kind: 'reject', offerId: offer.id });
+                    setMessage(
+                      rejected.length === 1
+                        ? `Planned: turn down ${rejected[0]!.buyerClubName}.`
+                        : `Planned: turn down all ${rejected.length} bids for ${player.displayName}.`,
+                    );
+                    refresh();
+                  }}
+                  onUndo={undo}
+                />
               );
             })
           )
@@ -224,86 +206,72 @@ export function TransfersScreen() {
 
         {tab === 'squad' ? (
           <>
-            <SectionTitle>Listed for sale</SectionTitle>
-            {listed.length === 0 ? (
-              <Card>
-                <Text style={styles.empty}>
-                  Nobody is listed. Open a player and list him to bring buyers in.
-                </Text>
-              </Card>
-            ) : (
-              listed.map((player) => (
-                <Card key={player.id} style={styles.card}>
-                  <Pressable onPress={() => open(player)} accessibilityRole="button">
-                    <PlayerLine player={player} />
-                    <Text style={styles.cardMeta}>
-                      {offers.filter((o) => o.playerId === player.id).length} bid(s) on the table
-                    </Text>
-                  </Pressable>
-                  <Button
-                    label="Take off the list"
-                    variant="secondary"
-                    style={styles.bid}
-                    onPress={() => {
-                      setListing(career, player.id, undefined);
-                      refresh();
-                    }}
-                  />
+            {expiring.length === 0 ? (
+              <>
+                <SectionTitle>Contracts running down</SectionTitle>
+                <Card>
+                  <Text style={styles.empty}>Nobody is out of contract.</Text>
                 </Card>
-              ))
+              </>
+            ) : (
+              CONTRACT_GROUPS.map(({ advice, title, note }) => {
+                const group = expiring.filter((e) => e.advice === advice);
+                if (group.length === 0) return null;
+                return (
+                  <View key={advice}>
+                    <SectionTitle>{title}</SectionTitle>
+                    <Text style={styles.groupNote}>{note}</Text>
+                    {group.map(({ player, role }) => (
+                      <ContractRow
+                        key={player.id}
+                        player={player}
+                        role={role}
+                        advice={advice}
+                        impact={departureImpact(career, player)}
+                        move={plannedFor(career, { playerId: player.id }).find(
+                          (m) => m.kind === 'release' || m.kind === 'renew',
+                        )}
+                        onOpen={() => open(player)}
+                        onRenew={() => setRenewing(player)}
+                        onRelease={() =>
+                          plan({ kind: 'release', playerId: player.id }, `Planned: release ${player.displayName}.`)
+                        }
+                        onUndo={undo}
+                      />
+                    ))}
+                  </View>
+                );
+              })
             )}
 
-            <SectionTitle>Contracts running down</SectionTitle>
-            {club.squad
-              .filter((p) => p.contract.yearsRemaining <= 1)
-              .sort((a, b) => currentAbility(b) - currentAbility(a))
-              .map((player) => {
-                const moves = plannedFor(career, { playerId: player.id }).filter(
-                  (m) => m.kind === 'release' || m.kind === 'renew',
-                );
-                return (
+            {/* Only when there is something to say: an empty list is not a decision. */}
+            {listed.length > 0 ? (
+              <>
+                <SectionTitle>Listed for sale</SectionTitle>
+                {listed.map((player) => (
                   <Card key={player.id} style={styles.card}>
                     <Pressable onPress={() => open(player)} accessibilityRole="button">
                       <PlayerLine player={player} />
                       <Text style={styles.cardMeta}>
-                        {player.age} · {formatMoney(player.contract.wage)}/wk ·{' '}
-                        {player.contract.yearsRemaining === 0 ? 'expiring' : '1 year left'}
+                        {offers.filter((o) => o.playerId === player.id).length} bid(s) on the table
                       </Text>
                     </Pressable>
-                    {moves[0] ? (
-                      <PlannedState move={moves[0]} onUndo={() => undo(moves[0]!)} />
-                    ) : (
-                      <View style={styles.actions}>
-                        <Button
-                          label="Release"
-                          variant="danger"
-                          style={styles.action}
-                          onPress={() =>
-                            plan({ kind: 'release', playerId: player.id }, `Planned: release ${player.displayName}.`)
-                          }
-                        />
-                        <Button
-                          label="Renew…"
-                          style={styles.action}
-                          onPress={() => setRenewing(player)}
-                        />
-                      </View>
-                    )}
+                    <Button
+                      label="Take off the list"
+                      variant="secondary"
+                      style={styles.bid}
+                      onPress={() => {
+                        setListing(career, player.id, undefined);
+                        refresh();
+                      }}
+                    />
                   </Card>
-                );
-              })}
-            {club.squad.every((p) => p.contract.yearsRemaining > 1) ? (
-              <Card>
-                <Text style={styles.empty}>Nobody is out of contract.</Text>
-              </Card>
+                ))}
+              </>
             ) : null}
 
-            <SectionTitle>Out on loan</SectionTitle>
-            {onLoan.length === 0 ? (
-              <Card>
-                <Text style={styles.empty}>Nobody is out on loan.</Text>
-              </Card>
-            ) : (
+            {onLoan.length === 0 ? null : <SectionTitle>Out on loan</SectionTitle>}
+            {onLoan.length === 0 ? null : (
               onLoan.map(({ player, otherClub, loan }) => (
                 <Card key={player.id} style={styles.card}>
                   <Text style={styles.cardTitle}>{player.displayName}</Text>
@@ -415,6 +383,8 @@ export function TransfersScreen() {
                   key={listing.player.id}
                   listing={listing}
                   band={scoutReport(career, listing.player)}
+                  {...(compare ? { comparison: compare(listing.player) } : {})}
+                  value={marketValue(listing.player)}
                   canScout={scouts > 0}
                   onOpen={() => open(listing.player)}
                   onScout={() => {
@@ -480,6 +450,24 @@ export function TransfersScreen() {
   );
 }
 
+const CONTRACT_GROUPS: { advice: ContractAdvice; title: string; note: string }[] = [
+  {
+    advice: 'renew',
+    title: 'Renew these',
+    note: 'First-choice players and prospects. Let them run down and they leave for nothing.',
+  },
+  {
+    advice: 'decide',
+    title: 'Your call',
+    note: 'Useful, not essential. Renew if the wage is worth it to you.',
+  },
+  {
+    advice: 'release',
+    title: 'Let them go',
+    note: 'Surplus, or past it and not starting. Releasing frees their wages now.',
+  },
+];
+
 function PlayerLine({ player }: { player: Player }) {
   return (
     <View style={styles.rowTop}>
@@ -538,6 +526,7 @@ const styles = StyleSheet.create({
   message: { marginBottom: spacing.md, borderColor: colors.accent },
   messageText: { color: colors.text, fontSize: 13 },
   empty: { color: colors.faint, fontSize: 13, fontStyle: 'italic' },
+  groupNote: { color: colors.muted, fontSize: 12, marginTop: -spacing.xs, marginBottom: spacing.sm, lineHeight: 17 },
   card: { marginBottom: spacing.sm },
   cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
   cardMeta: { color: colors.faint, fontSize: 12, marginTop: 2 },

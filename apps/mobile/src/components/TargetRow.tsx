@@ -5,9 +5,11 @@ import {
   formatMoney,
   type MarketListing,
   type PotentialEstimate,
+  type SideComparison,
 } from '@eleven-deep/engine';
 import { Badge, Button, Card, Divider, KeyValue } from './ui';
 import { colors, positionColor, ratingColor, spacing } from '../theme';
+import { premium, sideLine } from '../game/compareText';
 
 /**
  * A player at another club, as the market prices him. Shared by the transfer
@@ -23,6 +25,8 @@ export function TargetRow({
   shortlisted,
   onToggleShortlist,
   blockedReason,
+  comparison,
+  value,
 }: {
   listing: MarketListing;
   band: PotentialEstimate;
@@ -35,6 +39,10 @@ export function TargetRow({
   onToggleShortlist?: () => void;
   /** Overrides the usual reasons he is out of reach, e.g. his club will not sell. */
   blockedReason?: string;
+  /** Where he would stand in your side, measured against your starter. */
+  comparison?: SideComparison;
+  /** His market value, to read the asking price against. */
+  value?: number;
 }) {
   const { player } = listing;
   const blocked = blockedReason ?? (!listing.wouldJoin
@@ -80,11 +88,27 @@ export function TargetRow({
         </Text>
       </Pressable>
       <Divider />
+      {comparison ? (
+        <Text style={[styles.compare, { color: sideLine(comparison, player.position).tint }]}>
+          {sideLine(comparison, player.position).text}
+        </Text>
+      ) : null}
       <KeyValue
         label="Asking price"
         value={listing.askingPrice === 0 ? 'Free' : formatMoney(listing.askingPrice)}
         bold
       />
+      {value !== undefined && listing.askingPrice > 0 ? (
+        <KeyValue
+          label="His value"
+          value={`${formatMoney(value)} · asking ${premium(listing.askingPrice, value).text}`}
+          /*
+           * Every club asks over value; a fringe player comes at about a sixth
+           * more, a club's key man at double. That spread is what is worth seeing.
+           */
+          tint={listing.askingPrice <= value * 1.2 ? colors.accent : listing.askingPrice >= value * 1.8 ? colors.warn : colors.muted}
+        />
+      ) : null}
       <KeyValue label="Wages" value={`${formatMoney(listing.expectedWage)}/wk`} />
       <KeyValue
         label="Could become"
@@ -117,6 +141,7 @@ const styles = StyleSheet.create({
   card: { marginBottom: spacing.sm },
   cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
   cardMeta: { color: colors.faint, fontSize: 12, marginTop: 2 },
+  compare: { fontSize: 13, fontWeight: '600', marginBottom: spacing.xs },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   pos: { fontSize: 11, fontWeight: '800', width: 28 },
   rating: { fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
