@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import Lock from 'lucide-react-native/icons/lock';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,6 +65,8 @@ export function TitleScreen() {
   const [problem, setProblem] = useState<string | undefined>();
   // No navigator header here: this screen owns its own edge-to-edge insets.
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const entrance = useEntrance();
 
   const kept = keptCareers(
     slots,
@@ -101,135 +103,187 @@ export function TitleScreen() {
   const replaced = kept.find((k) => k.slot === replacing);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: spacing.xl * 2 + insets.top, paddingBottom: spacing.xl + insets.bottom },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.wordmark}>ELEVEN DEEP</Text>
-      <View style={styles.rule} />
-      <Text style={[textStyles.subtitle, styles.tagline]}>
-        A club, a squad and a season at a time.
-      </Text>
-
-      {first ? (
-        <ContinueCard
-          summary={first.summary}
-          locked={first.locked}
-          onPress={() => (first.slot === activeSlot && career && !first.locked ? continueCareer() : open(first))}
-        />
-      ) : null}
-
-      {others.length > 0 ? (
-        <>
-          <SectionTitle
-            right={pro.active ? <Text style={styles.count}>{kept.length} of {usable}</Text> : undefined}
-          >
-            Other careers
-          </SectionTitle>
-          <View style={styles.rows}>
-            {others.map((entry) => (
-              <CareerRow key={entry.slot} entry={entry} disabled={busy} onPress={() => open(entry)} />
-            ))}
-          </View>
-        </>
-      ) : null}
-
-      {/* One row for every slot Pro would add, not a locked row per slot. */}
-      {pro.offered && !pro.active ? (
-        <Pressable
-          onPress={() => paywall.show('Keep up to three careers on this phone and switch between them here.')}
-          accessibilityRole="button"
-          accessibilityLabel="Keep three careers at once with Pro"
-          style={({ pressed }) => [styles.upsell, pressed ? styles.rowPressed : null]}
-        >
-          <Lock color={colors.gold} size={16} />
-          <Text style={styles.upsellText}>Keep three careers at once</Text>
-          <Badge label="Pro" color={colors.gold} />
-          <ChevronRight color={colors.muted} size={18} />
-        </Pressable>
-      ) : null}
-
-      <Button
-        label={first ? 'New career' : 'Start a career'}
-        variant={first ? 'secondary' : 'primary'}
-        onPress={startNew}
-        style={styles.action}
-      />
+    <View style={styles.container}>
       {/*
-        * Android with Play Games configured, and nothing anywhere else: this
-        * app is developed against react-native-web, and a button that could
-        * only ever do nothing is worse than no button.
+        * Behind everything and dimmed, so it fills the empty lower half without
+        * competing with the buttons over it. Its edges are already faded to
+        * colors.bg in the asset itself.
         */}
-      {playGamesAvailable() ? (
-        <>
-          <Button
-            label="Leaderboards"
-            variant="secondary"
-            onPress={() => {
-              void showLeaderboards().then((outcome) => setProblem(leaderboardProblem(outcome)));
-            }}
-            style={styles.action}
+      <Animated.Image
+        source={require('../../assets/title-illustration.jpg')}
+        style={[
+          styles.illustration,
+          { width: width * 1.05, height: width * 1.05 * ILLUSTRATION_RATIO, opacity: entrance.illustration },
+        ]}
+        resizeMode="cover"
+        // Android's own 300ms fade would run on top of the entrance below.
+        fadeDuration={0}
+        onLoad={entrance.loaded}
+        onError={entrance.loaded}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <Animated.ScrollView
+        style={[styles.scroll, { opacity: entrance.content }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: spacing.xl * 2 + insets.top, paddingBottom: spacing.xl + insets.bottom },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.wordmark}>ELEVEN DEEP</Text>
+        <View style={styles.rule} />
+        <Text style={[textStyles.subtitle, styles.tagline]}>
+          A club, a squad and a season at a time.
+        </Text>
+
+        {first ? (
+          <ContinueCard
+            summary={first.summary}
+            locked={first.locked}
+            onPress={() => (first.slot === activeSlot && career && !first.locked ? continueCareer() : open(first))}
           />
-          {problem ? <Text style={styles.problem}>{problem}</Text> : null}
-        </>
-      ) : null}
-      <Button
-        label="Settings"
-        variant="secondary"
-        onPress={() => navigation.navigate('menuSettings')}
-        style={styles.action}
-      />
+        ) : null}
 
-      {/*
-        * The same three numbers the leaderboards rank, shown here because they
-        * are the manager's record across every career and the title screen is
-        * the only place that is about more than the current one. Shown on every
-        * platform: the totals are kept regardless of whether Google is there to
-        * receive them.
-        */}
-      <Record lifetime={lifetime} />
+        {others.length > 0 ? (
+          <>
+            <SectionTitle
+              right={pro.active ? <Text style={styles.count}>{kept.length} of {usable}</Text> : undefined}
+            >
+              Other careers
+            </SectionTitle>
+            <View style={styles.rows}>
+              {others.map((entry) => (
+                <CareerRow key={entry.slot} entry={entry} disabled={busy} onPress={() => open(entry)} />
+              ))}
+            </View>
+          </>
+        ) : null}
 
-      {/*
-        * Nothing is deleted here. Starting a career is what overwrites the
-        * save, so backing out of the club picker costs you nothing -- and the
-        * copy has to say so, or cancelling looks like the safe option when it
-        * is simply the same option.
-        */}
-      <ConfirmDialog
-        visible={replaced !== undefined}
-        title="Start a new career?"
-        message={
-          replaced
-            ? `${replaced.summary.clubName}, and every season you have played with them, will be deleted the moment you pick a new club. Until then nothing changes.`
-            : ''
-        }
-        confirmLabel="Choose a club"
-        destructive
-        onConfirm={() => {
-          const slot = replacing;
-          setReplacing(undefined);
-          navigation.navigate('newCareer', { slot });
-        }}
-        onCancel={() => setReplacing(undefined)}
-      />
+        {/* One row for every slot Pro would add, not a locked row per slot. */}
+        {pro.offered && !pro.active ? (
+          <Pressable
+            onPress={() => paywall.show('Keep up to three careers on this phone and switch between them here.')}
+            accessibilityRole="button"
+            accessibilityLabel="Keep three careers at once with Pro"
+            style={({ pressed }) => [styles.upsell, pressed ? styles.rowPressed : null]}
+          >
+            <Lock color={colors.gold} size={16} />
+            <Text style={styles.upsellText}>Keep three careers at once</Text>
+            <Badge label="Pro" color={colors.gold} />
+            <ChevronRight color={colors.muted} size={18} />
+          </Pressable>
+        ) : null}
 
-      <SlotPicker
-        visible={picking}
-        careers={[...kept].sort((a, b) => a.slot - b.slot)}
-        onPick={(slot) => {
-          setPicking(false);
-          setReplacing(slot);
-        }}
-        onCancel={() => setPicking(false)}
-      />
+        <Button
+          label={first ? 'New career' : 'Start a career'}
+          variant={first ? 'secondary' : 'primary'}
+          onPress={startNew}
+          style={styles.action}
+        />
+        {/*
+          * Android with Play Games configured, and nothing anywhere else: this
+          * app is developed against react-native-web, and a button that could
+          * only ever do nothing is worse than no button.
+          */}
+        {playGamesAvailable() ? (
+          <>
+            <Button
+              label="Leaderboards"
+              variant="secondary"
+              onPress={() => {
+                void showLeaderboards().then((outcome) => setProblem(leaderboardProblem(outcome)));
+              }}
+              style={styles.action}
+            />
+            {problem ? <Text style={styles.problem}>{problem}</Text> : null}
+          </>
+        ) : null}
+        <Button
+          label="Settings"
+          variant="secondary"
+          onPress={() => navigation.navigate('menuSettings')}
+          style={styles.action}
+        />
 
-      {paywall.element}
-    </ScrollView>
+        {/*
+          * The same three numbers the leaderboards rank, shown here because they
+          * are the manager's record across every career and the title screen is
+          * the only place that is about more than the current one. Shown on every
+          * platform: the totals are kept regardless of whether Google is there to
+          * receive them.
+          */}
+        <Record lifetime={lifetime} />
+
+        {/*
+          * Nothing is deleted here. Starting a career is what overwrites the
+          * save, so backing out of the club picker costs you nothing -- and the
+          * copy has to say so, or cancelling looks like the safe option when it
+          * is simply the same option.
+          */}
+        <ConfirmDialog
+          visible={replaced !== undefined}
+          title="Start a new career?"
+          message={
+            replaced
+              ? `${replaced.summary.clubName}, and every season you have played with them, will be deleted the moment you pick a new club. Until then nothing changes.`
+              : ''
+          }
+          confirmLabel="Choose a club"
+          destructive
+          onConfirm={() => {
+            const slot = replacing;
+            setReplacing(undefined);
+            navigation.navigate('newCareer', { slot });
+          }}
+          onCancel={() => setReplacing(undefined)}
+        />
+
+        <SlotPicker
+          visible={picking}
+          careers={[...kept].sort((a, b) => a.slot - b.slot)}
+          onPick={(slot) => {
+            setPicking(false);
+            setReplacing(slot);
+          }}
+          onCancel={() => setPicking(false)}
+        />
+
+        {paywall.element}
+      </Animated.ScrollView>
+    </View>
   );
+}
+
+/** How long the menu waits for the illustration before showing anyway. */
+const ENTRANCE_TIMEOUT_MS = 600;
+
+/**
+ * The illustration first, then the menu over it. An image only arrives a few
+ * frames after the text around it, so without this it pops in behind buttons
+ * that are already there and is never really seen. The timeout means a slow or
+ * failed load costs a moment, never the menu.
+ */
+function useEntrance() {
+  const illustration = useRef(new Animated.Value(0)).current;
+  const content = useRef(new Animated.Value(0)).current;
+  const started = useRef(false);
+
+  const start = () => {
+    if (started.current) return;
+    started.current = true;
+    Animated.sequence([
+      Animated.timing(illustration, { toValue: ILLUSTRATION_OPACITY, duration: 450, useNativeDriver: true }),
+      Animated.timing(content, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]).start();
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(start, ENTRANCE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return { illustration, content, loaded: start };
 }
 
 function Record({ lifetime }: { lifetime: LifetimeRecord }) {
@@ -394,8 +448,14 @@ function nextLine(next: NextUp): string {
   }
 }
 
+/** Height over width of title-illustration.jpg. */
+const ILLUSTRATION_RATIO = 1264 / 848;
+const ILLUSTRATION_OPACITY = 0.5;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  scroll: { flex: 1 },
+  illustration: { position: 'absolute', bottom: 0, right: '-20%' },
   content: { padding: spacing.lg },
   wordmark: {
     color: colors.text,
