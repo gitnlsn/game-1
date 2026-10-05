@@ -985,7 +985,14 @@ function considerSubstitutions(rng: Rng, team: TeamState, minute: number, events
 
   for (const slot of team.onPitch) {
     if (slot.position === 'GK') continue;
-    const played = minute - (team.enteredAt.get(slot.player.id) ?? 0);
+    /*
+     * A man who came off the bench stays on. Each swap is judged on its own,
+     * so without this the next minute's comparison could find him a point worse
+     * than another bench player and take him straight back off again.
+     */
+    const entered = team.enteredAt.get(slot.player.id) ?? 0;
+    if (entered > 0) continue;
+    const played = minute - entered;
     const tiredness = 1 - T.inMatchFatigue * (played / 90);
     const current = slot.effectiveAbility * tiredness;
 

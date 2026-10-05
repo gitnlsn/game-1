@@ -74,9 +74,16 @@ describe('the assistant', () => {
           .filter((m) => m.role === 'key')
           .map((m) => [m.player.id, departureImpact(c, m.player).drop] as const),
       );
-      for (const move of assistantPlan(c).moves) {
+      const moves = assistantPlan(c).moves;
+      // A starter sold because a signing in the same plan takes his place is
+      // not missed: the drop is measured against today's squad, without him.
+      const signedAt = new Set(
+        moves.flatMap((m) => (m.kind === 'buy' ? [c.world.players.get(m.playerId)!.position] : [])),
+      );
+      for (const move of moves) {
         if (move.kind !== 'sell' && move.kind !== 'release') continue;
         const id = movePlayerId(c, move as never)!;
+        if (move.kind === 'sell' && signedAt.has(c.world.players.get(id)!.position)) continue;
         if (key.has(id)) expect(key.get(id)!, seed).toBeLessThanOrEqual(3);
       }
     }
