@@ -7,6 +7,7 @@ import {
   allClubs,
   clubStrength,
   createWorld,
+  expectedFinish,
   formatMoney,
   marketValue,
   type Club,
@@ -17,19 +18,27 @@ import { usePro } from '../game/pro';
 import { colors, ratingColor, spacing } from '../theme';
 import { useGame } from '../game/GameContext';
 import { useRoute, type RouteProp } from '@react-navigation/native';
+import { ordinal } from '../format';
 import type { MenuStackParamList } from '../nav/routes';
 
 function randomSeed(): string {
   return Math.random().toString(36).slice(2, 9);
 }
 
-/** A club's standing expressed the way a manager would read it. */
-function ambitionLabel(reputation: number): { label: string; color: string } {
-  if (reputation >= 78) return { label: 'Title favourites', color: colors.gold };
-  if (reputation >= 70) return { label: 'Challengers', color: colors.accent };
-  if (reputation >= 62) return { label: 'Mid-table', color: colors.info };
-  if (reputation >= 55) return { label: 'Lower half', color: colors.warn };
-  return { label: 'Relegation fight', color: colors.danger };
+/**
+ * What the board will ask of you, in the board's own terms: a finish in the
+ * club's own division. A label read off reputation across both divisions
+ * called a club "mid-table" whose board then demanded the title.
+ */
+function ambitionLabel(expected: number, divisionSize: number): { label: string; color: string } {
+  const share = expected / divisionSize;
+  const color =
+    share <= 0.15 ? colors.gold
+      : share <= 0.35 ? colors.accent
+        : share <= 0.6 ? colors.info
+          : share <= 0.8 ? colors.warn
+            : colors.danger;
+  return { label: `Board expects ${ordinal(expected)}`, color };
 }
 
 export function NewCareerScreen() {
@@ -54,9 +63,9 @@ export function NewCareerScreen() {
   const clubs = useMemo(
     () =>
       world.leagues.flatMap((league) =>
-        [...league.clubs]
-          .sort((a, b) => b.reputation - a.reputation)
-          .map((club) => ({ club, league })),
+        league.clubs
+          .map((club) => ({ club, league, expected: expectedFinish(world, club.id) }))
+          .sort((a, b) => a.expected - b.expected),
       ),
     [world],
   );
@@ -122,10 +131,12 @@ export function NewCareerScreen() {
         Choose a club
       </SectionTitle>
 
-      {clubs.map(({ club, league }) => (
+      {clubs.map(({ club, league, expected }) => (
         <ClubOption
           key={club.id}
           club={club}
+          expected={expected}
+          divisionSize={league.clubs.length}
           {...(world.leagues.length > 1 ? { division: league.name } : {})}
           onPick={() => newCareer(seed, club.id, slot, { nationality, sandbox: mode === 'sandbox' })}
         />
@@ -143,14 +154,18 @@ const MODES = [
 
 function ClubOption({
   club,
+  expected,
+  divisionSize,
   division,
   onPick,
 }: {
   club: Club;
+  expected: number;
+  divisionSize: number;
   division?: string;
   onPick: () => void;
 }) {
-  const ambition = ambitionLabel(club.reputation);
+  const ambition = ambitionLabel(expected, divisionSize);
   const squadValue = club.squad.reduce((sum, player) => sum + marketValue(player), 0);
   const strength = clubStrength(club);
 

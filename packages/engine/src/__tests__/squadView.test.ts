@@ -190,6 +190,8 @@ describe('comparing with your side', () => {
       const impact = departureImpact(c, m.player);
       expect(impact.starts).toBe(true);
       expect(impact.drop).toBeGreaterThanOrEqual(0);
+      // The same loss, spread over the eleven.
+      expect(impact.averageBefore - impact.averageAfter).toBeCloseTo(impact.drop / 11, 6);
       if (impact.replacement) expect(key.has(impact.replacement.id)).toBe(false);
     }
   });

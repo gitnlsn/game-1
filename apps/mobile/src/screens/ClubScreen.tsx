@@ -527,7 +527,9 @@ function HistoryCard({ career }: { career: Career }) {
               summary.tables.find((rows) => rows.some((r) => r.clubId === career.managedClubId)) ??
               summary.table;
             const own = table.findIndex((r) => r.clubId === career.managedClubId) + 1;
-            const won = summary.championName === managedClub(career).name;
+            // Top of their own division, by id: a Segunda title is a title, and a
+            // renamed club keeps the ones it won under the old name.
+            const won = own === 1;
             return (
               <View key={summary.season}>
                 {index > 0 ? <Divider /> : null}

@@ -207,31 +207,48 @@ export interface DepartureImpact {
    * across and bring the newcomer in elsewhere. Zero when he does not start.
    */
   drop: number;
+  /**
+   * The eleven's average rating with him and without him: the same loss on the
+   * scale every rating on screen uses. `drop` is summed over eleven slots, and
+   * next to player ratings of 70 a "14 weaker" read as a collapse.
+   */
+  averageBefore: number;
+  averageAfter: number;
 }
 
 export function departureImpact(career: Career, player: Player): DepartureImpact {
   const club = managedClub(career);
   const formation = managedFormation(career);
   const before = strongestSquad(club.squad, formation);
+  const total = (slots: StartingSlot[]) => slots.reduce((sum, slot) => sum + slot.rating, 0);
   const mine = before.slots.find((slot) => slot.player.id === player.id);
   if (!mine) {
     const behind = before.slots
       .filter((slot) => slot.position === player.position)
       .sort((a, b) => b.rating - a.rating)[0]?.player;
-    return { starts: false, ...(behind ? { behind } : {}), rating: slotRating(player, player.position), drop: 0 };
+    const average = total(before.slots) / before.slots.length;
+    return {
+      starts: false,
+      ...(behind ? { behind } : {}),
+      rating: slotRating(player, player.position),
+      drop: 0,
+      averageBefore: average,
+      averageAfter: average,
+    };
   }
 
   const after = strongestSquad(
     club.squad.filter((p) => p.id !== player.id),
     formation,
   );
-  const total = (slots: StartingSlot[]) => slots.reduce((sum, slot) => sum + slot.rating, 0);
   const replacement = after.slots.find((slot) => !before.starters.has(slot.player.id))?.player;
   return {
     starts: true,
     ...(replacement ? { replacement } : {}),
     rating: mine.rating,
     drop: Math.max(0, total(before.slots) - total(after.slots)),
+    averageBefore: total(before.slots) / before.slots.length,
+    averageAfter: Math.min(total(before.slots), total(after.slots)) / after.slots.length,
   };
 }
 

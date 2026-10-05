@@ -22,7 +22,13 @@ import {
   signingWage,
   type MoveRequest,
 } from './plan.js';
-import { contractAdvice, departureImpact, sideComparer, squadMembers } from './squadView.js';
+import {
+  contractAdvice,
+  departureImpact,
+  sideComparer,
+  squadMembers,
+  type DepartureImpact,
+} from './squadView.js';
 
 /*
  * The assistant drafts a window: the moves a sensible manager would make, each
@@ -64,6 +70,11 @@ function yearsFor(age: number): number {
 }
 
 /** The moves the assistant would add to the current plan. Changes nothing. */
+/** "69.4 → 68.1": the eleven's average with a player and without him. */
+function averageFall(impact: DepartureImpact): string {
+  return `${impact.averageBefore.toFixed(1)} → ${impact.averageAfter.toFixed(1)}`;
+}
+
 export function assistantPlan(career: Career): AssistantPlan {
   const A = ASSISTANT_TUNING;
   const T = TRANSFER_TUNING;
@@ -151,7 +162,7 @@ export function assistantPlan(career: Career): AssistantPlan {
       leave(player, player.contract.wage);
     } else {
       const reason = impact.starts
-        ? `First choice: the side is ${Math.round(impact.drop)} weaker without him.`
+        ? `First choice: without him the eleven's average falls ${averageFall(impact)}.`
         : role === 'prospect'
           ? 'A prospect with more to come.'
           : 'You cannot spare him at his position.';
@@ -223,7 +234,7 @@ export function assistantPlan(career: Career): AssistantPlan {
       wage,
       years: yearsFor(player.age),
       reason: role === 'key'
-        ? `First choice: the side is ${Math.round(impact.drop)} weaker without him.`
+        ? `First choice: without him the eleven's average falls ${averageFall(impact)}.`
         : `A prospect who could become ${band.low}–${band.high}.`,
     }, player);
     wageRoom -= rise;

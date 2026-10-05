@@ -45,7 +45,7 @@ export function departureLine(impact: DepartureImpact): { text: string; tint: st
     text:
       drop === 0
         ? `Starts. ${impact.replacement.displayName} comes in, no weaker`
-        : `Starts. ${impact.replacement.displayName} comes in, side ${drop} weaker`,
+        : `Starts. ${impact.replacement.displayName} comes in, the eleven's average falls ${impact.averageBefore.toFixed(1)} → ${impact.averageAfter.toFixed(1)}`,
     tint: drop >= 8 ? colors.danger : drop >= 3 ? colors.warn : colors.muted,
   };
 }

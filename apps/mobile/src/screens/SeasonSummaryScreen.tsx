@@ -97,7 +97,8 @@ export function SeasonSummaryScreen() {
             <Text style={styles.record}>
               {own ? `${own.won}W ${own.drawn}D ${own.lost}L · ${own.points} points` : ''}
             </Text>
-            {!won ? <Text style={styles.champion}>Champions: {summary.championName}</Text> : null}
+            {/* The division the club played in: the top flight's champion is someone else's title. */}
+            {!won && table[0] ? <Text style={styles.champion}>Champions: {table[0].clubName}</Text> : null}
           </Card>
 
           <SectionTitle>Around the league</SectionTitle>
